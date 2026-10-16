@@ -7,9 +7,13 @@ summary: Read your PDFs one word at a time, at your own pace.
 description: |
   Still is a quiet, offline PDF speed reader.
 
-  Import a PDF, choose where to begin, and press Play. The current word stays
-  centered with surrounding words visible. Swipe backward or forward, or tap
-  a nearby word, then resume at your own pace.
+  Import a PDF, choose where to begin, and hold the bottom-right corner to read.
+  Release to pause. While holding, move right to increase the current speed or
+  left to decrease it, without a play button or slider.
+
+  The current word stays centered with surrounding words visible. Swipe the text
+  backward or forward, or tap a nearby word, then hold the corner to resume.
+  Text navigation stays separate from the corner's speed gesture.
 
   - Adjustable speed from 60 to 900 words per minute, with optional natural pauses.
   - Optional centered, highlighted focus letter.
@@ -29,6 +33,6 @@ tags:
 icon: ./docs/store/icon.png
 images:
   - ./docs/screenshots/android/starting-page.png
-  - ./docs/screenshots/android/reader-portrait.png
-  - ./docs/screenshots/android/reader-landscape.png
+  - ./docs/screenshots/hold-to-read/android-portrait.png
+  - ./docs/screenshots/hold-to-read/android-landscape.png
 release_notes: ./docs/releases/0.1.0.md
