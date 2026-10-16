@@ -33,15 +33,15 @@ Unknown JSON keys can be ignored. Missing optional positions decode as null. Fut
 From the repository root:
 
 ```sh
-xcrun swiftc Still/Core/Book.swift Still/Services/SampleBook.swift \
+xcrun swiftc apps/apple/shared/Core/Book.swift apps/apple/shared/Services/SampleBook.swift \
   scripts/contract-fixtures.swift -o /tmp/still-contract-fixtures
 /tmp/still-contract-fixtures
 
-cd android
+cd apps/android
 ./gradlew :app:testDebugUnitTest
-cd ..
+cd ../..
 /tmp/still-contract-fixtures \
-  --backup="$PWD/android/app/build/contract-output/android-backup.json"
+  --backup="$PWD/apps/android/app/build/contract-output/android-backup.json"
 ```
 
 The Swift checker uses the production model and tokenizer. Android's tests decode a Swift-generated backup and export it again for the Swift checker. Device tests also run the tokenizer fixtures against Android's regex implementation, which differs from a desktop JVM's implementation.

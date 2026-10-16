@@ -4,9 +4,9 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 *.xcresult/
-android/.gradle/
-android/.kotlin/
-android/**/build/
-android/local.properties
-android/.idea/
+apps/android/.gradle/
+apps/android/.kotlin/
+apps/android/**/build/
+apps/android/local.properties
+apps/android/.idea/
 *.iml

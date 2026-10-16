@@ -21,8 +21,8 @@ android {
     }
     buildFeatures { compose = true }
     sourceSets {
-        getByName("test").resources.srcDir("../../shared/fixtures")
-        getByName("androidTest").assets.srcDir("../../shared/fixtures")
+        getByName("test").resources.srcDir("../../../shared/fixtures")
+        getByName("androidTest").assets.srcDir("../../../shared/fixtures")
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }

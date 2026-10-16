@@ -1,6 +1,6 @@
 import Foundation
 
-// Compile with Still/Core/Book.swift and Still/Services/SampleBook.swift.
+// Compile with apps/apple/shared/Core/Book.swift and apps/apple/shared/Services/SampleBook.swift.
 // These fixtures are consumed by Android JVM/device tests and this Swift checker.
 @main
 enum ContractFixtures {

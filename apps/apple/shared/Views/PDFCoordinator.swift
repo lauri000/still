@@ -1,24 +1,6 @@
 import SwiftUI
 import PDFKit
 
-#if os(iOS)
-struct PDFPageView: UIViewRepresentable {
-    var url: URL
-    var pageIndex: Int
-    func makeCoordinator() -> PDFCoordinator { PDFCoordinator() }
-    func makeUIView(context: Context) -> PDFView { context.coordinator.makeView() }
-    func updateUIView(_ view: PDFView, context: Context) { context.coordinator.update(view, url: url, page: pageIndex) }
-}
-#else
-struct PDFPageView: NSViewRepresentable {
-    var url: URL
-    var pageIndex: Int
-    func makeCoordinator() -> PDFCoordinator { PDFCoordinator() }
-    func makeNSView(context: Context) -> PDFView { context.coordinator.makeView() }
-    func updateNSView(_ view: PDFView, context: Context) { context.coordinator.update(view, url: url, page: pageIndex) }
-}
-#endif
-
 final class PDFCoordinator {
     private var url: URL?
     private var document: PDFDocument?

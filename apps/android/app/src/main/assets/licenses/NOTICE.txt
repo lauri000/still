@@ -14,5 +14,5 @@ See PDFium-LICENSE.txt for its license and included notices.
 
 The application also uses AndroidX, Kotlin, Kotlin coroutines, and Kotlin
 serialization (Apache License, Version 2.0). Dependencies are pinned in
-android/app/build.gradle.kts. This notice does not change the licenses of
+apps/android/app/build.gradle.kts. This notice does not change the licenses of
 the application or its dependencies.

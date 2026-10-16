@@ -4,7 +4,7 @@ Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview 
 
 ## Build and run
 
-Open this `android/` directory in Android Studio, allow Gradle sync, and run `app` on a device or emulator. Use JDK 17 or newer (Android Studio's bundled JDK works), Android SDK Platform 37, and Build Tools 36. Gradle can install the required SDK components after their licenses have been accepted.
+Open this `apps/android/` directory in Android Studio, allow Gradle sync, and run `app` on a device or emulator. Use JDK 17 or newer (Android Studio's bundled JDK works), Android SDK Platform 37, and Build Tools 36. Gradle can install the required SDK components after their licenses have been accepted.
 
 ```sh
 export ANDROID_HOME="$HOME/Library/Android/sdk" # macOS default; adjust on other systems
@@ -27,7 +27,7 @@ The book's ellipsis menu contains corrections, page inclusion/review, chapters, 
 
 Books live in app-private `files/Still/<UUID>/`. Writes use a serial queue and atomic file replacement. Text/metadata edits are debounced for 500 ms and flushed on navigation/backgrounding. Reader positions checkpoint every 20 words and on pause, closing, or ending a swipe. Imports commit only after extraction succeeds; duplicate backup imports become separate library copies.
 
-The existing Apple JSON backup format is preserved, including Foundation date encoding, base64 PDF data, UTF-16 positions, page IDs, corrections, and beginning trims. See [the shared format contract](../shared/FORMAT.md). Export and import the backup to move a book between Android, iPad, and macOS. There is no automatic sync. Android cloud backup is disabled; use explicit book exports.
+The existing Apple JSON backup format is preserved, including Foundation date encoding, base64 PDF data, UTF-16 positions, page IDs, corrections, and beginning trims. See [the shared format contract](../../shared/FORMAT.md). Export and import the backup to move a book between Android, iPad, and macOS. There is no automatic sync. Android cloud backup is disabled; use explicit book exports.
 
 ## Extraction limits
 
@@ -53,7 +53,7 @@ Verified on 16 October 2026:
 - Debug APK builds; 13 JVM tests and all 6 Android device tests pass on the Android 16 / API 36 emulator.
 - The Swift checker passes 6 tokenizer fixtures and reads the Android-exported portable backup.
 - Android lint reports zero errors (15 warnings, primarily dependency/SDK update notices).
-- Manual import through the system file picker, portrait/landscape reader layouts, and selected-word retention across rotation were checked. Screenshots are in [`docs/screenshots/android/`](../docs/screenshots/android/).
+- Manual import through the system file picker, portrait/landscape reader layouts, and selected-word retention across rotation were checked. Screenshots are in [`docs/screenshots/android/`](../../docs/screenshots/android/).
 - Physical Android devices, release signing, and Play Store distribution have not been exercised.
 
 PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
