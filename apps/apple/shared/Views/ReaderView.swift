@@ -30,10 +30,12 @@ struct ReaderView: View {
                 Rectangle().fill(Palette.line).frame(height: 1)
                 ScrollView {
                     VStack(spacing: 0) {
-                        focusStage.frame(height: max(220, min(360, geometry.size.height * 0.43)))
+                        focusStage.frame(height: stageHeight(height: geometry.size.height))
                         if let blocked = engine.blockedPage { reviewNotice(blocked).padding(.bottom, 22) }
+                        #if os(macOS)
                         controls
                         speedControl.padding(.top, 25)
+                        #endif
                         if showContext { contextView.padding(.top, 30) }
                     }
                     .padding(.top, readingTopInset(height: geometry.size.height))
@@ -60,11 +62,23 @@ struct ReaderView: View {
     }
 
     private func readingTopInset(height: CGFloat) -> CGFloat {
+        #if os(iOS)
+        return 0
+        #else
         let stageHeight = max(220, min(360, height * 0.43))
         // Center the word on tall iPads; preserve room for controls in shorter windows.
         let centeredInset = height / 2 - 95 - stageHeight / 2
         let availableInset = height - 175 - stageHeight - 280
         return max(0, min(centeredInset, availableInset))
+        #endif
+    }
+
+    private func stageHeight(height: CGFloat) -> CGFloat {
+        #if os(iOS)
+        return max(130, height - (showContext || engine.blockedPage != nil ? 430 : 240))
+        #else
+        return max(220, min(360, height * 0.43))
+        #endif
     }
 
     private var header: some View {
@@ -145,6 +159,7 @@ struct ReaderView: View {
             }
             .onEnded { _ in engine.endScrubbing() }
     }
+    #if os(macOS)
     private var controls: some View {
         HStack(spacing: 25) {
             Button { engine.seek(engine.index - 1) } label: { Image(systemName: "backward.end.fill").frame(width: 40, height: 44) }.keyboardShortcut(.leftArrow, modifiers: []).accessibilityLabel("Previous word")
@@ -167,6 +182,7 @@ struct ReaderView: View {
             }.font(.system(size: 10)).foregroundStyle(Palette.muted).frame(maxWidth: 330)
         }
     }
+    #endif
     private var contextView: some View {
         VStack(alignment: .leading, spacing: 14) {
             FlowLayout(spacing: 5) {
@@ -196,10 +212,48 @@ struct ReaderView: View {
                     Text("Page \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)")
                 }.menuStyle(.borderlessButton).fixedSize()
                 Spacer()
+                #if os(iOS)
+                holdCorner
+                #else
                 Text(engine.isFinished ? "Finished" : "\(Int(engine.progress * 100))%")
+                #endif
             }.font(.system(size: 10)).foregroundStyle(Palette.muted)
+            #if os(iOS)
+            if engine.isFinished { Text("Finished").font(.system(size: 12)).foregroundStyle(Palette.muted) }
+            #endif
         }
     }
+    #if os(iOS)
+    private var holdCorner: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18).fill(engine.isPlaying ? Palette.surface : Palette.paper)
+            VStack(spacing: 5) {
+                Text("\(Int(engine.wordsPerMinute)) wpm")
+                    .font(.system(size: 22, weight: .medium, design: .rounded)).monospacedDigit().foregroundStyle(Palette.forest)
+                Text(engine.isPlaying ? "Release to pause" : "Hold to read").font(.system(size: 12))
+                Text("← slower · faster →").font(.system(size: 10))
+            }.allowsHitTesting(false)
+            HoldReadingTouchSurface(enabled: scenePhase == .active && !showingSettings,
+                onBegin: { engine.play() },
+                onMove: { delta in engine.wordsPerMinute = min(900, max(60, engine.wordsPerMinute + Double(delta) * 2)) },
+                onEnd: { engine.pause() })
+        }
+        .frame(width: 176, height: 96)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("holdToRead")
+        .accessibilityLabel("Hold to read")
+        .accessibilityValue("\(Int(engine.wordsPerMinute)) words per minute, \(engine.isPlaying ? "reading" : "paused")")
+        .accessibilityHint("Hold to read. Move right to read faster, left to read slower. Release to pause.")
+        .accessibilityAction { engine.toggle() }
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: engine.wordsPerMinute = min(900, engine.wordsPerMinute + 10)
+            case .decrement: engine.wordsPerMinute = max(60, engine.wordsPerMinute - 10)
+            @unknown default: break
+            }
+        }
+    }
+    #endif
     private func reviewNotice(_ index: Int) -> some View {
         VStack(spacing: 10) {
             Text("Page \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
@@ -236,6 +290,72 @@ struct ReaderView: View {
         #endif
     }
 }
+
+#if os(iOS)
+/// Owns one touch from down to release, even when it leaves the corner. Keeping
+/// this outside the text scroll view prevents speed movement from scrubbing words.
+private struct HoldReadingTouchSurface: UIViewRepresentable {
+    var enabled: Bool
+    var onBegin: () -> Void
+    var onMove: (CGFloat) -> Void
+    var onEnd: () -> Void
+
+    func makeUIView(context: Context) -> HoldTouchView { HoldTouchView() }
+    func updateUIView(_ view: HoldTouchView, context: Context) {
+        view.onBegin = onBegin
+        view.onMove = onMove
+        view.onEnd = onEnd
+        view.isUserInteractionEnabled = enabled
+    }
+
+    final class HoldTouchView: UIView {
+        var onBegin: (() -> Void)?
+        var onMove: ((CGFloat) -> Void)?
+        var onEnd: (() -> Void)?
+        private var tracked: UITouch?
+        private var lastX: CGFloat = 0
+        private var lastSize = CGSize.zero
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isMultipleTouchEnabled = true
+            isAccessibilityElement = false
+            backgroundColor = .clear
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard tracked == nil, let touch = touches.first else { return }
+            tracked = touch
+            lastX = touch.location(in: window).x
+            onBegin?()
+        }
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let tracked, touches.contains(tracked) else { return }
+            let x = tracked.location(in: window).x
+            onMove?(x - lastX)
+            lastX = x
+        }
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            if let tracked, touches.contains(tracked) { finish() }
+        }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { finish() }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if bounds.size != lastSize { finish(); lastSize = bounds.size }
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { finish() }
+        }
+        private func finish() {
+            guard tracked != nil else { return }
+            tracked = nil
+            onEnd?()
+        }
+    }
+}
+#endif
 
 /// Anchors the selected word (or its focus letter) as its neighbors change length.
 private struct CenteredWordLayout: Layout {

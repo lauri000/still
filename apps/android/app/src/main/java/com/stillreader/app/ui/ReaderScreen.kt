@@ -3,19 +3,15 @@ package com.stillreader.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,8 +22,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -41,12 +39,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.ReadingSession
-import com.stillreader.app.core.ReadingState
 import com.stillreader.app.core.ReadingFocus
 import kotlin.math.roundToInt
 
@@ -99,8 +97,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             val availableHeight = maxHeight
             val compact = availableHeight < 360.dp
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = if (compact) 12.dp else 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(((availableHeight - 620.dp) / 2).coerceIn(0.dp, 160.dp)))
-                Box(Modifier.fillMaxWidth().height(if (compact) 100.dp else (availableHeight * .46f).coerceIn(200.dp, 360.dp)).then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().height(if (passage || state.blockedPage != null) (availableHeight * .55f).coerceAtLeast(130.dp) else (availableHeight - 24.dp).coerceAtLeast(130.dp)).then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
                     WordRibbon(session, state.index, focusLetter)
                 }
                 state.blockedPage?.let { page ->
@@ -110,18 +107,6 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                         TextButton(onClick = { onReview(page) }) { Text("Review this page") }
                     }
                     Spacer(Modifier.height(20.dp))
-                }
-                val changeSpeed: (Double) -> Unit = { wpm = it; model.speed(it) }
-                if (compact) {
-                    Row(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlaybackControls(session, state)
-                        ReadingSpeed(wpm, changeSpeed, Modifier.weight(1f))
-                    }
-                } else {
-                    PlaybackControls(session, state)
-                    Spacer(Modifier.height(26.dp))
-                    ReadingSpeed(wpm, changeSpeed, Modifier.widthIn(max = 330.dp).fillMaxWidth())
                 }
                 if (passage) {
                     FlowRow(Modifier.padding(24.dp).widthIn(max = 650.dp).clip(RoundedCornerShape(14.dp)).background(Surface).padding(18.dp).then(swipe).testTag("nearbyPassage"),
@@ -137,15 +122,17 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
             LinearProgressIndicator(progress = { session.progress }, modifier = Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { session.pause(); pagePicker = true }) {
+                TextButton(onClick = { session.pause(); pagePicker = true }, modifier = Modifier.weight(1f)) {
                     Text("Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}", color = Muted, fontSize = 12.sp)
                 }
-                Spacer(Modifier.weight(1f))
-                Text(if (state.finished) "Finished" else "${(session.progress * 100).toInt()}%", color = Muted, fontSize = 12.sp)
+                HoldReadingCorner(session, wpm, state.playing, !options && !pagePicker) {
+                    wpm = it; model.speed(it)
+                }
             }
+            if (state.finished) Text("Finished", color = Muted, fontSize = 12.sp)
         }
     }
     if (options) {
@@ -174,27 +161,47 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
 }
 
 @Composable
-private fun PlaybackControls(session: ReadingSession, state: ReadingState) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        IconButton(onClick = { session.seek(state.index - 1) }, enabled = session.tokens.isNotEmpty()) { Icon(Icons.Default.SkipPrevious, "Previous word", tint = Forest) }
-        FilledIconButton(onClick = session::toggle, enabled = session.tokens.isNotEmpty(), modifier = Modifier.size(76.dp).testTag("playPause"), shape = CircleShape) {
-            Icon(if (state.playing) Icons.Default.Pause else if (state.finished) Icons.Default.Replay else Icons.Default.PlayArrow,
-                if (state.playing) "Pause reading" else "Play reading", Modifier.size(30.dp))
+private fun HoldReadingCorner(session: ReadingSession, wpm: Double, playing: Boolean, enabled: Boolean, change: (Double) -> Unit) {
+    val changeSpeed by rememberUpdatedState(change)
+    val density = LocalDensity.current.density
+    val focused = LocalWindowInfo.current.isWindowFocused
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    Column(Modifier.width(176.dp).height(96.dp).onSizeChanged { size = it }
+        .background(if (playing) Surface else Paper, RoundedCornerShape(18.dp))
+        .testTag("holdToRead")
+        .pointerInput(session, density, focused, enabled, size) {
+            if (!focused || !enabled) return@pointerInput
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume()
+                try {
+                    session.play()
+                    // Only the finger that started here owns this gesture. It can
+                    // leave the corner without turning into a text scrub.
+                    while (true) {
+                        val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        if (!pointer.pressed || pointer.isConsumed) break
+                        val delta = (pointer.position.x - pointer.previousPosition.x) / density
+                        if (delta != 0f) changeSpeed((session.wordsPerMinute + delta * 2).coerceIn(60.0, 900.0))
+                        pointer.consume()
+                    }
+                } finally {
+                    session.pause()
+                }
+            }
         }
-        IconButton(onClick = { session.seek(state.index + 1) }, enabled = session.tokens.isNotEmpty()) { Icon(Icons.Default.SkipNext, "Next word", tint = Forest) }
-    }
-}
-
-@Composable
-private fun ReadingSpeed(wpm: Double, change: (Double) -> Unit, modifier: Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(wpm.toInt().toString(), fontSize = 24.sp)
-            Text("words / min", fontSize = 12.sp, color = Muted)
-        }
-        Slider(value = wpm.toFloat(), onValueChange = { change((it / 10).roundToInt() * 10.0) },
-            valueRange = 60f..900f, colors = SliderDefaults.colors(inactiveTrackColor = Line),
-            modifier = Modifier.widthIn(max = 330.dp).fillMaxWidth().padding(horizontal = 18.dp).semantics { contentDescription = "Words per minute" })
+        .semantics(mergeDescendants = true) {
+            contentDescription = "Hold to read. Move right to read faster, left to read slower."
+            stateDescription = "${wpm.toInt()} words per minute, ${if (playing) "reading" else "paused"}"
+            // Screen-reader users can activate without sustaining a touch.
+            onClick(if (playing) "Pause reading" else "Start reading") { session.toggle(); true }
+            customActions = listOf(
+                CustomAccessibilityAction("Read faster") { changeSpeed((wpm + 10).coerceAtMost(900.0)); true },
+                CustomAccessibilityAction("Read slower") { changeSpeed((wpm - 10).coerceAtLeast(60.0)); true })
+        }, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("${wpm.toInt()} wpm", color = Forest, fontSize = 22.sp)
+        Text(if (playing) "Release to pause" else "Hold to read", color = Muted, fontSize = 12.sp)
+        Text("← slower · faster →", color = Muted, fontSize = 10.sp)
     }
 }
 

@@ -41,6 +41,7 @@ class AndroidReaderTests {
     private lateinit var root: File
     private lateinit var model: LibraryViewModel
     private var previousFocusLetter = false
+    private var previousWPM = 250
     private val store = ViewModelStore()
     private val application get() = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
     private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name)
@@ -50,7 +51,8 @@ class AndroidReaderTests {
         root = File(application.cacheDir, "reader-test-${newID()}").apply { mkdirs() }
         val preferences = application.getSharedPreferences("reading", 0)
         previousFocusLetter = preferences.getBoolean("focusLetter", false)
-        preferences.edit().putBoolean("focusLetter", false).commit()
+        previousWPM = preferences.getInt("wpm", 250)
+        preferences.edit().putBoolean("focusLetter", false).putInt("wpm", 250).commit()
     }
     private fun launch(seed: Boolean = true) {
         if (seed) {
@@ -75,7 +77,7 @@ class AndroidReaderTests {
             compose.runOnUiThread { store.clear() }
         }
         root.deleteRecursively()
-        application.getSharedPreferences("reading", 0).edit().putBoolean("focusLetter", previousFocusLetter).commit()
+        application.getSharedPreferences("reading", 0).edit().putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM).commit()
     }
     @Test fun androidUnicodeMatchesSwiftFixtures() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json").bufferedReader().use { it.readText() })
@@ -132,8 +134,9 @@ class AndroidReaderTests {
         compose.onNodeWithTag("book-The art of attention").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         compose.onNodeWithTag("currentWord").assertTextEquals("the")
-        compose.onNodeWithTag("playPause").performClick()
-        compose.onNodeWithContentDescription("Pause reading").assertExists()
+        compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
+        compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
+        compose.onNodeWithTag("holdToRead").performTouchInput { up() }
         compose.onNodeWithTag("readingSurface").performTouchInput {
             swipe(Offset(width * .75f, height / 2f), Offset(width * .25f, height / 2f), 300)
         }
@@ -159,7 +162,7 @@ class AndroidReaderTests {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
         compose.onNodeWithText("Continue reading").performClick()
-        compose.onNodeWithContentDescription("Next word").performClick()
+        compose.onNodeWithTag("nearbyWord-2").performClick()
         compose.onNodeWithTag("currentWord").assertTextEquals("story.")
         val index = model.state.value.reader!!.state.value.index
         compose.onNodeWithTag("readingOptions").performClick()
@@ -209,8 +212,66 @@ class AndroidReaderTests {
         assertFalse(loaded.pages[1].isReviewed)
         assertFalse(loaded.pages[1].extractedText.contains("corrected story"))
         compose.onNodeWithText("Continue reading").performClick()
-        compose.onNodeWithTag("playPause").performClick()
-        compose.onNodeWithContentDescription("Pause reading").assertExists()
+        compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
+        compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
+        compose.onNodeWithTag("holdToRead").performTouchInput { up() }
+    }
+
+    @Test fun holdControlsSpeedRelativelyAndReleaseOrCancelPauses() {
+        launch()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        val corner = compose.onNodeWithTag("holdToRead")
+        compose.onNodeWithTag("playPause").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Words per minute").assertDoesNotExist()
+        corner.performTouchInput { down(Offset(width * .4f, height * .5f)) }
+        compose.runOnIdle {
+            assertTrue(model.state.value.reader!!.state.value.playing)
+            assertEquals(250.0, model.state.value.reader!!.wordsPerMinute, .01)
+        }
+        corner.performTouchInput { moveTo(Offset(width * .7f, height * .5f)) }
+        var faster = 0.0
+        compose.runOnIdle { faster = model.state.value.reader!!.wordsPerMinute; assertTrue(faster > 250) }
+        corner.performTouchInput { moveTo(Offset(width * .6f, height * .5f)) }
+        compose.runOnIdle { assertTrue(model.state.value.reader!!.wordsPerMinute < faster) }
+        corner.performTouchInput { up() }
+        var speed = 0.0
+        compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.playing); speed = model.state.value.reader!!.wordsPerMinute }
+        // A different initial position must retain the speed, not jump along a slider.
+        corner.performTouchInput { down(Offset(width * .1f, height * .8f)) }
+        compose.runOnIdle { assertEquals(speed, model.state.value.reader!!.wordsPerMinute, .01) }
+        corner.performTouchInput { moveTo(Offset(width * .1f, height * .2f)) }
+        compose.runOnIdle { assertEquals(speed, model.state.value.reader!!.wordsPerMinute, .01) }
+        corner.performTouchInput { cancel() }
+        compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.playing) }
+        compose.onNodeWithTag("readingSurface").performTouchInput { swipeLeft() }
+        compose.runOnIdle {
+            assertEquals(speed, model.state.value.reader!!.wordsPerMinute, .01)
+            assertFalse(model.state.value.reader!!.state.value.playing)
+        }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.runOnIdle { assertEquals(speed.toInt().toDouble(), model.state.value.reader!!.wordsPerMinute, .01) }
+    }
+
+    @Test fun cornerRetainsTouchOutsideBoundsAndReversesImmediatelyAtSpeedLimit() {
+        launch()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        val corner = compose.onNodeWithTag("holdToRead")
+        corner.performTouchInput {
+            down(center)
+            moveTo(Offset(-width.toFloat(), centerY))
+        }
+        compose.runOnIdle {
+            assertEquals(60.0, model.state.value.reader!!.wordsPerMinute, .01)
+            assertTrue(model.state.value.reader!!.state.value.playing)
+            assertFalse(model.state.value.reader!!.state.value.scrubbing)
+        }
+        corner.performTouchInput { moveTo(Offset(-width + 30f, centerY)) }
+        compose.runOnIdle { assertTrue(model.state.value.reader!!.wordsPerMinute > 60) }
+        corner.performTouchInput { up() }
+        compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.playing) }
     }
     @Test fun duplicateBackupImportsRemainSeparate() {
         launch()

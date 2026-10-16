@@ -9,7 +9,9 @@ final class ReaderEngine: ObservableObject {
     @Published private(set) var isFinished = false
     @Published private(set) var isScrubbing = false
     @Published var blockedPage: Int?
-    @Published var wordsPerMinute: Double = 250 { didSet { if isPlaying { schedulePlayback() } } }
+    // The running loop picks up speed changes on the next word. Frequent
+    // movement must not restart the current word's timer.
+    @Published var wordsPerMinute: Double = 250
     @Published var naturalPauses = true
     @Published var allowUnreviewed = true
     private var playback: Task<Void, Never>?

@@ -31,7 +31,9 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     val current get() = tokens.getOrNull(state.value.index)
     val progress get() = if (tokens.isEmpty()) 0f else if (state.value.finished) 1f else state.value.index.toFloat() / tokens.size
     var wordsPerMinute: Double = 250.0
-        set(value) { field = value.coerceIn(60.0, 900.0); if (state.value.playing) schedule() }
+        // Apply on the next word; restarting the timer on every drag frame
+        // would keep postponing advancement while the finger moves.
+        set(value) { field = value.coerceIn(60.0, 900.0) }
     var naturalPauses = true
     var allowUnreviewed = true
     private var playback: Job? = null

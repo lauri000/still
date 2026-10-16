@@ -20,7 +20,7 @@ Release keys stay outside the repository; the release helper builds a committed 
 
 ## Reading
 
-Import a PDF, choose the starting page using the PDF preview, and tap **Read**. Press Play to begin. The selected word stays centered, with surrounding words visible. Swipe left/right to move forward/backward, or tap a nearby word. Swiping pauses playback; press Play to resume from the selected word. Speed ranges from 60 to 900 WPM.
+Import a PDF, choose the starting page using the PDF preview, and tap **Read**. Hold the bottom-right corner to begin; release to pause. While holding, move right to increase the current speed or left to decrease it. The corner has no slider or play button, and each touch starts at the saved speed. Speed ranges from 60 to 900 WPM. The selected word stays centered, with surrounding words visible. Swipe the text left/right to move forward/backward, or tap a nearby word. Text navigation pauses playback without changing speed; hold the corner again to resume from the selected word.
 
 The text icon opens a larger nearby passage. Reading options contain the saved **Focus letter** toggle (off by default), natural pauses, and optional strict page review. Focus letter highlights one character and holds it at the center as words advance. The screen stays awake while playing; backgrounding, leaving the reader, and interrupted swipes pause and save the selected position. Reopening a book offers **Continue reading**. Explicitly choosing another starting page resets its beginning boundary.
 
@@ -53,10 +53,11 @@ JVM tests cover shared Swift tokenizer fixtures, Apple backup decoding, Kotlin e
 
 Verified on 16 October 2026:
 
-- Debug APK builds; 15 JVM tests and all 7 Android device tests pass on the Android 16 / API 36 emulator.
+- Debug APK builds; 16 JVM tests and all 9 Android device tests pass on the Android 16 / API 36 emulator, including relative speed changes, release/cancel, dragging outside the corner, and speed retention.
 - The Swift checker passes 6 tokenizer fixtures and reads the Android-exported portable backup.
 - Android lint reports zero errors (16 warnings, primarily dependency/SDK update notices).
 - Manual import through the system file picker, portrait/landscape reader layouts, and selected-word retention across rotation were checked. Screenshots are in [`docs/screenshots/android/`](../../docs/screenshots/android/).
+- The new corner controls were inspected in portrait and landscape; previews are in [`docs/screenshots/hold-to-read/`](../../docs/screenshots/hold-to-read/).
 - Physical Android devices and Play Store distribution have not been exercised.
 
 PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.

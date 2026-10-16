@@ -132,6 +132,19 @@ final class ImportAndPersistenceTests: XCTestCase {
 
 @MainActor
 final class PlaybackTests: XCTestCase {
+    func testContinuousSpeedChangesDoNotPostponeAdvancement() async throws {
+        let engine = ReaderEngine(book: makeBook([(0...30).map(String.init).joined(separator: " ")]))
+        engine.wordsPerMinute = 600
+        engine.naturalPauses = false
+        engine.play()
+        for step in 0..<20 {
+            try await Task.sleep(for: .milliseconds(25))
+            engine.wordsPerMinute = 600 + Double(step)
+        }
+        engine.pause()
+        XCTAssertGreaterThanOrEqual(engine.index, 3)
+    }
+
     func testPlayPauseAndCheckpoint() async throws {
         let engine = ReaderEngine(book: makeBook(["one two three four five"]))
         engine.wordsPerMinute = 900

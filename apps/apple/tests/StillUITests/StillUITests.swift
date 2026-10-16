@@ -22,19 +22,17 @@ final class StillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         waitForRotation(in: app, landscape: false)
         app.buttons["startReading"].tap()
-        let play = app.buttons["playPause"]
+        let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["currentWord"].label, "A") // First word of page two.
-        app.buttons["Previous word"].tap()
+        app.otherElements["readingSurface"].swipeRight()
         XCTAssertEqual(app.staticTexts["currentWord"].label, "A") // Earlier pages remain skipped.
-        app.buttons["Next word"].tap()
+        tapNextWord(in: app)
         XCTAssertEqual(app.staticTexts["currentWord"].label, "book")
         attachScreenshot("Simple reader")
-        play.tap()
-        let changed = NSPredicate(format: "label != %@", "book")
-        expectation(for: changed, evaluatedWith: app.staticTexts["currentWord"])
-        waitForExpectations(timeout: 5)
-        play.tap()
+        play.press(forDuration: 0.8)
+        XCTAssertNotEqual(app.staticTexts["currentWord"].label, "book")
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         let paused = app.staticTexts["currentWord"].label
         app.buttons["Close reader"].tap()
         app.buttons["startReading"].tap()
@@ -84,10 +82,10 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
         app.buttons["startReading"].tap()
-        let play = app.buttons["playPause"]
+        let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
-        app.buttons["Next word"].tap()
-        app.buttons["Next word"].tap()
+        tapNextWord(in: app)
+        tapNextWord(in: app)
         let word = app.staticTexts["currentWord"]
         let surface = app.otherElements["readingSurface"]
         XCTAssertTrue(surface.exists)
@@ -96,15 +94,15 @@ final class StillUITests: XCTestCase {
         let left = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
         right.press(forDuration: 0.05, thenDragTo: left)
         XCTAssertGreaterThan(wordOrdinal(in: app), originalOrdinal)
-        XCTAssertEqual(play.label, "Play reading")
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         left.press(forDuration: 0.05, thenDragTo: right)
         XCTAssertEqual(wordOrdinal(in: app), originalOrdinal)
         attachScreenshot("Swipe reader with surrounding words")
 
-        // Dragging during playback pauses immediately and stays paused after release.
-        play.tap()
+        // Holding reads; text gestures afterward remain paused and only select words.
+        play.press(forDuration: 0.5)
         right.press(forDuration: 0.05, thenDragTo: left)
-        XCTAssertEqual(play.label, "Play reading")
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         let selected = word.value as? String
         let stable = NSPredicate { _, _ in word.value as? String != selected }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stable, object: nil)], timeout: 0.8), .timedOut)
@@ -127,16 +125,14 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertEqual(word.label, nextText)
         XCTAssertEqual(word.value as? String, chosenPosition)
-        play.tap()
-        XCTAssertEqual(play.label, "Pause reading")
-        let advanced = NSPredicate { _, _ in self.wordOrdinal(in: app) > chosenOrdinal }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: nil)], timeout: 5), .completed)
-        play.tap()
+        play.press(forDuration: 0.8)
+        XCTAssertGreaterThan(wordOrdinal(in: app), chosenOrdinal)
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         XCUIDevice.shared.orientation = .landscapeLeft
-        waitForRotation(in: app, landscape: true, controlID: "playPause")
+        waitForRotation(in: app, landscape: true, controlID: "holdToRead")
         attachScreenshot("Swipe reader in landscape")
         XCUIDevice.shared.orientation = .portrait
-        waitForRotation(in: app, landscape: false, controlID: "playPause")
+        waitForRotation(in: app, landscape: false, controlID: "holdToRead")
         app.buttons["toggleContext"].tap()
         app.scrollViews.firstMatch.swipeUp()
         let passage = app.otherElements["nearbyPassage"]
@@ -145,7 +141,7 @@ final class StillUITests: XCTestCase {
         passage.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
             .press(forDuration: 0.05, thenDragTo: passage.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
         XCTAssertGreaterThan(wordOrdinal(in: app), beforePassageSwipe)
-        XCTAssertEqual(play.label, "Play reading")
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         attachScreenshot("Swipe through the expanded passage")
     }
 
@@ -158,10 +154,10 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
         app.buttons["startReading"].tap()
-        XCTAssertTrue(app.buttons["playPause"].waitForExistence(timeout: 5))
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         let word = app.staticTexts["currentWord"]
         // Choose a word whose focus is visibly left of its midpoint.
-        for _ in 0..<20 where word.label.count < 6 { app.buttons["Next word"].tap() }
+        for _ in 0..<20 where word.label.count < 6 { tapNextWord(in: app) }
         XCTAssertGreaterThanOrEqual(word.label.count, 6)
         let text = word.label
         let ordinal = wordOrdinal(in: app)
@@ -178,7 +174,7 @@ final class StillUITests: XCTestCase {
         XCTAssertGreaterThan(word.frame.midX, originalCenter)
         attachScreenshot("Focus letter in portrait")
         XCUIDevice.shared.orientation = .landscapeLeft
-        waitForRotation(in: app, landscape: true, controlID: "playPause")
+        waitForRotation(in: app, landscape: true, controlID: "holdToRead")
         attachScreenshot("Focus letter in landscape")
         app.buttons["Close reader"].tap()
         app.terminate()
@@ -187,7 +183,7 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
         app.buttons["startReading"].tap()
-        XCTAssertTrue(app.buttons["playPause"].waitForExistence(timeout: 5))
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(word.label, text)
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
         app.buttons["readingOptions"].tap()
@@ -199,6 +195,68 @@ final class StillUITests: XCTestCase {
         let surface = app.otherElements["readingSurface"]
         XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor private func corner(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "holdToRead").firstMatch
+    }
+
+    @MainActor private func tapNextWord(in app: XCUIApplication) {
+        app.buttons["nearbyWord-\(wordOrdinal(in: app))"].tap()
+    }
+
+    @MainActor private func speed(in app: XCUIApplication) -> Int {
+        (corner(in: app).value as? String ?? "").split(separator: " ").first.flatMap { Int($0) } ?? -1
+    }
+
+    @MainActor
+    func testHoldDragSpeedIsRelativeAndSeparateFromTextScrubbing() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["Next starting page"].tap()
+        app.buttons["startReading"].tap()
+        let hold = corner(in: app)
+        XCTAssertTrue(hold.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["playPause"].exists)
+        XCTAssertFalse(app.sliders["Words per minute"].exists)
+        let initial = speed(in: app)
+        let ordinal = wordOrdinal(in: app)
+        hold.press(forDuration: 0.7)
+        XCTAssertGreaterThan(wordOrdinal(in: app), ordinal)
+        XCTAssertEqual(speed(in: app), initial)
+        XCTAssertTrue((hold.value as? String ?? "").contains("paused"))
+        let left = hold.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
+        let right = hold.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.5))
+        left.press(forDuration: 0.15, thenDragTo: right)
+        let faster = speed(in: app)
+        XCTAssertGreaterThan(faster, initial)
+        XCTAssertLessThanOrEqual(faster, 900)
+        // Touching a new point preserves the current speed.
+        right.press(forDuration: 0.3)
+        XCTAssertEqual(speed(in: app), faster)
+        right.press(forDuration: 0.15, thenDragTo: left)
+        XCTAssertLessThan(speed(in: app), faster)
+        let slowed = speed(in: app)
+        let top = hold.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.1))
+        left.press(forDuration: 0.15, thenDragTo: top)
+        XCTAssertEqual(speed(in: app), slowed)
+        app.otherElements["readingSurface"].swipeRight()
+        XCTAssertEqual(speed(in: app), slowed)
+        XCTAssertTrue((hold.value as? String ?? "").contains("paused"))
+        attachScreenshot("Hold-to-read corner")
+        app.buttons["Close reader"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
+        XCTAssertEqual(speed(in: app), slowed)
     }
 
     @MainActor private func wordOrdinal(in app: XCUIApplication) -> Int {
@@ -219,7 +277,7 @@ final class StillUITests: XCTestCase {
         editor.tap()
         editor.typeText("A corrected introduction. ")
         app.buttons["startReading"].tap()
-        app.buttons["playPause"].tap()
+        corner(in: app).press(forDuration: 0.3)
         XCTAssertTrue(app.buttons["Review this page"].waitForExistence(timeout: 5))
         app.buttons["Review this page"].tap()
         app.buttons["approvePage"].tap()
@@ -248,12 +306,11 @@ final class StillUITests: XCTestCase {
         editor.tap()
         editor.typeText("A correction. ")
         app.buttons["startReading"].tap()
-        let play = app.buttons["playPause"]
+        let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
-        play.tap()
-        XCTAssertEqual(play.label, "Pause reading")
+        play.press(forDuration: 0.5)
         XCTAssertFalse(app.buttons["Review this page"].exists)
-        play.tap()
+        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         app.buttons["Close reader"].tap()
 
         app.buttons["bookOptions"].tap()
@@ -298,7 +355,7 @@ final class StillUITests: XCTestCase {
         var stableChecks = 0
         let settled = NSPredicate { _, _ in
             let window = app.windows.firstMatch.frame
-            let button = app.buttons[controlID]
+            let button = app.descendants(matching: .any).matching(identifier: controlID).firstMatch
             let frame = button.frame
             let orientationMatches = landscape ? window.width > window.height : window.height > window.width
             stableChecks = orientationMatches && frame == previousFrame && button.isHittable ? stableChecks + 1 : 0

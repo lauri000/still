@@ -87,6 +87,22 @@ class CoreTests {
         assertEquals("one", restored.current?.word?.text)
         restored.pause()
     }
+    @Test fun continuousSpeedChangesDoNotPostponeAdvancement() = runTest {
+        val session = ReadingSession(book((0..30).joinToString(" ")), backgroundScope) {}
+        session.wordsPerMinute = 600.0
+        session.naturalPauses = false
+        session.play()
+        repeat(20) {
+            advanceTimeBy(25)
+            session.wordsPerMinute = 600.0 + it
+        }
+        runCurrent()
+        assertTrue(session.state.value.index >= 4)
+        session.pause()
+        val stopped = session.state.value.index
+        advanceTimeBy(500)
+        assertEquals(stopped, session.state.value.index)
+    }
     @Test fun scrubPausesClampsAndSavesOnlyOnce() = runTest {
         val source = book("zero one two three")
         val saves = mutableListOf<ReadingPosition>()

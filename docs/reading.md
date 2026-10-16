@@ -3,9 +3,11 @@
 
 1. Choose **Import PDF**. The imported book opens at its page selector with a PDF preview.
 2. Enter a **Start page** or use the arrows, then choose **Read**. Earlier pages are skipped. New libraries start empty; no demo book is added automatically.
-3. Press **Play** and set the speed. The current word stays centered with nearby words on either side. Swipe left/right to move forward/back; on Mac, click and drag. A gesture pauses playback. Release on a word and press Play to resume, or tap/click a nearby word directly.
+3. On iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use **Play** and the speed slider.
 
-Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. Space plays/pauses, the arrow keys step one word, and Escape closes the reader. The text icon opens a larger nearby passage; the ellipsis opens reading options.
+The current word stays centered with nearby words on either side. Swipe the **text** left/right to select later/earlier words, or tap a nearby word directly. This is separate from the corner's speed gesture: text navigation pauses and never changes speed. Hold the corner again to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users can activate the corner to start/pause and use its speed adjustment actions.
+
+Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. On Mac, Space plays/pauses, the arrow keys step one word, and Escape closes the reader. The text icon opens a larger nearby passage; the ellipsis opens reading options.
 
 **Focus letter** in reading options highlights one letter of the current word in red and holds that letter at the center as words advance. It is off by default and remembered on this device across books and app launches. Turn it off to center the whole word again. The cue uses a simple word-length rule, ignores punctuation when choosing a letter, and preserves accents and complete characters. Words without letters or numbers stay centered without a highlight. This is an optional visual aid, not a promise of faster reading or better comprehension.
 
