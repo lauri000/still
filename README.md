@@ -35,3 +35,7 @@ scripts/                Repository maintenance and verification tools
 [Reading, corrections, storage, and extraction limits](docs/reading.md) · [Compatibility checks](shared/FORMAT.md#verify-both-implementations)
 
 Books stay on the device. Backups can be exported and imported across platforms; accounts, server components, automatic sync, and OCR are not included.
+
+Licensed under [MIT](LICENSE). Third-party components retain their own licenses.
+See [Android releases and Zapstore publishing](docs/publishing.md) for release
+builds, signing-key backup, and local Nostr signing.

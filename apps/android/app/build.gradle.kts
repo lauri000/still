@@ -20,12 +20,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isJniDebuggable = false
+        }
+    }
     sourceSets {
+        getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
         getByName("test").resources.srcDir("../../../shared/fixtures")
         getByName("androidTest").assets.srcDir("../../../shared/fixtures")
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
+
+val copyProjectLicense by tasks.registering(Copy::class) {
+    from(rootProject.file("../../LICENSE"))
+    into(layout.buildDirectory.dir("generated/licenseAssets/licenses"))
+    rename { "Still-LICENSE.txt" }
+}
+tasks.named("preBuild") { dependsOn(copyProjectLicense) }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.09.01"))

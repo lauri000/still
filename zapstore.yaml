@@ -1,0 +1,34 @@
+repository: https://github.com/lauri000/still
+pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
+# Build locally with scripts/android-release.py. zsp uploads this signed APK.
+release_source: ./dist/still-0.1.0-android-universal.apk
+name: Still
+summary: Read your PDFs one word at a time, at your own pace.
+description: |
+  Still is a quiet, offline PDF speed reader.
+
+  Import a PDF, choose where to begin, and press Play. The current word stays
+  centered with surrounding words visible. Swipe backward or forward, or tap
+  a nearby word, then resume at your own pace.
+
+  - Adjustable speed from 60 to 900 words per minute, with optional natural pauses.
+  - Optional centered, highlighted focus letter.
+  - Saved reading progress, page boundaries, and PDF bookmark chapters.
+  - Optional text corrections and a reversible starting-page or starting-word trim.
+  - Portable book backups compatible with Still for iPad and macOS.
+  - No account, network permission, or server dependency.
+
+  Requires Android 9 or newer. Designed for PDFs with selectable text;
+  scanned PDFs need manually entered text. OCR and automatic sync are not included.
+license: MIT
+website: https://github.com/lauri000/still
+tags:
+  - books
+  - reading
+  - productivity
+icon: ./docs/store/icon.png
+images:
+  - ./docs/screenshots/android/starting-page.png
+  - ./docs/screenshots/android/reader-portrait.png
+  - ./docs/screenshots/android/reader-landscape.png
+release_notes: ./docs/releases/0.1.0.md

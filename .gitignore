@@ -10,3 +10,14 @@ apps/android/**/build/
 apps/android/local.properties
 apps/android/.idea/
 *.iml
+.tools/
+dist/
+__pycache__/
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+keystore.properties

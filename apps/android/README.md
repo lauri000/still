@@ -15,6 +15,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Minimum Android version: **Android 9 / API 28**. The app currently targets API 36 and compiles against API 37 to satisfy the PDF library's build requirement. The universal debug APK includes ARM and x86 native PDF libraries; it is for local installation, not a signed Play Store release.
 
+For signed APKs and Zapstore distribution, follow the [release guide](../../docs/publishing.md).
+Release keys stay outside the repository; the release helper builds a committed source snapshot.
+
 ## Reading
 
 Import a PDF, choose the starting page using the PDF preview, and tap **Read**. Press Play to begin. The selected word stays centered, with surrounding words visible. Swipe left/right to move forward/backward, or tap a nearby word. Swiping pauses playback; press Play to resume from the selected word. Speed ranges from 60 to 900 WPM.
@@ -54,6 +57,6 @@ Verified on 16 October 2026:
 - The Swift checker passes 6 tokenizer fixtures and reads the Android-exported portable backup.
 - Android lint reports zero errors (16 warnings, primarily dependency/SDK update notices).
 - Manual import through the system file picker, portrait/landscape reader layouts, and selected-word retention across rotation were checked. Screenshots are in [`docs/screenshots/android/`](../../docs/screenshots/android/).
-- Physical Android devices, release signing, and Play Store distribution have not been exercised.
+- Physical Android devices and Play Store distribution have not been exercised.
 
 PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
