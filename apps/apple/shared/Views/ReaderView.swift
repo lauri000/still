@@ -24,27 +24,17 @@ struct ReaderView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                header.padding(.horizontal, 24).padding(.vertical, 16)
-                Rectangle().fill(Palette.line).frame(height: 1)
-                ScrollView {
-                    VStack(spacing: 0) {
-                        focusStage.frame(height: stageHeight(height: geometry.size.height))
-                        if let blocked = engine.blockedPage { reviewNotice(blocked).padding(.bottom, 22) }
-                        #if os(macOS)
-                        controls
-                        speedControl.padding(.top, 25)
-                        #endif
-                        if showContext { contextView.padding(.top, 30) }
-                    }
-                    .padding(.top, readingTopInset(height: geometry.size.height))
-                    .frame(maxWidth: 850).frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.bottom, 30)
-                }
-                Spacer(minLength: 0)
-                progressFooter.padding(.horizontal, 24).padding(.vertical, 18)
-            }.background(Palette.paper).foregroundStyle(Palette.ink)
-        }
+        VStack(spacing: 0) {
+            header.padding(.horizontal, 24).padding(.vertical, 16)
+            Rectangle().fill(Palette.line).frame(height: 1)
+            focusStage.frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let blocked = engine.blockedPage { reviewNotice(blocked).padding(.horizontal, 24).padding(.bottom, 22) }
+            #if os(macOS)
+            controls
+            speedControl.padding(.top, 25)
+            #endif
+            progressFooter.padding(.horizontal, 24).padding(.vertical, 18)
+        }.background(Palette.paper).foregroundStyle(Palette.ink)
         .onAppear {
             engine.wordsPerMinute = savedWPM
             engine.naturalPauses = savedNaturalPauses
@@ -61,26 +51,6 @@ struct ReaderView: View {
         .preferredColorScheme(.light)
     }
 
-    private func readingTopInset(height: CGFloat) -> CGFloat {
-        #if os(iOS)
-        return 0
-        #else
-        let stageHeight = max(220, min(360, height * 0.43))
-        // Center the word on tall iPads; preserve room for controls in shorter windows.
-        let centeredInset = height / 2 - 95 - stageHeight / 2
-        let availableInset = height - 175 - stageHeight - 280
-        return max(0, min(centeredInset, availableInset))
-        #endif
-    }
-
-    private func stageHeight(height: CGFloat) -> CGFloat {
-        #if os(iOS)
-        return max(130, height - (showContext || engine.blockedPage != nil ? 430 : 240))
-        #else
-        return max(220, min(360, height * 0.43))
-        #endif
-    }
-
     private var header: some View {
         HStack(spacing: 14) {
             Button { engine.pause(); dismiss() } label: { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
@@ -88,32 +58,40 @@ struct ReaderView: View {
             Text(engine.book.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
             Spacer()
             Button { engine.pause(); showContext.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
-                .buttonStyle(.plain).accessibilityLabel(showContext ? "Hide passage" : "Nearby passage").accessibilityIdentifier("toggleContext")
+                .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
             Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                 .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
         }
     }
     private var focusStage: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            wordRibbon
-            Spacer()
+        GeometryReader { geometry in
+            wordRibbon(height: geometry.size.height).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .contentShape(Rectangle())
         .simultaneousGesture(scrubGesture)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("readingSurface")
+        .accessibilityValue(showContext ? "Passage view" : "Single-line view")
     }
-    private var wordRibbon: some View {
+    private func wordRibbon(height: CGFloat) -> some View {
+        let compact = showContext && height < 240
+        let fontSize: CGFloat = compact ? 48 : 68
         let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
-        return CenteredWordLayout(selected: engine.index - engine.context.startIndex, focusAnchor: focused.anchor) {
+        let radius = showContext ? 80 : 6
+        let start = max(0, engine.index - radius)
+        let tokens = Array(engine.tokens[start..<min(engine.tokens.count, engine.index + radius + 1)])
+        let breaks = Set(tokens.indices.dropLast().filter {
+            tokens[$0].word.endsParagraph || tokens[$0].pageIndex != tokens[$0 + 1].pageIndex
+        })
+        return CenteredWordLayout(selected: engine.index - start, focusAnchor: focused.anchor,
+                                  expanded: showContext, breaks: breaks) {
             if engine.tokens.isEmpty {
-                Text("Ready?").font(.custom("Georgia", size: 68)).accessibilityIdentifier("currentWord")
+                Text("Ready?").font(.custom("Georgia", size: fontSize)).accessibilityIdentifier("currentWord")
             } else {
-                ForEach(Array(engine.context)) { token in
+                ForEach(tokens) { token in
                     if token.id == engine.index {
                         Text(focused.text)
-                            .font(focused.anchor == nil ? .custom("Georgia", size: 68) : .custom("Georgia", fixedSize: 68))
+                            .font(focused.anchor == nil ? .custom("Georgia", size: fontSize) : .custom("Georgia", fixedSize: fontSize))
                             .lineLimit(1).minimumScaleFactor(focused.anchor == nil ? 0.12 : 0.01)
                             .padding(.horizontal, focused.anchor == nil ? 8 : 0)
                             .accessibilityIdentifier("currentWord")
@@ -128,23 +106,23 @@ struct ReaderView: View {
                             }
                     } else {
                         Button { engine.seek(token.id) } label: {
-                            Text(token.word.text).font(.custom("Georgia", size: 22))
-                                .foregroundStyle(Palette.muted).fixedSize().frame(minHeight: 44)
+                            Text(token.word.text).font(.custom("Georgia", size: compact ? 20 : 22))
+                                .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1).frame(minHeight: compact ? 32 : 44)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Read from \(token.word.text)")
-                        .accessibilityIdentifier("nearbyWord-\(token.id)")
+                        .accessibilityIdentifier(showContext ? "passageWord-\(token.id)" : "nearbyWord-\(token.id)")
                     }
                 }
             }
         }
-        .frame(height: 102).frame(maxWidth: .infinity)
+        .frame(height: showContext ? nil : 102).frame(maxWidth: .infinity, maxHeight: showContext ? .infinity : nil)
         .contentShape(Rectangle())
         .clipped()
         .mask {
             LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
                                    .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
-                           startPoint: .leading, endPoint: .trailing)
+                           startPoint: showContext ? .top : .leading, endPoint: showContext ? .bottom : .trailing)
         }
     }
     private var scrubGesture: some Gesture {
@@ -152,7 +130,7 @@ struct ReaderView: View {
             .updating($dragInProgress) { _, dragging, _ in dragging = true }
             .onChanged { value in
                 let translation = value.translation
-                // Leave vertical gestures to the reader's scroll view.
+                // Only horizontal movement changes the selected word.
                 guard engine.isScrubbing || abs(translation.width) > abs(translation.height) * 1.2 else { return }
                 engine.beginScrubbing()
                 engine.scrub(by: -Int((translation.width / 32).rounded(.towardZero)))
@@ -183,23 +161,6 @@ struct ReaderView: View {
         }
     }
     #endif
-    private var contextView: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            FlowLayout(spacing: 5) {
-                ForEach(Array(engine.context)) { token in
-                    Button { engine.seek(token.id) } label: {
-                        Text(token.word.text).font(.custom("Georgia", size: 17)).padding(.horizontal, 2).padding(.vertical, 4)
-                            .foregroundStyle(token.id == engine.index ? Palette.surface : Palette.muted)
-                            .background(token.id == engine.index ? Palette.forest : .clear, in: RoundedRectangle(cornerRadius: 3))
-                    }.buttonStyle(.plain)
-                        .accessibilityIdentifier("passageWord-\(token.id)")
-                        .accessibilityAddTraits(token.id == engine.index ? .isSelected : [])
-                }
-            }
-        }.padding(22).frame(maxWidth: 650, alignment: .leading).background(Palette.surface, in: RoundedRectangle(cornerRadius: 15))
-            .contentShape(Rectangle()).simultaneousGesture(scrubGesture)
-            .accessibilityElement(children: .contain).accessibilityIdentifier("nearbyPassage")
-    }
     private var progressFooter: some View {
         VStack(spacing: 13) {
             ProgressView(value: engine.progress).tint(Palette.forest)
@@ -361,34 +322,63 @@ private struct HoldReadingTouchSurface: UIViewRepresentable {
 private struct CenteredWordLayout: Layout {
     var selected: Int
     var focusAnchor: CGFloat?
-    let spacing: CGFloat = 18
+    var expanded: Bool
+    var breaks: Set<Int>
+    private var spacing: CGFloat { expanded ? 10 : 18 }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        CGSize(width: proposal.width ?? 600, height: 102)
+        CGSize(width: proposal.width ?? 600, height: expanded ? (proposal.height ?? 360) : 102)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard subviews.indices.contains(selected) else { return }
+        guard subviews.indices.contains(selected) else {
+            subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: proposal)
+            return
+        }
         let current = subviews[selected]
         let anchor = focusAnchor ?? 0.5
-        // Keep both sides of a focused word inside the ribbon's fading edges.
         let availableWidth = focusAnchor == nil ? bounds.width * 0.68
             : min(bounds.width * 0.68, bounds.width * 0.44 / max(anchor, 1 - anchor))
         let currentWidth = min(current.sizeThatFits(.unspecified).width, availableWidth)
+        let currentSize = current.sizeThatFits(ProposedViewSize(width: currentWidth, height: nil))
         let leading = bounds.midX - currentWidth * anchor
         current.place(at: CGPoint(x: leading, y: bounds.midY), anchor: .leading,
-                      proposal: ProposedViewSize(width: currentWidth, height: bounds.height))
+                      proposal: ProposedViewSize(width: currentWidth, height: currentSize.height))
+        let inset = expanded ? min(24, bounds.width / 8) : 0
+        let neighborProposal = ProposedViewSize(width: expanded ? bounds.width - inset * 2 : nil, height: nil)
+        let sizes = subviews.map { $0.sizeThatFits(neighborProposal) }
+        let compact = expanded && bounds.height < 240
+        let rowHeight = max(compact ? 32 : 44, sizes.enumerated().filter { $0.offset != selected }.map { $0.element.height }.max() ?? 0)
+        let firstRow = (currentSize.height + rowHeight) / 2 + (compact ? 4 : 12)
+        let rowStep = rowHeight + (compact ? 4 : 8)
+        func rowY(_ row: Int) -> CGFloat {
+            row == 0 ? bounds.midY : bounds.midY + (row > 0 ? 1 : -1) * (firstRow + CGFloat(abs(row) - 1) * rowStep)
+        }
+        func place(_ index: Int, x: CGFloat, row: Int) {
+            let y = rowY(row)
+            let visible = y - sizes[index].height / 2 >= bounds.minY && y + sizes[index].height / 2 <= bounds.maxY
+            subviews[index].place(at: CGPoint(x: x, y: visible ? y : bounds.maxY + 10000), anchor: .leading,
+                                  proposal: ProposedViewSize(sizes[index]))
+        }
+        // Wrap outward from the fixed middle word while keeping source order.
         var leadingEdge = leading - spacing
+        var row = 0
         for index in (0..<selected).reversed() {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            subviews[index].place(at: CGPoint(x: leadingEdge, y: bounds.midY), anchor: .trailing, proposal: .unspecified)
-            leadingEdge -= size.width + spacing
+            if expanded && (leadingEdge - sizes[index].width < bounds.minX + inset || breaks.contains(index)) {
+                row -= 1; leadingEdge = bounds.maxX - inset
+            }
+            leadingEdge -= sizes[index].width
+            place(index, x: leadingEdge, row: row)
+            leadingEdge -= spacing
         }
         var trailingEdge = leading + currentWidth + spacing
+        row = 0
         for index in (selected + 1)..<subviews.count {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            subviews[index].place(at: CGPoint(x: trailingEdge, y: bounds.midY), anchor: .leading, proposal: .unspecified)
-            trailingEdge += size.width + spacing
+            if expanded && (trailingEdge + sizes[index].width > bounds.maxX - inset || breaks.contains(index - 1)) {
+                row += 1; trailingEdge = bounds.minX + inset
+            }
+            place(index, x: trailingEdge, row: row)
+            trailingEdge += sizes[index].width + spacing
         }
     }
 }

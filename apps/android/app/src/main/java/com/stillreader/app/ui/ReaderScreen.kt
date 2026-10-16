@@ -48,7 +48,6 @@ import com.stillreader.app.core.ReadingSession
 import com.stillreader.app.core.ReadingFocus
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -> Unit, onReview: (Int) -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
@@ -87,39 +86,20 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     }) {
         Header(session.book.title, onClose) {
             IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
-                Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Hide passage" else "Nearby passage")
+                Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
             }
             IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
                 Icon(Icons.Default.MoreHoriz, "Reading options")
             }
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val availableHeight = maxHeight
-            val compact = availableHeight < 360.dp
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = if (compact) 12.dp else 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height(if (passage || state.blockedPage != null) (availableHeight * .55f).coerceAtLeast(130.dp) else (availableHeight - 24.dp).coerceAtLeast(130.dp)).then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
-                    WordRibbon(session, state.index, focusLetter)
-                }
-                state.blockedPage?.let { page ->
-                    Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 500.dp).clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
-                        Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
-                        TextButton(onClick = { onReview(page) }) { Text("Review this page") }
-                    }
-                    Spacer(Modifier.height(20.dp))
-                }
-                if (passage) {
-                    FlowRow(Modifier.padding(24.dp).widthIn(max = 650.dp).clip(RoundedCornerShape(14.dp)).background(Surface).padding(18.dp).then(swipe).testTag("nearbyPassage"),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        session.tokens.subList((state.index - 12).coerceAtLeast(0), (state.index + 25).coerceAtMost(session.tokens.size)).forEach { token ->
-                            Text(token.word.text, fontSize = 18.sp, fontFamily = FontFamily.Serif,
-                                color = if (token.id == state.index) Surface else Muted,
-                                modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(if (token.id == state.index) Forest else Surface)
-                                    .clickable { session.seek(token.id) }.padding(horizontal = 3.dp, vertical = 8.dp)
-                                    .testTag("passageWord-${token.id}").semantics { selected = token.id == state.index })
-                        }
-                    }
-                }
+        Box(Modifier.weight(1f).fillMaxWidth().then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
+            WordRibbon(session, state.index, focusLetter, passage)
+        }
+        state.blockedPage?.let { page ->
+            Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 500.dp).clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
+                Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+                TextButton(onClick = { onReview(page) }) { Text("Review this page") }
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
@@ -214,9 +194,14 @@ fun OptionToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(110.dp).clipToBounds()) {
-        val tokens = session.tokens.subList((index - 6).coerceAtLeast(0), (index + 7).coerceAtMost(session.tokens.size))
+private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean) {
+    BoxWithConstraints(Modifier.fillMaxWidth().then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
+        .clipToBounds().testTag(if (expanded) "nearbyPassage" else "wordRibbon")) {
+        val compact = expanded && maxHeight < 240.dp
+        val fontSize = if (compact) 48f else 68f
+        val neighborHeight = if (compact) 36.dp else 48.dp
+        val radius = if (expanded) 80 else 6
+        val tokens = session.tokens.subList((index - radius).coerceAtLeast(0), (index + radius + 1).coerceAtMost(session.tokens.size))
         val current = session.current?.word?.text ?: "Ready?"
         val measurer = rememberTextMeasurer()
         val focusRange = remember(current, focusLetter) { if (focusLetter) ReadingFocus.range(current) else null }
@@ -226,7 +211,7 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                 focusRange?.let { addStyle(SpanStyle(color = FocusLetter), it.first, it.last + 1) }
             }
         }
-        val baseStyle = LocalTextStyle.current.merge(TextStyle(fontFamily = FontFamily.Serif, fontSize = 68.sp))
+        val baseStyle = LocalTextStyle.current.merge(TextStyle(fontFamily = FontFamily.Serif, fontSize = fontSize.sp))
         val measured = measurer.measure(styled, baseStyle, softWrap = false, maxLines = 1)
         val width = with(LocalDensity.current) { maxWidth.toPx() }
         val baseAnchor = focusRange?.let { measured.focusCenter(it) }
@@ -234,20 +219,20 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
             width * .44f / maxOf(it, measured.size.width - it).coerceAtLeast(1f)
         } ?: 1f
         val scale = minOf(1f, width * .68f / measured.size.width.coerceAtLeast(1), availableScale)
-        val currentStyle = baseStyle.copy(fontSize = (68f * scale).coerceAtLeast(1f).sp,
+        val currentStyle = baseStyle.copy(fontSize = (fontSize * scale).coerceAtLeast(1f).sp,
             letterSpacing = baseStyle.letterSpacing * scale)
         val fitted = measurer.measure(styled, currentStyle, softWrap = false, maxLines = 1)
         val anchor = focusRange?.let { fitted.focusCenter(it) }
         if (tokens.isEmpty()) {
             Text(current, style = currentStyle, modifier = Modifier.align(Alignment.Center).testTag("currentWord"))
         } else Layout(content = {
-            tokens.forEach { token ->
+            tokens.forEach { token -> key(token.id) {
                 val selected = token.id == index
                 Text(if (selected) styled else AnnotatedString(token.word.text), maxLines = 1, softWrap = false,
-                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = 22.sp),
+                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = if (compact) 20.sp else 22.sp),
                     color = if (selected) Ink else Muted,
-                    modifier = Modifier.clickable { session.seek(token.id) }.heightIn(min = 48.dp).wrapContentHeight()
-                        .testTag(if (selected) "currentWord" else "nearbyWord-${token.id}")
+                    modifier = Modifier.clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
+                        .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")
                         .semantics {
                             if (selected) {
                                 stateDescription = "Word ${index + 1} of ${session.tokens.size}"
@@ -256,24 +241,47 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                                     CustomAccessibilityAction("Previous word") { session.seek(index - 1); true })
                             } else contentDescription = "Read from ${token.word.text}"
                         })
-            }
+            } }
         }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
-            val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
+            val inset = if (expanded) 24.dp.roundToPx().coerceAtMost(constraints.maxWidth / 8) else 0
+            val placeables = measurables.map { it.measure(Constraints(maxWidth = if (expanded) constraints.maxWidth - inset * 2 else Constraints.Infinity, maxHeight = constraints.maxHeight)) }
             val selected = tokens.indexOfFirst { it.id == index }
-            val gap = 18.dp.roundToPx()
+            val gap = (if (expanded) 10.dp else 18.dp).roundToPx()
             layout(constraints.maxWidth, constraints.maxHeight) {
+                if (selected !in placeables.indices) return@layout
                 val focus = placeables[selected]
                 val centerLeft = (constraints.maxWidth / 2f - (anchor ?: (focus.width / 2f))).roundToInt()
-                focus.place(centerLeft, (constraints.maxHeight - focus.height) / 2)
+                val centerY = constraints.maxHeight / 2
+                focus.place(centerLeft, centerY - focus.height / 2)
+                val rowHeight = maxOf(neighborHeight.roundToPx(), placeables.filterIndexed { i, _ -> i != selected }.maxOfOrNull { it.height } ?: 0)
+                val firstRow = (focus.height + rowHeight) / 2 + (if (compact) 4.dp else 12.dp).roundToPx()
+                val rowStep = rowHeight + (if (compact) 4.dp else 8.dp).roundToPx()
+                fun rowY(row: Int) = if (row == 0) centerY else centerY + (if (row > 0) 1 else -1) * (firstRow + (kotlin.math.abs(row) - 1) * rowStep)
+                fun breakAfter(i: Int) = tokens[i].word.endsParagraph || tokens[i].pageIndex != tokens[i + 1].pageIndex
                 var left = centerLeft - gap
+                var row = 0
+                // Fill the middle row around the fixed word, then wrap overflow
+                // into earlier rows above and later rows below in reading order.
                 for (i in selected - 1 downTo 0) {
-                    val item = placeables[i]; left -= item.width
-                    item.place(left, (constraints.maxHeight - item.height) / 2); left -= gap
+                    val item = placeables[i]
+                    if (expanded && (left - item.width < inset || breakAfter(i))) {
+                        row--; left = constraints.maxWidth - inset
+                    }
+                    left -= item.width
+                    val y = rowY(row)
+                    if (y - item.height / 2 >= 0) item.place(left, y - item.height / 2)
+                    left -= gap
                 }
                 var right = centerLeft + focus.width + gap
+                row = 0
                 for (i in selected + 1 until placeables.size) {
                     val item = placeables[i]
-                    item.place(right, (constraints.maxHeight - item.height) / 2); right += item.width + gap
+                    if (expanded && (right + item.width > constraints.maxWidth - inset || breakAfter(i - 1))) {
+                        row++; right = inset
+                    }
+                    val y = rowY(row)
+                    if (y + item.height / 2 <= constraints.maxHeight) item.place(right, y - item.height / 2)
+                    right += item.width + gap
                 }
             }
         }

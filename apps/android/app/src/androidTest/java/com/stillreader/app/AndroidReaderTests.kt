@@ -148,7 +148,7 @@ class AndroidReaderTests {
         }
         compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.index < forward) }
         compose.onNodeWithTag("toggleContext").performClick()
-        compose.onNodeWithTag("passageWord-2").performScrollTo().performClick()
+        compose.onNodeWithTag("passageWord-2").performClick()
         compose.onNodeWithTag("currentWord").assertTextEquals("story.")
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Continue reading").performClick()
@@ -158,6 +158,61 @@ class AndroidReaderTests {
         val tokens = Tokenizer.tokens(persisted)
         assertEquals("story.", tokens[Tokenizer.index(persisted.position, tokens)].word.text)
     }
+    @Test fun passageReplacesRibbonAndKeepsSelectedWordCentered() {
+        launch(seed = false)
+        val file = File(root, "sample.pdf")
+        fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
+        val originalCenter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("wordRibbon").assertDoesNotExist()
+        compose.onNodeWithTag("nearbyPassage").assertIsDisplayed()
+        val expandedCenter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
+        assertEquals(originalCenter.x, expandedCenter.x, 1f)
+        assertEquals(originalCenter.y, expandedCenter.y, 1f)
+        fun assertCentered() {
+            val word = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+            val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
+            assertEquals(surface.center.x, word.center.x, 1f)
+            assertEquals(surface.center.y, word.center.y, 1f)
+        }
+        assertCentered() // Beginning of book also remains at the fixed center.
+        compose.runOnIdle { model.state.value.reader!!.seek(40) }
+        assertCentered()
+        val centerY = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center.y
+        val visible = (0..79).filter { it != 40 }.mapNotNull { id ->
+            val node = compose.onNodeWithTag("passageWord-$id")
+            if (node.isDisplayed()) id to node.fetchSemanticsNode().boundsInRoot else null
+        }
+        assertTrue(visible.any { it.first < 40 && it.second.center.y < centerY - 20 })
+        val below = visible.first { it.first > 40 && it.second.center.y > centerY + 20 }.first
+        compose.onNodeWithTag("passageWord-$below").performClick()
+        compose.runOnIdle { assertEquals(below, model.state.value.reader!!.state.value.index) }
+        assertCentered()
+        compose.onNodeWithTag("readingSurface").performTouchInput { swipeLeft() }
+        compose.runOnIdle {
+            assertTrue(model.state.value.reader!!.state.value.index > below)
+            assertFalse(model.state.value.reader!!.state.value.playing)
+            assertEquals(250.0, model.state.value.reader!!.wordsPerMinute, .01)
+        }
+        assertCentered()
+        compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
+        compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
+        compose.onNodeWithTag("holdToRead").performTouchInput { up() }
+        assertCentered()
+        compose.runOnIdle { model.state.value.reader!!.seek(model.state.value.reader!!.tokens.lastIndex) }
+        assertCentered()
+        val index = model.state.value.reader!!.state.value.index
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("nearbyPassage").assertDoesNotExist()
+        compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+        assertCentered()
+    }
+
     @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
@@ -169,6 +224,9 @@ class AndroidReaderTests {
         compose.onNodeWithContentDescription("Focus letter").assertIsOff().performClick()
         compose.onNodeWithText("Done").performClick()
         assertFocusedCharacterCentered()
+        compose.onNodeWithTag("toggleContext").performClick()
+        assertFocusedCharacterCentered()
+        compose.onNodeWithTag("wordRibbon").assertDoesNotExist()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
         assertTrue(application.getSharedPreferences("reading", 0).getBoolean("focusLetter", false))
         compose.onNodeWithContentDescription("Back").performClick()

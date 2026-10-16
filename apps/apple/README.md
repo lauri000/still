@@ -52,6 +52,6 @@ The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-imple
 
 ## Current verification
 
-Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, 38 iPad unit/integration tests pass, and all seven iPad UI tests pass. The hold-to-read/relative-speed UI test also passes on the iPhone 17 simulator. Tests cover speed retention, vertical movement, release-to-pause, independent text scrubbing, and continuous speed updates without stalled playback. Mobile previews are in [`docs/screenshots/hold-to-read/`](../../docs/screenshots/hold-to-read/).
+Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, and all eight iPad UI scenarios pass. The centered-passage test also passes on the iPhone 17 simulator, including portrait/landscape centering and visible rows above and below the active word. Tests cover mutually exclusive reading views, row-word selection, swiping, focus-letter alignment, and hold-to-read. Previews are in [`docs/screenshots/centered-passage/`](../../docs/screenshots/centered-passage/). The native core's 38 unit/integration tests passed in the preceding hold-to-read release.
 
 macOS UI interaction was not manually verified because desktop Computer Use permission was unavailable. Physical Apple devices and developer signing were not exercised.
