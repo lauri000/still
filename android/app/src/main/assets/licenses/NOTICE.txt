@@ -1,0 +1,18 @@
+Still for Android bundles the following PDF components:
+
+PdfiumAndroidKt 2.0.3
+https://github.com/johngray1965/PdfiumAndroidKt
+Original work Copyright 2015 Bekket McClane
+Modified work Copyright 2016 Bartosz Schiller
+Modified work Copyright 2023-2026 John Gray
+Apache License, Version 2.0; see PdfiumAndroidKt-LICENSE.txt.
+
+PDFium
+https://pdfium.googlesource.com/pdfium/
+Copyright 2014 The PDFium Authors
+See PDFium-LICENSE.txt for its license and included notices.
+
+The application also uses AndroidX, Kotlin, Kotlin coroutines, and Kotlin
+serialization (Apache License, Version 2.0). Dependencies are pinned in
+android/app/build.gradle.kts. This notice does not change the licenses of
+the application or its dependencies.

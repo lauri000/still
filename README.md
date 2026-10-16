@@ -1,6 +1,8 @@
 # Still
 
-A native PDF speed reader for **iPad and macOS**, built with SwiftUI and PDFKit. There are no third-party dependencies, accounts, or server components.
+A native PDF speed reader for **iPad, macOS, and Android**. The Apple app uses SwiftUI and PDFKit; Android uses Kotlin, Jetpack Compose, and PDFium. There are no accounts or server components. The Apple app has no third-party dependencies.
+
+For Android setup and verification, see [android/README.md](android/README.md). The platforms share a [book format and compatibility fixtures](shared/FORMAT.md), with independent native reading implementations and no Rust core.
 
 ## Run
 
@@ -26,7 +28,7 @@ Optional tools live in the book’s **…** menu: **Edit text**, **Chapters**, *
 
 ## Storage and moving between devices
 
-Each book is stored in the app's Application Support directory as `original.pdf` and `book.json` in its own UUID directory. On a sandboxed Mac this is inside the app container. The source PDF is never edited.
+Each book is stored as `original.pdf` and `book.json` in its own UUID directory. Apple uses the app's Application Support directory (inside the container on a sandboxed Mac); Android uses app-private `files/Still/`. The source PDF is never edited.
 
 The JSON retains the original filename, title/author, import date, page labels and boundaries, the original extracted text, corrected text, inclusion/review flags, bookmark hierarchy, manual chapter boundaries, a reading position, and an optional reading-start boundary. Old libraries and backups without that boundary continue to open. A position contains a page ID and UTF-16 text offset, so changing an earlier page does not shift the saved location on a later page. Within an edited page, a position resolves to the nearest preceding token and is clamped to available text. Paragraph separators remain in page text. Trimming stores a separate page ID and text offset; it never deletes page text or chapters. The start marker moves with edits before its chosen word, and replay/seek stay within the retained text.
 
@@ -37,10 +39,10 @@ Choose **Export book backup…** in the book menu to save a portable JSON backup
 ## Extraction limits
 
 - Designed for PDFs with selectable text. Scanned/image-only pages are flagged; OCR is not yet implemented. You can enter text manually or exclude them.
-- PDFKit's extraction order is retained without silent rewriting. Multi-column layouts, footnotes, tables, ligatures, and line-break hyphenation require human review. The source PDF remains visible for comparison.
+- The native PDF engine's extraction order is retained without silent rewriting. Multi-column layouts, footnotes, tables, ligatures, and line-break hyphenation can require corrections. The source PDF remains visible for comparison.
 - Chapters come from embedded bookmarks or manual entry. Headings are not guessed automatically. Bookmark destinations are mapped to page boundaries, not exact words.
 - Tokenization separates whitespace-delimited words and preserves attached punctuation and Unicode source ranges. Languages without word-separating spaces need a future language-aware tokenizer.
-- Password-protected and copy-restricted PDFs report an explanatory error. Imports are limited to 250 MB.
+- Password-protected PDFs report an explanatory error. Apple also checks copy restrictions; the Android binding does not expose that permission flag. Imports are limited to 250 MB. See [Android's extraction limits](android/README.md#extraction-limits) for page-label and backup-memory details.
 - There are no claims that faster playback improves comprehension. The pace is user controlled.
 
 ## Verify
@@ -62,6 +64,8 @@ xcodebuild -project Still.xcodeproj -scheme Still \
 - `Still/Services`: PDF import, generated sample PDF, local persistence, backup and library state.
 - `Still/Views`: plain book list, starting-page preview, reader, and optional editing tools; platform-specific PDFView wrappers.
 - `project.yml`: iOS/macOS targets and test schemes.
+- `android/`: native Kotlin/Compose app, PDFium import, persistence, and tests.
+- `shared/`: portable book contract and Swift-generated compatibility fixtures.
 
 Next features: optional on-device OCR, cross-device sync, and finer chapter destinations.
 
@@ -74,3 +78,5 @@ Verified on 16 October 2026 with Xcode 26.3:
 - All five iPad UI tests pass, covering the simplified page-selection flow, an empty library, corrections and optional review, restoring the beginning, swiping in both directions, and exact resume after relaunch. Rotation checks wait for layout to settle.
 - Portrait and landscape iPad screenshots were inspected. Saved previews are in `docs/screenshots/`.
 - macOS UI interaction was not manually verified because desktop Computer Use permission was unavailable. A physical iPad and developer signing were not exercised.
+
+Android verification on the same date: the debug APK builds, 13 JVM tests and all 6 Android emulator tests pass, and lint reports zero errors. Swift/Kotlin tokenizer fixtures and portable backup compatibility pass. The Android 16 emulator's system PDF picker and portrait/landscape reader were manually checked; previews are in `docs/screenshots/android/`. Physical Android devices and release signing have not been exercised.
