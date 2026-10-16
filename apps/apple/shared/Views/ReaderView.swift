@@ -6,11 +6,13 @@ import UIKit
 struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var engine: ReaderEngine
     @AppStorage("readingWPM") private var savedWPM = 250.0
     @AppStorage("naturalPauses") private var savedNaturalPauses = true
     @AppStorage("pauseAtUncheckedPages") private var pauseAtUncheckedPages = false
     @AppStorage("focusLetter") private var focusLetter = false
+    @AppStorage("animatedScrolling") private var animatedScrolling = false
     @State private var showContext = false
     @State private var showingSettings = false
     @GestureState private var dragInProgress = false
@@ -65,7 +67,10 @@ struct ReaderView: View {
     }
     private var focusStage: some View {
         GeometryReader { geometry in
-            wordRibbon(height: geometry.size.height).frame(maxWidth: .infinity, maxHeight: .infinity)
+            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
+                wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .contentShape(Rectangle())
         .simultaneousGesture(scrubGesture)
@@ -73,7 +78,9 @@ struct ReaderView: View {
         .accessibilityIdentifier("readingSurface")
         .accessibilityValue(showContext ? "Passage view" : "Single-line view")
     }
-    private func wordRibbon(height: CGFloat) -> some View {
+    private var scrolling: Bool { animatedScrolling && !reduceMotion && engine.isPlaying && scenePhase == .active }
+
+    private func wordRibbon(height: CGFloat, time: Double) -> some View {
         let compact = showContext && height < 240
         let passageSize: CGFloat = compact ? 20 : 24
         let fontSize: CGFloat = showContext ? passageSize : 68
@@ -86,7 +93,9 @@ struct ReaderView: View {
             tokens[$0].word.endsParagraph || tokens[$0].pageIndex != tokens[$0 + 1].pageIndex
         })
         return CenteredWordLayout(selected: engine.index - start, focusAnchor: focused.anchor,
-                                  expanded: showContext, breaks: breaks) {
+                                  expanded: showContext, breaks: breaks, firstTokenID: start,
+                                  scrolling: scrolling, time: time,
+                                  duration: WordMotion.duration(wordsPerMinute: engine.wordsPerMinute)) {
             if engine.tokens.isEmpty {
                 Text("Ready?").font(.custom("Georgia", size: fontSize)).accessibilityIdentifier("currentWord")
             } else {
@@ -98,6 +107,7 @@ struct ReaderView: View {
                             .padding(.horizontal, !showContext && focused.anchor == nil ? 8 : 0)
                             .frame(minHeight: showContext ? passageRowHeight : 0)
                             .foregroundStyle(Palette.ink)
+                            .background(Palette.paper).zIndex(1)
                             .accessibilityIdentifier("currentWord")
                             .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
                             .accessibilityHint("Swipe left for later words or right for earlier words.")
@@ -122,6 +132,7 @@ struct ReaderView: View {
                 }
             }
         }
+        .id("\(showContext)-\(focusLetter)")
         .frame(height: showContext ? nil : 102).frame(maxWidth: .infinity, maxHeight: showContext ? .infinity : nil)
         .contentShape(Rectangle())
         .clipped()
@@ -236,6 +247,9 @@ struct ReaderView: View {
                 Toggle("Focus letter", isOn: $focusLetter).accessibilityIdentifier("focusLetter")
                 Text("Highlight one letter and keep it centered as words advance.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
+                Toggle("Animated scrolling", isOn: $animatedScrolling).accessibilityIdentifier("animatedScrolling")
+                Text("Move surrounding words as you read. Uses immediate placement when Reduce Motion is on.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Divider()
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
@@ -325,18 +339,27 @@ private struct HoldReadingTouchSurface: UIViewRepresentable {
 #endif
 
 /// Anchors the selected word (or its focus letter) as its neighbors change length.
-private struct CenteredWordLayout: Layout {
+struct CenteredWordLayout: Layout {
     var selected: Int
     var focusAnchor: CGFloat?
     var expanded: Bool
     var breaks: Set<Int>
+    var firstTokenID: Int
+    var scrolling: Bool
+    var time: Double
+    var duration: Double
     private var spacing: CGFloat { expanded ? 10 : 18 }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    struct Cache { var motion = WordMotion() }
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+    // Token-window changes retain the positions of words with the same source ID.
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {}
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
         CGSize(width: proposal.width ?? 600, height: expanded ? (proposal.height ?? 360) : 102)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
         guard subviews.indices.contains(selected) else {
             subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: proposal)
             return
@@ -357,12 +380,6 @@ private struct CenteredWordLayout: Layout {
         let rowHeight = max(currentSize.height, sizes.map(\.height).max() ?? 0)
         let rowStep = rowHeight + (compact ? 4 : 8)
         func rowY(_ row: Int) -> CGFloat { bounds.midY + CGFloat(row) * rowStep }
-        func place(_ index: Int, x: CGFloat, row: Int) {
-            let y = rowY(row)
-            let visible = y - sizes[index].height / 2 >= bounds.minY && y + sizes[index].height / 2 <= bounds.maxY
-            subviews[index].place(at: CGPoint(x: x, y: visible ? y : bounds.maxY + 10000), anchor: .leading,
-                                  proposal: ProposedViewSize(sizes[index]))
-        }
         var positions = [Int: (x: CGFloat, row: Int)]()
         // Wrap outward from the fixed middle word while keeping source order.
         var leadingEdge = leading - spacing
@@ -415,7 +432,20 @@ private struct CenteredWordLayout: Layout {
                 }
             }
         }
-        for (index, position) in positions { place(index, x: position.x, row: position.row) }
+        var targets = Dictionary(uniqueKeysWithValues: positions.map { index, position in
+            (firstTokenID + index, CGPoint(x: position.x - bounds.minX, y: rowY(position.row) - bounds.minY))
+        })
+        // Layout may probe placement at multiple origins; cache only local coordinates.
+        targets[firstTokenID + selected] = CGPoint(x: leading - bounds.minX, y: bounds.height / 2)
+        let displayed = cache.motion.positions(index: firstTokenID + selected, targets: targets,
+            viewport: bounds.size, enabled: scrolling, time: time, duration: duration,
+            widths: Dictionary(uniqueKeysWithValues: sizes.indices.map { (firstTokenID + $0, sizes[$0].width) }))
+        for index in positions.keys {
+            guard let point = displayed[firstTokenID + index] else { continue }
+            // Keep offscreen rows at their real coordinates so they enter through the clip.
+            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y),
+                                  anchor: .leading, proposal: ProposedViewSize(sizes[index]))
+        }
     }
 }
 

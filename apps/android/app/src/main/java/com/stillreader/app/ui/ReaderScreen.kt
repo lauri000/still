@@ -15,6 +15,12 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.currentCoroutineContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +62,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     var pagePicker by remember { mutableStateOf(false) }
     var wpm by remember(session) { mutableDoubleStateOf(session.wordsPerMinute) }
     var focusLetter by remember(model) { mutableStateOf(model.focusLetter) }
+    var animatedScrolling by remember(model) { mutableStateOf(model.animatedScrolling) }
     val view = LocalView.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -93,7 +100,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth().then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
-            WordRibbon(session, state.index, focusLetter, passage)
+            WordRibbon(session, state.index, focusLetter, passage, animatedScrolling && state.playing && !state.scrubbing)
         }
         state.blockedPage?.let { page ->
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 500.dp).clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -122,6 +129,9 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OptionToggle("Focus letter", focusLetter) { focusLetter = it; model.focusLetter = it }
                 Text("Highlight one letter and keep it centered as words advance.", fontSize = 12.sp, color = Muted)
+                HorizontalDivider(color = Line)
+                OptionToggle("Animated scrolling", animatedScrolling) { animatedScrolling = it; model.animatedScrolling = it }
+                Text("Move surrounding words as you read. Respects the system animation setting.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)
@@ -194,10 +204,28 @@ fun OptionToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean) {
+internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean, scrolling: Boolean) {
     BoxWithConstraints(Modifier.then(if (expanded) Modifier.widthIn(max = 850.dp) else Modifier).fillMaxWidth()
         .then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
         .clipToBounds().testTag(if (expanded) "nearbyPassage" else "wordRibbon")) {
+        val motion = remember(session, expanded, focusLetter) { WordMotion() }
+        val progress = remember { Animatable(1f) }
+        var animationIndex by remember { mutableIntStateOf(index) }
+        var durationScale by remember { mutableStateOf<MotionDurationScale?>(null) }
+        val focused = LocalWindowInfo.current.isWindowFocused
+        val moving = scrolling && focused && (durationScale?.scaleFactor ?: 1f) > 0f
+        LaunchedEffect(index, scrolling, focused, expanded, focusLetter, maxWidth, maxHeight) {
+            durationScale = currentCoroutineContext()[MotionDurationScale]
+            if (scrolling && focused) {
+                progress.snapTo(0f)
+                animationIndex = index
+                progress.animateTo(1f, tween(WordMotion.durationMillis(session.wordsPerMinute),
+                    easing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)))
+            } else {
+                progress.snapTo(1f)
+                animationIndex = index
+            }
+        }
         val compact = expanded && maxHeight < 240.dp
         val passageSize = if (compact) 20f else 24f
         val fontSize = if (expanded) passageSize else 68f
@@ -233,7 +261,8 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                 Text(if (selected) styled else AnnotatedString(token.word.text), maxLines = 1, softWrap = false,
                     style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = if (expanded) passageSize.sp else 22.sp),
                     color = if (selected) Ink else Muted,
-                    modifier = Modifier.clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
+                    modifier = Modifier.then(if (selected) Modifier.background(Paper) else Modifier)
+                        .clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
                         .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")
                         .semantics {
                             if (selected) {
@@ -254,7 +283,7 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                 val focus = placeables[selected]
                 val centerLeft = (constraints.maxWidth / 2f - (anchor ?: (focus.width / 2f))).roundToInt()
                 val centerY = constraints.maxHeight / 2
-                focus.place(centerLeft, centerY - focus.height / 2)
+                focus.place(centerLeft, centerY - focus.height / 2, zIndex = 1f)
                 val rowHeight = maxOf(neighborHeight.roundToPx(), placeables.maxOfOrNull { it.height } ?: 0)
                 val rowStep = rowHeight + (if (compact) 4.dp else 8.dp).roundToPx()
                 fun rowY(row: Int) = centerY + row * rowStep
@@ -312,11 +341,17 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                         }
                     }
                 }
-                positions.forEach { (i, position) ->
+                val targets = positions.mapKeys { tokens[it.key].id }.mapValues { (_, position) ->
+                    Offset(position.first, rowY(position.second).toFloat())
+                } + (index to Offset(centerLeft.toFloat(), centerY.toFloat()))
+                val displayed = motion.positions(index, targets, IntSize(constraints.maxWidth, constraints.maxHeight),
+                    moving, if (animationIndex == index) progress.value else 0f,
+                    tokens.indices.associate { tokens[it].id to placeables[it].width })
+                positions.keys.forEach { i ->
                     val item = placeables[i]
-                    val y = rowY(position.second)
-                    if (y - item.height / 2 >= 0 && y + item.height / 2 <= constraints.maxHeight)
-                        item.place(position.first.roundToInt(), y - item.height / 2)
+                    val point = displayed.getValue(tokens[i].id)
+                    // Real offscreen coordinates let rows enter naturally through the clip.
+                    item.place(point.x.roundToInt(), point.y.roundToInt() - item.height / 2)
                 }
             }
         }
