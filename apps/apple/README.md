@@ -31,6 +31,8 @@ xcodegen generate --spec apps/apple/project.yml
 - `shared/StillApp.swift`: common application entry point and library initialization.
 - `tests/`: `StillTests` and `StillUITests`.
 
+Passage view uses equal-sized words, a dark centered active word, and muted surrounding rows. Full rows are justified to align their edges, while short paragraph endings keep normal spacing. The single-line reader retains its larger active word.
+
 See the [reading guide](../../docs/reading.md) and [portable book contract](../../shared/FORMAT.md) for behavior shared with Android.
 
 ## Verify

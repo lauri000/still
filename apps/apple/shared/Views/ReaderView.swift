@@ -75,7 +75,9 @@ struct ReaderView: View {
     }
     private func wordRibbon(height: CGFloat) -> some View {
         let compact = showContext && height < 240
-        let fontSize: CGFloat = compact ? 48 : 68
+        let passageSize: CGFloat = compact ? 20 : 24
+        let fontSize: CGFloat = showContext ? passageSize : 68
+        let passageRowHeight: CGFloat = compact ? 36 : 48
         let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
         let radius = showContext ? 80 : 6
         let start = max(0, engine.index - radius)
@@ -93,7 +95,9 @@ struct ReaderView: View {
                         Text(focused.text)
                             .font(focused.anchor == nil ? .custom("Georgia", size: fontSize) : .custom("Georgia", fixedSize: fontSize))
                             .lineLimit(1).minimumScaleFactor(focused.anchor == nil ? 0.12 : 0.01)
-                            .padding(.horizontal, focused.anchor == nil ? 8 : 0)
+                            .padding(.horizontal, !showContext && focused.anchor == nil ? 8 : 0)
+                            .frame(minHeight: showContext ? passageRowHeight : 0)
+                            .foregroundStyle(Palette.ink)
                             .accessibilityIdentifier("currentWord")
                             .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
                             .accessibilityHint("Swipe left for later words or right for earlier words.")
@@ -106,8 +110,10 @@ struct ReaderView: View {
                             }
                     } else {
                         Button { engine.seek(token.id) } label: {
-                            Text(token.word.text).font(.custom("Georgia", size: compact ? 20 : 22))
-                                .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1).frame(minHeight: compact ? 32 : 44)
+                            Text(token.word.text)
+                                .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: showContext ? passageSize : 22))
+                                .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1)
+                                .frame(minHeight: showContext ? passageRowHeight : 44)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Read from \(token.word.text)")
@@ -348,18 +354,16 @@ private struct CenteredWordLayout: Layout {
         let neighborProposal = ProposedViewSize(width: expanded ? bounds.width - inset * 2 : nil, height: nil)
         let sizes = subviews.map { $0.sizeThatFits(neighborProposal) }
         let compact = expanded && bounds.height < 240
-        let rowHeight = max(compact ? 32 : 44, sizes.enumerated().filter { $0.offset != selected }.map { $0.element.height }.max() ?? 0)
-        let firstRow = (currentSize.height + rowHeight) / 2 + (compact ? 4 : 12)
+        let rowHeight = max(currentSize.height, sizes.map(\.height).max() ?? 0)
         let rowStep = rowHeight + (compact ? 4 : 8)
-        func rowY(_ row: Int) -> CGFloat {
-            row == 0 ? bounds.midY : bounds.midY + (row > 0 ? 1 : -1) * (firstRow + CGFloat(abs(row) - 1) * rowStep)
-        }
+        func rowY(_ row: Int) -> CGFloat { bounds.midY + CGFloat(row) * rowStep }
         func place(_ index: Int, x: CGFloat, row: Int) {
             let y = rowY(row)
             let visible = y - sizes[index].height / 2 >= bounds.minY && y + sizes[index].height / 2 <= bounds.maxY
             subviews[index].place(at: CGPoint(x: x, y: visible ? y : bounds.maxY + 10000), anchor: .leading,
                                   proposal: ProposedViewSize(sizes[index]))
         }
+        var positions = [Int: (x: CGFloat, row: Int)]()
         // Wrap outward from the fixed middle word while keeping source order.
         var leadingEdge = leading - spacing
         var row = 0
@@ -368,7 +372,7 @@ private struct CenteredWordLayout: Layout {
                 row -= 1; leadingEdge = bounds.maxX - inset
             }
             leadingEdge -= sizes[index].width
-            place(index, x: leadingEdge, row: row)
+            positions[index] = (leadingEdge, row)
             leadingEdge -= spacing
         }
         var trailingEdge = leading + currentWidth + spacing
@@ -377,9 +381,41 @@ private struct CenteredWordLayout: Layout {
             if expanded && (trailingEdge + sizes[index].width > bounds.maxX - inset || breaks.contains(index - 1)) {
                 row += 1; trailingEdge = bounds.minX + inset
             }
-            place(index, x: trailingEdge, row: row)
+            positions[index] = (trailingEdge, row)
             trailingEdge += sizes[index].width + spacing
         }
+        func spread(_ indices: [Int], row: Int, from left: CGFloat, to right: CGFloat) {
+            guard indices.count > 1 else { return }
+            let widths = indices.map { $0 == selected ? currentWidth : sizes[$0].width }
+            let gap = max(spacing, (right - left - widths.reduce(0, +)) / CGFloat(indices.count - 1))
+            var x = left
+            for (index, width) in zip(indices, widths) {
+                if index != selected { positions[index] = (x, row) }
+                x += width + gap
+            }
+        }
+        if expanded {
+            let rows = Dictionary(grouping: positions.keys, by: { positions[$0]!.row })
+            for (row, entries) in rows {
+                let indices = entries.sorted()
+                if row == 0 {
+                    // Include the fixed word as an endpoint on each side.
+                    let before = indices.filter { $0 < selected }
+                    if let first = before.first, first > 0, !breaks.contains(first - 1) {
+                        spread(before + [selected], row: row, from: bounds.minX + inset, to: leading + currentWidth)
+                    }
+                    let after = indices.filter { $0 > selected }
+                    if let last = after.last, last + 1 < subviews.count, !breaks.contains(last) {
+                        spread([selected] + after, row: row, from: leading, to: bounds.maxX - inset)
+                    }
+                } else if let first = indices.first, let last = indices.last,
+                          first > 0, last + 1 < subviews.count, !breaks.contains(last) {
+                    // Do not stretch paragraph endings or incomplete window edges.
+                    spread(indices, row: row, from: bounds.minX + inset, to: bounds.maxX - inset)
+                }
+            }
+        }
+        for (index, position) in positions { place(index, x: position.x, row: position.row) }
     }
 }
 

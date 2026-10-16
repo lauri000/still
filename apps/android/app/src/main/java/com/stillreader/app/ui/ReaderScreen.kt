@@ -195,10 +195,12 @@ fun OptionToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
 
 @Composable
 private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean) {
-    BoxWithConstraints(Modifier.fillMaxWidth().then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
+    BoxWithConstraints(Modifier.then(if (expanded) Modifier.widthIn(max = 850.dp) else Modifier).fillMaxWidth()
+        .then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
         .clipToBounds().testTag(if (expanded) "nearbyPassage" else "wordRibbon")) {
         val compact = expanded && maxHeight < 240.dp
-        val fontSize = if (compact) 48f else 68f
+        val passageSize = if (compact) 20f else 24f
+        val fontSize = if (expanded) passageSize else 68f
         val neighborHeight = if (compact) 36.dp else 48.dp
         val radius = if (expanded) 80 else 6
         val tokens = session.tokens.subList((index - radius).coerceAtLeast(0), (index + radius + 1).coerceAtMost(session.tokens.size))
@@ -229,7 +231,7 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
             tokens.forEach { token -> key(token.id) {
                 val selected = token.id == index
                 Text(if (selected) styled else AnnotatedString(token.word.text), maxLines = 1, softWrap = false,
-                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = if (compact) 20.sp else 22.sp),
+                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = if (expanded) passageSize.sp else 22.sp),
                     color = if (selected) Ink else Muted,
                     modifier = Modifier.clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
                         .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")
@@ -253,11 +255,11 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                 val centerLeft = (constraints.maxWidth / 2f - (anchor ?: (focus.width / 2f))).roundToInt()
                 val centerY = constraints.maxHeight / 2
                 focus.place(centerLeft, centerY - focus.height / 2)
-                val rowHeight = maxOf(neighborHeight.roundToPx(), placeables.filterIndexed { i, _ -> i != selected }.maxOfOrNull { it.height } ?: 0)
-                val firstRow = (focus.height + rowHeight) / 2 + (if (compact) 4.dp else 12.dp).roundToPx()
+                val rowHeight = maxOf(neighborHeight.roundToPx(), placeables.maxOfOrNull { it.height } ?: 0)
                 val rowStep = rowHeight + (if (compact) 4.dp else 8.dp).roundToPx()
-                fun rowY(row: Int) = if (row == 0) centerY else centerY + (if (row > 0) 1 else -1) * (firstRow + (kotlin.math.abs(row) - 1) * rowStep)
+                fun rowY(row: Int) = centerY + row * rowStep
                 fun breakAfter(i: Int) = tokens[i].word.endsParagraph || tokens[i].pageIndex != tokens[i + 1].pageIndex
+                val positions = mutableMapOf<Int, Pair<Float, Int>>()
                 var left = centerLeft - gap
                 var row = 0
                 // Fill the middle row around the fixed word, then wrap overflow
@@ -268,8 +270,7 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                         row--; left = constraints.maxWidth - inset
                     }
                     left -= item.width
-                    val y = rowY(row)
-                    if (y - item.height / 2 >= 0) item.place(left, y - item.height / 2)
+                    positions[i] = left.toFloat() to row
                     left -= gap
                 }
                 var right = centerLeft + focus.width + gap
@@ -279,9 +280,43 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
                     if (expanded && (right + item.width > constraints.maxWidth - inset || breakAfter(i - 1))) {
                         row++; right = inset
                     }
-                    val y = rowY(row)
-                    if (y + item.height / 2 <= constraints.maxHeight) item.place(right, y - item.height / 2)
+                    positions[i] = right.toFloat() to row
                     right += item.width + gap
+                }
+                fun spread(indices: List<Int>, line: Int, left: Float, right: Float) {
+                    if (indices.size < 2) return
+                    val width = indices.sumOf { placeables[it].width }
+                    val spacing = maxOf(gap.toFloat(), (right - left - width) / (indices.size - 1))
+                    var x = left
+                    indices.forEach { i ->
+                        if (i != selected) positions[i] = x to line
+                        x += placeables[i].width + spacing
+                    }
+                }
+                if (expanded) {
+                    positions.keys.groupBy { positions.getValue(it).second }.forEach { (line, entries) ->
+                        val indices = entries.sorted()
+                        if (line == 0) {
+                            // Include the fixed word as an endpoint on each side.
+                            val before = indices.filter { it < selected }
+                            if (before.isNotEmpty() && before.first() > 0 && !breakAfter(before.first() - 1)) {
+                                spread(before + selected, line, inset.toFloat(), (centerLeft + focus.width).toFloat())
+                            }
+                            val after = indices.filter { it > selected }
+                            if (after.isNotEmpty() && after.last() < tokens.lastIndex && !breakAfter(after.last())) {
+                                spread(listOf(selected) + after, line, centerLeft.toFloat(), (constraints.maxWidth - inset).toFloat())
+                            }
+                        } else if (indices.first() > 0 && indices.last() < tokens.lastIndex && !breakAfter(indices.last())) {
+                            // Do not stretch paragraph endings or incomplete window edges.
+                            spread(indices, line, inset.toFloat(), (constraints.maxWidth - inset).toFloat())
+                        }
+                    }
+                }
+                positions.forEach { (i, position) ->
+                    val item = placeables[i]
+                    val y = rowY(position.second)
+                    if (y - item.height / 2 >= 0 && y + item.height / 2 <= constraints.maxHeight)
+                        item.place(position.first.roundToInt(), y - item.height / 2)
                 }
             }
         }

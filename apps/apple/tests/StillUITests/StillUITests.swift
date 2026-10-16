@@ -171,15 +171,26 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(word.frame.midX, original.midX, accuracy: 1)
         XCTAssertEqual(word.frame.midY, original.midY, accuracy: 1)
         assertCentered()
-        // Jump into a later row; the tapped word becomes the fixed middle word.
-        let target = app.buttons["passageWord-\(ordinal + 8)"]
-        XCTAssertTrue(target.isHittable)
-        XCTAssertGreaterThan(target.frame.midY, word.frame.midY)
+        // Jump into a later row; equal-sized words now fit more text per row.
+        XCTAssertLessThan(word.frame.height, original.height)
+        let target = try XCTUnwrap((0..<60).map { app.buttons["passageWord-\(ordinal + $0)"] }
+            .first { $0.isHittable && $0.frame.midY > word.frame.midY + 20 })
+        let targetWidth = target.frame.width
         let text = target.label.replacingOccurrences(of: "Read from ", with: "")
         target.tap()
         XCTAssertEqual(word.label, text)
+        XCTAssertEqual(word.frame.width, targetWidth, accuracy: 1) // Selection changes color, not size.
         assertCentered()
-        attachScreenshot("Centered passage in portrait")
+        let visibleRows = Dictionary(grouping: app.buttons.allElementsBoundByIndex.filter {
+            $0.identifier.hasPrefix("passageWord-") && $0.isHittable
+        }, by: { Int($0.frame.midY.rounded()) })
+        let inset = min(CGFloat(24), surface.frame.width / 8)
+        let alignedRows = visibleRows.values.filter { words in
+            words.count > 1 && abs((words.map { $0.frame.minX }.min() ?? 0) - surface.frame.minX - inset) < 2 &&
+                abs((words.map { $0.frame.maxX }.max() ?? 0) - surface.frame.maxX + inset) < 2
+        }
+        XCTAssertGreaterThanOrEqual(alignedRows.count, 2)
+        attachScreenshot("Justified passage in portrait")
         let before = wordOrdinal(in: app)
         surface.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5))
             .press(forDuration: 0.05, thenDragTo: surface.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5)))
@@ -207,6 +218,14 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(surface.value as? String, "Single-line view")
         XCTAssertEqual(wordOrdinal(in: app), paused)
         assertCentered()
+        app.buttons["Close reader"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), paused)
         XCUIDevice.shared.orientation = .portrait
     }
 
@@ -237,9 +256,10 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(word.label, text)
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
         XCTAssertGreaterThan(word.frame.midX, originalCenter)
-        let focusedCenter = word.frame.midX
+        let focusedOffset = (word.frame.midX - originalCenter) / word.frame.width
         app.buttons["toggleContext"].tap()
-        XCTAssertEqual(word.frame.midX, focusedCenter, accuracy: 1)
+        let surfaceCenter = app.otherElements["readingSurface"].frame.midX
+        XCTAssertEqual((word.frame.midX - surfaceCenter) / word.frame.width, focusedOffset, accuracy: 0.02)
         XCTAssertEqual(word.frame.midY, app.otherElements["readingSurface"].frame.midY, accuracy: 1)
         XCTAssertEqual(app.otherElements["readingSurface"].value as? String, "Passage view")
         attachScreenshot("Focus letter in portrait")

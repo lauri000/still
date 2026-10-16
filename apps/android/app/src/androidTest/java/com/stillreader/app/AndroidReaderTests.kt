@@ -187,9 +187,25 @@ class AndroidReaderTests {
             val node = compose.onNodeWithTag("passageWord-$id")
             if (node.isDisplayed()) id to node.fetchSemanticsNode().boundsInRoot else null
         }
+        val column = compose.onNodeWithTag("nearbyPassage").fetchSemanticsNode().boundsInRoot
+        val inset = (24f * application.resources.displayMetrics.density).coerceAtMost(column.width / 8)
+        val alignedRows = visible.groupBy { it.second.center.y.toInt() }.values.count { words ->
+            words.size > 1 && kotlin.math.abs(words.minOf { it.second.left } - column.left - inset) < 2f &&
+                kotlin.math.abs(words.maxOf { it.second.right } - column.right + inset) < 2f
+        }
+        assertTrue("Full passage rows align to both column edges", alignedRows >= 2)
         assertTrue(visible.any { it.first < 40 && it.second.center.y < centerY - 20 })
         val below = visible.first { it.first > 40 && it.second.center.y > centerY + 20 }.first
+        val activeLayouts = mutableListOf<TextLayoutResult>()
+        val neighborLayouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(activeLayouts) }
+        compose.onNodeWithTag("passageWord-$below").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(neighborLayouts) }
+        assertEquals(activeLayouts.single().layoutInput.style.fontSize, neighborLayouts.single().layoutInput.style.fontSize)
+        val beforeSelection = compose.onNodeWithTag("passageWord-$below").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("passageWord-$below").performClick()
+        val afterSelection = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+        assertEquals(beforeSelection.width, afterSelection.width, 1f)
+        assertEquals(beforeSelection.height, afterSelection.height, 1f)
         compose.runOnIdle { assertEquals(below, model.state.value.reader!!.state.value.index) }
         assertCentered()
         compose.onNodeWithTag("readingSurface").performTouchInput { swipeLeft() }
@@ -211,6 +227,9 @@ class AndroidReaderTests {
         compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
         assertCentered()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
     }
 
     @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {
