@@ -10,6 +10,7 @@ struct ReaderView: View {
     @AppStorage("readingWPM") private var savedWPM = 250.0
     @AppStorage("naturalPauses") private var savedNaturalPauses = true
     @AppStorage("pauseAtUncheckedPages") private var pauseAtUncheckedPages = false
+    @AppStorage("focusLetter") private var focusLetter = false
     @State private var showContext = false
     @State private var showingSettings = false
     @GestureState private var dragInProgress = false
@@ -90,15 +91,17 @@ struct ReaderView: View {
         .accessibilityIdentifier("readingSurface")
     }
     private var wordRibbon: some View {
-        CenteredWordLayout(selected: engine.index - engine.context.startIndex) {
+        let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
+        return CenteredWordLayout(selected: engine.index - engine.context.startIndex, focusAnchor: focused.anchor) {
             if engine.tokens.isEmpty {
                 Text("Ready?").font(.custom("Georgia", size: 68)).accessibilityIdentifier("currentWord")
             } else {
                 ForEach(Array(engine.context)) { token in
                     if token.id == engine.index {
-                        Text(token.word.text)
-                            .font(.custom("Georgia", size: 68)).lineLimit(1).minimumScaleFactor(0.12)
-                            .padding(.horizontal, 8)
+                        Text(focused.text)
+                            .font(focused.anchor == nil ? .custom("Georgia", size: 68) : .custom("Georgia", fixedSize: 68))
+                            .lineLimit(1).minimumScaleFactor(focused.anchor == nil ? 0.12 : 0.01)
+                            .padding(.horizontal, focused.anchor == nil ? 8 : 0)
                             .accessibilityIdentifier("currentWord")
                             .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
                             .accessibilityHint("Swipe left for later words or right for earlier words.")
@@ -206,21 +209,26 @@ struct ReaderView: View {
         }.padding(18).frame(maxWidth: 500).background(Palette.surface, in: RoundedRectangle(cornerRadius: 12))
     }
     private var optionsSheet: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("Reading options").font(.system(size: 22, weight: .semibold))
-            Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
-            Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Divider()
-            Toggle("Pause at unchecked pages", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
-                pauseAtUncheckedPages = $0
-                engine.allowUnreviewed = !$0
-            })).accessibilityIdentifier("pauseAtUncheckedPages")
-            Text("Require page approval before playback.").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            if engine.book.emptyReadingPageCount > 0 {
-                Text("\(engine.book.emptyReadingPageCount) included page(s) have no selectable text and are skipped when this option is off. You can inspect them in Edit text.").font(.system(size: 12)).foregroundStyle(Palette.amber)
-            }
-            Button("Done") { showingSettings = false }.buttonStyle(PrimaryButton())
-        }.padding(30).frame(idealWidth: 460).background(Palette.paper)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text("Reading options").font(.system(size: 22, weight: .semibold))
+                Toggle("Focus letter", isOn: $focusLetter).accessibilityIdentifier("focusLetter")
+                Text("Highlight one letter and keep it centered as words advance.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Divider()
+                Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
+                Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Divider()
+                Toggle("Pause at unchecked pages", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
+                    pauseAtUncheckedPages = $0
+                    engine.allowUnreviewed = !$0
+                })).accessibilityIdentifier("pauseAtUncheckedPages")
+                Text("Require page approval before playback.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                if engine.book.emptyReadingPageCount > 0 {
+                    Text("\(engine.book.emptyReadingPageCount) included page(s) have no selectable text and are skipped when this option is off. You can inspect them in Edit text.").font(.system(size: 12)).foregroundStyle(Palette.amber)
+                }
+                Button("Done") { showingSettings = false }.buttonStyle(PrimaryButton())
+            }.padding(30)
+        }.frame(idealWidth: 460, idealHeight: 520).background(Palette.paper)
     }
     private func setAwake(_ awake: Bool) {
         #if os(iOS)
@@ -229,9 +237,10 @@ struct ReaderView: View {
     }
 }
 
-/// Keeps the selected word at the same screen position as its neighbors change length.
+/// Anchors the selected word (or its focus letter) as its neighbors change length.
 private struct CenteredWordLayout: Layout {
     var selected: Int
+    var focusAnchor: CGFloat?
     let spacing: CGFloat = 18
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -241,16 +250,21 @@ private struct CenteredWordLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard subviews.indices.contains(selected) else { return }
         let current = subviews[selected]
-        let currentWidth = min(current.sizeThatFits(.unspecified).width, bounds.width * 0.68)
-        current.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center,
+        let anchor = focusAnchor ?? 0.5
+        // Keep both sides of a focused word inside the ribbon's fading edges.
+        let availableWidth = focusAnchor == nil ? bounds.width * 0.68
+            : min(bounds.width * 0.68, bounds.width * 0.44 / max(anchor, 1 - anchor))
+        let currentWidth = min(current.sizeThatFits(.unspecified).width, availableWidth)
+        let leading = bounds.midX - currentWidth * anchor
+        current.place(at: CGPoint(x: leading, y: bounds.midY), anchor: .leading,
                       proposal: ProposedViewSize(width: currentWidth, height: bounds.height))
-        var leadingEdge = bounds.midX - currentWidth / 2 - spacing
+        var leadingEdge = leading - spacing
         for index in (0..<selected).reversed() {
             let size = subviews[index].sizeThatFits(.unspecified)
             subviews[index].place(at: CGPoint(x: leadingEdge, y: bounds.midY), anchor: .trailing, proposal: .unspecified)
             leadingEdge -= size.width + spacing
         }
-        var trailingEdge = bounds.midX + currentWidth / 2 + spacing
+        var trailingEdge = leading + currentWidth + spacing
         for index in (selected + 1)..<subviews.count {
             let size = subviews[index].sizeThatFits(.unspecified)
             subviews[index].place(at: CGPoint(x: trailingEdge, y: bounds.midY), anchor: .leading, proposal: .unspecified)

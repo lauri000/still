@@ -149,6 +149,58 @@ final class StillUITests: XCTestCase {
         attachScreenshot("Swipe through the expanded passage")
     }
 
+    @MainActor
+    func testFocusLetterTogglePersistsWithoutMovingReadingPosition() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(app.buttons["playPause"].waitForExistence(timeout: 5))
+        let word = app.staticTexts["currentWord"]
+        // Choose a word whose focus is visibly left of its midpoint.
+        for _ in 0..<20 where word.label.count < 6 { app.buttons["Next word"].tap() }
+        XCTAssertGreaterThanOrEqual(word.label.count, 6)
+        let text = word.label
+        let ordinal = wordOrdinal(in: app)
+        let originalCenter = word.frame.midX
+        app.buttons["readingOptions"].tap()
+        let toggle = app.switches["focusLetter"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        XCTAssertEqual(toggle.value as? String, "1")
+        app.buttons["Done"].tap()
+        XCTAssertEqual(word.label, text)
+        XCTAssertEqual(wordOrdinal(in: app), ordinal)
+        XCTAssertGreaterThan(word.frame.midX, originalCenter)
+        attachScreenshot("Focus letter in portrait")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitForRotation(in: app, landscape: true, controlID: "playPause")
+        attachScreenshot("Focus letter in landscape")
+        app.buttons["Close reader"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(app.buttons["playPause"].waitForExistence(timeout: 5))
+        XCTAssertEqual(word.label, text)
+        XCTAssertEqual(wordOrdinal(in: app), ordinal)
+        app.buttons["readingOptions"].tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        XCTAssertEqual(toggle.value as? String, "0")
+        app.buttons["Done"].tap()
+        let surface = app.otherElements["readingSurface"]
+        XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     @MainActor private func wordOrdinal(in app: XCUIApplication) -> Int {
         let value = app.staticTexts["currentWord"].value as? String ?? ""
         return value.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? -1

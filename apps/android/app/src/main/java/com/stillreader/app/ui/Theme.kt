@@ -11,6 +11,7 @@ val Forest = Color(0xFF304D3B)
 val Ink = Color(0xFF29332B)
 val Muted = Color(0xFF70786B)
 val Line = Color(0xFFD6D9CC)
+val FocusLetter = Color(0xFFB32E24)
 
 @Composable
 fun StillTheme(content: @Composable () -> Unit) {

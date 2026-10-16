@@ -30,6 +30,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     private val mutable = MutableStateFlow(LibraryState(selectedID = saved["selectedID"]))
     val state = mutable.asStateFlow()
     private val preferences = application.getSharedPreferences("reading", 0)
+    var focusLetter: Boolean
+        get() = preferences.getBoolean("focusLetter", false)
+        set(value) { preferences.edit().putBoolean("focusLetter", value).apply() }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var importJob: Job? = null

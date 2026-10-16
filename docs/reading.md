@@ -7,6 +7,8 @@
 
 Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. Space plays/pauses, the arrow keys step one word, and Escape closes the reader. The text icon opens a larger nearby passage; the ellipsis opens reading options.
 
+**Focus letter** in reading options highlights one letter of the current word in red and holds that letter at the center as words advance. It is off by default and remembered on this device across books and app launches. Turn it off to center the whole word again. The cue uses a simple word-length rule, ignores punctuation when choosing a letter, and preserves accents and complete characters. Words without letters or numbers stay centered without a highlight. This is an optional visual aid, not a promise of faster reading or better comprehension.
+
 Optional tools live in the book’s **…** menu: **Edit text**, **Chapters**, **Choose starting word…**, book metadata, backups, and deletion. Choose starting word supports a start midway through a page and **Restore beginning**. The PDF and full page text are always retained. Review and approval are optional; **Pause at unchecked pages** in reading options enables the stricter workflow. By default, unchecked text plays immediately and pages with no selectable text are skipped.
 
 ## Storage and moving between devices

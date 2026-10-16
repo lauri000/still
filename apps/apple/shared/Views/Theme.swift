@@ -9,6 +9,7 @@ enum Palette {
     static let muted = Color(red: 0.44, green: 0.47, blue: 0.42)
     static let line = Color(red: 0.84, green: 0.85, blue: 0.80)
     static let amber = Color(red: 0.57, green: 0.38, blue: 0.17)
+    static let focusLetter = Color(red: 0.70, green: 0.18, blue: 0.14)
 }
 
 struct PrimaryButton: ButtonStyle {

@@ -52,6 +52,6 @@ The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-imple
 
 ## Current verification
 
-Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, 34 iPad unit/integration tests pass, and all five iPad UI tests pass. Portrait and landscape iPad screenshots were inspected and saved in [`docs/screenshots/`](../../docs/screenshots/).
+Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, 37 iPad unit/integration tests pass, and all six iPad UI tests pass. Focus-letter highlighting, preference persistence, and portrait and landscape iPad screenshots were inspected and saved in [`docs/screenshots/`](../../docs/screenshots/).
 
 macOS UI interaction was not manually verified because desktop Computer Use permission was unavailable. Physical Apple devices and developer signing were not exercised.

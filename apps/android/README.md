@@ -19,7 +19,7 @@ Minimum Android version: **Android 9 / API 28**. The app currently targets API 3
 
 Import a PDF, choose the starting page using the PDF preview, and tap **Read**. Press Play to begin. The selected word stays centered, with surrounding words visible. Swipe left/right to move forward/backward, or tap a nearby word. Swiping pauses playback; press Play to resume from the selected word. Speed ranges from 60 to 900 WPM.
 
-The text icon opens a larger nearby passage. Reading options contain natural pauses and optional strict page review. The screen stays awake while playing; backgrounding, leaving the reader, and interrupted swipes pause and save the selected position. Reopening a book offers **Continue reading**. Explicitly choosing another starting page resets its beginning boundary.
+The text icon opens a larger nearby passage. Reading options contain the saved **Focus letter** toggle (off by default), natural pauses, and optional strict page review. Focus letter highlights one character and holds it at the center as words advance. The screen stays awake while playing; backgrounding, leaving the reader, and interrupted swipes pause and save the selected position. Reopening a book offers **Continue reading**. Explicitly choosing another starting page resets its beginning boundary.
 
 The book's ellipsis menu contains corrections, page inclusion/review, chapters, a starting-word selector with **Restore beginning**, title/author editing, portable backup export, and deletion. Original PDFs and extracted text remain intact.
 
@@ -50,9 +50,9 @@ JVM tests cover shared Swift tokenizer fixtures, Apple backup decoding, Kotlin e
 
 Verified on 16 October 2026:
 
-- Debug APK builds; 13 JVM tests and all 6 Android device tests pass on the Android 16 / API 36 emulator.
+- Debug APK builds; 15 JVM tests and all 7 Android device tests pass on the Android 16 / API 36 emulator.
 - The Swift checker passes 6 tokenizer fixtures and reads the Android-exported portable backup.
-- Android lint reports zero errors (15 warnings, primarily dependency/SDK update notices).
+- Android lint reports zero errors (16 warnings, primarily dependency/SDK update notices).
 - Manual import through the system file picker, portrait/landscape reader layouts, and selected-word retention across rotation were checked. Screenshots are in [`docs/screenshots/android/`](../../docs/screenshots/android/).
 - Physical Android devices, release signing, and Play Store distribution have not been exercised.
 

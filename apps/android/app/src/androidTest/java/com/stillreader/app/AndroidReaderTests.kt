@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -38,6 +40,7 @@ class AndroidReaderTests {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var root: File
     private lateinit var model: LibraryViewModel
+    private var previousFocusLetter = false
     private val store = ViewModelStore()
     private val application get() = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
     private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name)
@@ -45,6 +48,9 @@ class AndroidReaderTests {
 
     @Before fun before() {
         root = File(application.cacheDir, "reader-test-${newID()}").apply { mkdirs() }
+        val preferences = application.getSharedPreferences("reading", 0)
+        previousFocusLetter = preferences.getBoolean("focusLetter", false)
+        preferences.edit().putBoolean("focusLetter", false).commit()
     }
     private fun launch(seed: Boolean = true) {
         if (seed) {
@@ -69,6 +75,7 @@ class AndroidReaderTests {
             compose.runOnUiThread { store.clear() }
         }
         root.deleteRecursively()
+        application.getSharedPreferences("reading", 0).edit().putBoolean("focusLetter", previousFocusLetter).commit()
     }
     @Test fun androidUnicodeMatchesSwiftFixtures() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json").bufferedReader().use { it.readText() })
@@ -148,6 +155,47 @@ class AndroidReaderTests {
         val tokens = Tokenizer.tokens(persisted)
         assertEquals("story.", tokens[Tokenizer.index(persisted.position, tokens)].word.text)
     }
+    @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {
+        launch()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.onNodeWithContentDescription("Next word").performClick()
+        compose.onNodeWithTag("currentWord").assertTextEquals("story.")
+        val index = model.state.value.reader!!.state.value.index
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithContentDescription("Focus letter").assertIsOff().performClick()
+        compose.onNodeWithText("Done").performClick()
+        assertFocusedCharacterCentered()
+        compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+        assertTrue(application.getSharedPreferences("reading", 0).getBoolean("focusLetter", false))
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        assertFocusedCharacterCentered()
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithContentDescription("Focus letter").assertIsOn().performClick()
+        compose.onNodeWithText("Done").performClick()
+        val word = compose.onNodeWithTag("currentWord").fetchSemanticsNode()
+        val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode()
+        assertEquals(surface.boundsInRoot.center.x, word.boundsInRoot.center.x, 1f)
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.single().layoutInput.text.spanStyles.isEmpty())
+        compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+    }
+
+    private fun assertFocusedCharacterCentered() {
+        val node = compose.onNodeWithTag("currentWord")
+        node.assertTextEquals("story.")
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val layout = layouts.single()
+        val span = layout.layoutInput.text.spanStyles.single()
+        assertEquals("t", layout.layoutInput.text.text.substring(span.start, span.end))
+        val center = node.fetchSemanticsNode().boundsInRoot.left + layout.getBoundingBox(span.start).center.x
+        val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
+        assertEquals(surface.center.x, center, 1f)
+    }
+
     @Test fun textCorrectionsRemainOptionalAndPersist() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
