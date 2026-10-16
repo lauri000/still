@@ -1,7 +1,7 @@
 repository: https://github.com/lauri000/still
 pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
 # Build locally with scripts/android-release.py. zsp uploads this signed APK.
-release_source: ./dist/still-0.1.1-android-universal.apk
+release_source: ./dist/still-0.1.2-android-universal.apk
 name: Still
 summary: Read your PDFs one word at a time, at your own pace.
 description: |
@@ -11,9 +11,11 @@ description: |
   Release to pause. While holding, move right to increase the current speed or
   left to decrease it, without a play button or slider.
 
-  The current word stays centered with surrounding words visible. Swipe the text
-  backward or forward, or tap a nearby word, then hold the corner to resume.
-  Text navigation stays separate from the corner's speed gesture.
+  The current word stays centered with surrounding words visible. Switch between
+  a single line and a passage of rows that move around the active word. One reading
+  view is shown at a time, including a compact layout for phone landscape screens.
+  Swipe the text backward or forward, or tap a nearby word, then hold the corner
+  to resume. Text navigation stays separate from the corner's speed gesture.
 
   - Adjustable speed from 60 to 900 words per minute, with optional natural pauses.
   - Optional centered, highlighted focus letter.
@@ -34,5 +36,6 @@ icon: ./docs/store/icon.png
 images:
   - ./docs/screenshots/android/starting-page.png
   - ./docs/screenshots/hold-to-read/android-portrait.png
-  - ./docs/screenshots/hold-to-read/android-landscape.png
-release_notes: ./docs/releases/0.1.1.md
+  - ./docs/screenshots/centered-passage/android-portrait.png
+  - ./docs/screenshots/centered-passage/android-landscape.png
+release_notes: ./docs/releases/0.1.2.md
