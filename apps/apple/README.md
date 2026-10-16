@@ -31,6 +31,8 @@ xcodegen generate --spec apps/apple/project.yml
 - `shared/StillApp.swift`: common application entry point and library initialization.
 - `tests/`: `StillTests` and `StillUITests`.
 
+The compact header holds page navigation and progress; text fills the remaining space. On iPhone and iPad, hold the invisible bottom-right quarter to read and drag horizontally to adjust speed. Start elsewhere to scrub; each gesture keeps its starting role until release. Tapping words no longer jumps. On Mac, header buttons handle playback, stepping, and speed (±10 WPM), with Space and arrow keys retained. WPM appears only after a speed adjustment and fades when adjustments stop.
+
 Passage view uses equal-sized words by default, a dark centered active word, and muted surrounding rows. Full rows are justified to align their edges, while short paragraph endings keep normal spacing. The saved **Active word size** slider in reading options adjusts the active word in both views from 100% to 300% of the surrounding text size. The default is 100%, and long words still shrink to fit. Reading options include a persistent **Animated scrolling** toggle, off by default, for both layouts. It moves surrounding words while keeping the active word or focus letter centered, settles immediately when paused or navigated, and respects Reduce Motion.
 
 See the [reading guide](../../docs/reading.md) and [portable book contract](../../shared/FORMAT.md) for behavior shared with Android.
@@ -48,12 +50,10 @@ xcodebuild -project apps/apple/Still.xcodeproj -scheme Still \
   -derivedDataPath DerivedData/iOS CODE_SIGNING_ALLOWED=NO test
 ```
 
-Use an available iPad simulator name if `Still iPad` is not installed locally. `StillTests` covers real PDF extraction, bookmarks, Unicode positions, trims, corrections, persistence, backups, and playback/scrubbing. `StillUITests` covers the import picker, starting-page selection, exact resume, surrounding words, swipe/tap navigation, and optional corrections. UI tests use an isolated temporary library.
+Use an available iPad simulator name if `Still iPad` is not installed locally. `StillTests` covers real PDF extraction, bookmarks, Unicode positions, trims, corrections, persistence, backups, and playback/scrubbing. `StillUITests` covers the import picker, starting-page selection, exact resume, surrounding words, swipe navigation and fixed gesture zones, and optional corrections. UI tests use an isolated temporary library.
 
 The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-implementations) also compile the production Swift model and sample PDF generator directly.
 
 ## Current verification
 
-Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, and all eight iPad UI scenarios pass. The centered-passage test also passes on the iPhone 17 simulator, including portrait/landscape centering and visible rows above and below the active word. Tests cover mutually exclusive reading views, row-word selection, swiping, focus-letter alignment, and hold-to-read. Previews are in [`docs/screenshots/centered-passage/`](../../docs/screenshots/centered-passage/). The native core's 38 unit/integration tests passed in the preceding hold-to-read release.
-
-Animated-scrolling verification on 16 October 2026: 43 unit/layout tests pass, including actual intermediate SwiftUI placements, fixed centering, edge wrapping, and immediate interruption. The full eight-test iPad UI suite passes; after the final edge-wrapping refinement, the affected passage/settings/resume scenario also passes again on both iPad and iPhone in portrait and landscape. The unsigned macOS build passes, and desktop play/pause, Space/arrow keys, mode switching, focus-letter rendering, and exact resume were exercised from the build output. Physical Apple devices and developer signing were not exercised.
+Verified on 16 October 2026 with Xcode 26.3: 43 unit/layout tests and all 10 iPad UI tests pass. Four focused iPhone scenarios also pass, covering the compact header, gesture zones, speed changes, passage layout, and saved word size in portrait and landscape. The macOS target builds, and an isolated native view preview confirms the header and reading layout. Physical Apple devices and developer signing were not exercised.

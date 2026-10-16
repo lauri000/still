@@ -18,6 +18,8 @@ struct ReaderView: View {
     @State private var showContext = false
     @State private var showingSettings = false
     @GestureState private var dragInProgress = false
+    @State private var speedFeedbackID = 0
+    @State private var showSpeed = false
     var onReviewPage: (Int) -> Void
     var onCheckpoint: (ReadingPosition) -> Void
 
@@ -29,15 +31,8 @@ struct ReaderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header.padding(.horizontal, 24).padding(.vertical, 16)
-            Rectangle().fill(Palette.line).frame(height: 1)
-            focusStage.frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let blocked = engine.blockedPage { reviewNotice(blocked).padding(.horizontal, 24).padding(.bottom, 22) }
-            #if os(macOS)
-            controls
-            speedControl.padding(.top, 25)
-            #endif
-            progressFooter.padding(.horizontal, 24).padding(.vertical, 18)
+            header
+            focusStage
         }.background(Palette.paper).foregroundStyle(Palette.ink)
         .onAppear {
             engine.wordsPerMinute = savedWPM
@@ -46,39 +41,118 @@ struct ReaderView: View {
             engine.onCheckpoint = onCheckpoint
             if engine.tokens.isEmpty { engine.play() }
         }
+        .task(id: speedFeedbackID) {
+            guard speedFeedbackID > 0 else { return }
+            withAnimation(.easeOut(duration: 0.08)) { showSpeed = true }
+            do { try await Task.sleep(for: .milliseconds(650)) } catch { return }
+            withAnimation(.easeOut(duration: 0.18)) { showSpeed = false }
+        }
         .onDisappear { engine.pause(); setAwake(false) }
         .onChange(of: engine.isPlaying) { _, playing in setAwake(playing) }
         .onChange(of: engine.wordsPerMinute) { _, value in savedWPM = value }
         .onChange(of: dragInProgress) { _, dragging in if !dragging { engine.endScrubbing() } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { engine.pause() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { engine.pause(); showSpeed = false } }
         .sheet(isPresented: $showingSettings) { optionsSheet }
         .preferredColorScheme(.light)
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            Button { engine.pause(); dismiss() } label: { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
-                .buttonStyle(.plain).accessibilityLabel("Close reader").keyboardShortcut(.escape, modifiers: [])
-            Text(engine.book.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
-            Spacer()
-            Button { engine.pause(); showContext.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
-                .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
-            Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
-        }
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Button { engine.pause(); dismiss() } label: { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
+                    .buttonStyle(.plain).accessibilityLabel("Close reader").keyboardShortcut(.escape, modifiers: [])
+                #if os(macOS)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(engine.book.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                    pageMenu
+                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                #else
+                pageMenu
+                #endif
+                #if os(macOS)
+                controls
+                #endif
+                Button { engine.pause(); showContext.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
+                    .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
+                Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                    .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
+            }.padding(.horizontal, 12).padding(.vertical, 4)
+            GeometryReader { geometry in
+                Rectangle().fill(Palette.line)
+                    .overlay(alignment: .leading) { Rectangle().fill(Palette.forest).frame(width: geometry.size.width * engine.progress) }
+            }.frame(height: 2).accessibilityLabel("Reading progress")
+                .accessibilityValue("\(Int(engine.progress * 100)) percent").accessibilityIdentifier("readingProgress")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("readerHeader")
+    }
+    private var pageDescription: String {
+        "\(engine.isFinished ? "Finished · " : "")Page \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
+    }
+    private var pageMenu: some View {
+        Menu {
+            ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
+                if engine.book.includesPage(at: index) { Button("Page \(page.label)") { engine.seekPage(index) } }
+            }
+        } label: {
+            #if os(macOS)
+            Text(pageDescription).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            #else
+            VStack(alignment: .leading, spacing: 2) {
+                Text(engine.book.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.ink)
+                Text(pageDescription).font(.system(size: 11)).foregroundStyle(Palette.muted)
+            }.lineLimit(1).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            #endif
+        }.menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .accessibilityIdentifier("readerPage")
+            .simultaneousGesture(TapGesture().onEnded { engine.pause() })
     }
     private var focusStage: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
-                wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack(alignment: .bottomTrailing) {
+                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
+                    wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
+                        .frame(maxWidth: showContext ? 850 : .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                #if os(iOS)
+                ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings,
+                    onBegin: { reading in if reading { engine.play() } else { engine.pause() } },
+                    onMove: { reading, movement in
+                        if reading { changeSpeed(by: Double(movement) * 2) }
+                        else if abs(movement) > 12 || engine.isScrubbing {
+                            engine.beginScrubbing()
+                            engine.scrub(by: -Int(movement / 32))
+                        }
+                    },
+                    onEnd: { if engine.isPlaying || engine.isScrubbing { engine.pause() } })
+                holdCorner.frame(width: geometry.size.width / 2, height: geometry.size.height / 2)
+                    .allowsHitTesting(false)
+                #endif
+            }
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .gesture(scrubGesture)
+            #endif
+            .overlay(alignment: .topTrailing) {
+                if showSpeed {
+                    Text("\(Int(engine.wordsPerMinute)) wpm").font(.system(size: 14)).monospacedDigit()
+                        .foregroundStyle(Palette.forest).padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Palette.paper.opacity(0.94), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(16).transition(.opacity).accessibilityIdentifier("speedOverlay").allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let blocked = engine.blockedPage { reviewNotice(blocked).padding(16) }
             }
         }
-        .contentShape(Rectangle())
-        .simultaneousGesture(scrubGesture)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("readingSurface")
         .accessibilityValue(showContext ? "Passage view" : "Single-line view")
+    }
+    private func changeSpeed(by amount: Double) {
+        let next = min(900, max(60, engine.wordsPerMinute + amount))
+        if Int(next) != Int(engine.wordsPerMinute) { speedFeedbackID += 1 }
+        engine.wordsPerMinute = next
     }
     private var scrolling: Bool { animatedScrolling && !reduceMotion && engine.isPlaying && scenePhase == .active }
 
@@ -121,15 +195,11 @@ struct ReaderView: View {
                                 }
                             }
                     } else {
-                        Button { engine.seek(token.id) } label: {
-                            Text(token.word.text)
-                                .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: neighborSize))
-                                .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1)
-                                .frame(minHeight: showContext ? passageRowHeight : 44)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Read from \(token.word.text)")
-                        .accessibilityIdentifier(showContext ? "passageWord-\(token.id)" : "nearbyWord-\(token.id)")
+                        Text(token.word.text)
+                            .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: neighborSize))
+                            .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1)
+                            .frame(minHeight: showContext ? passageRowHeight : 44)
+                            .accessibilityIdentifier(showContext ? "passageWord-\(token.id)" : "nearbyWord-\(token.id)")
                     }
                 }
             }
@@ -158,80 +228,39 @@ struct ReaderView: View {
     }
     #if os(macOS)
     private var controls: some View {
-        HStack(spacing: 25) {
-            Button { engine.seek(engine.index - 1) } label: { Image(systemName: "backward.end.fill").frame(width: 40, height: 44) }.keyboardShortcut(.leftArrow, modifiers: []).accessibilityLabel("Previous word")
+        HStack(spacing: 2) {
+            Button { engine.seek(engine.index - 1) } label: { Image(systemName: "backward.end.fill").frame(width: 32, height: 44) }
+                .keyboardShortcut(.leftArrow, modifiers: []).accessibilityLabel("Previous word")
             Button { engine.toggle() } label: {
                 Image(systemName: engine.isPlaying ? "pause.fill" : (engine.isFinished ? "arrow.counterclockwise" : "play.fill"))
-                    .font(.system(size: 22, weight: .medium)).foregroundStyle(Palette.paper)
-                    .frame(width: 76, height: 76).background(Palette.forest, in: Circle())
+                    .frame(width: 40, height: 44)
             }.keyboardShortcut(.space, modifiers: []).accessibilityLabel(engine.isPlaying ? "Pause reading" : "Play reading").accessibilityIdentifier("playPause")
-            Button { engine.seek(engine.index + 1) } label: { Image(systemName: "forward.end.fill").frame(width: 40, height: 44) }.keyboardShortcut(.rightArrow, modifiers: []).accessibilityLabel("Next word")
+            Button { engine.seek(engine.index + 1) } label: { Image(systemName: "forward.end.fill").frame(width: 32, height: 44) }
+                .keyboardShortcut(.rightArrow, modifiers: []).accessibilityLabel("Next word")
+            Button { changeSpeed(by: -10) } label: { Image(systemName: "minus").frame(width: 32, height: 44) }
+                .accessibilityLabel("Read slower").accessibilityValue("\(Int(engine.wordsPerMinute)) words per minute").help("Read slower (−10 WPM)")
+            Button { changeSpeed(by: 10) } label: { Image(systemName: "plus").frame(width: 32, height: 44) }
+                .accessibilityLabel("Read faster").accessibilityValue("\(Int(engine.wordsPerMinute)) words per minute").help("Read faster (+10 WPM)")
         }.buttonStyle(.plain).foregroundStyle(Palette.forest).disabled(engine.tokens.isEmpty)
     }
-    private var speedControl: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("\(Int(engine.wordsPerMinute))").font(.system(size: 23, weight: .medium, design: .rounded)).monospacedDigit()
-                Text("words / min").font(.system(size: 11)).foregroundStyle(Palette.muted)
-            }
-            HStack(spacing: 16) {
-                Slider(value: $engine.wordsPerMinute, in: 60...900, step: 10).tint(Palette.forest).accessibilityLabel("Words per minute")
-            }.font(.system(size: 10)).foregroundStyle(Palette.muted).frame(maxWidth: 330)
-        }
-    }
     #endif
-    private var progressFooter: some View {
-        VStack(spacing: 13) {
-            ProgressView(value: engine.progress).tint(Palette.forest)
-            HStack {
-                Menu {
-                    ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
-                        if engine.book.includesPage(at: index) { Button("Page \(page.label)") { engine.seekPage(index) } }
-                    }
-                } label: {
-                    Text("Page \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)")
-                }.menuStyle(.borderlessButton).fixedSize()
-                Spacer()
-                #if os(iOS)
-                holdCorner
-                #else
-                Text(engine.isFinished ? "Finished" : "\(Int(engine.progress * 100))%")
-                #endif
-            }.font(.system(size: 10)).foregroundStyle(Palette.muted)
-            #if os(iOS)
-            if engine.isFinished { Text("Finished").font(.system(size: 12)).foregroundStyle(Palette.muted) }
-            #endif
-        }
-    }
     #if os(iOS)
     private var holdCorner: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18).fill(engine.isPlaying ? Palette.surface : Palette.paper)
-            VStack(spacing: 5) {
-                Text("\(Int(engine.wordsPerMinute)) wpm")
-                    .font(.system(size: 22, weight: .medium, design: .rounded)).monospacedDigit().foregroundStyle(Palette.forest)
-                Text(engine.isPlaying ? "Release to pause" : "Hold to read").font(.system(size: 12))
-                Text("← slower · faster →").font(.system(size: 10))
-            }.allowsHitTesting(false)
-            HoldReadingTouchSurface(enabled: scenePhase == .active && !showingSettings,
-                onBegin: { engine.play() },
-                onMove: { delta in engine.wordsPerMinute = min(900, max(60, engine.wordsPerMinute + Double(delta) * 2)) },
-                onEnd: { engine.pause() })
-        }
-        .frame(width: 176, height: 96)
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("holdToRead")
-        .accessibilityLabel("Hold to read")
-        .accessibilityValue("\(Int(engine.wordsPerMinute)) words per minute, \(engine.isPlaying ? "reading" : "paused")")
-        .accessibilityHint("Hold to read. Move right to read faster, left to read slower. Release to pause.")
-        .accessibilityAction { engine.toggle() }
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: engine.wordsPerMinute = min(900, engine.wordsPerMinute + 10)
-            case .decrement: engine.wordsPerMinute = max(60, engine.wordsPerMinute - 10)
-            @unknown default: break
+        Color.clear
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("holdToRead")
+            .accessibilityLabel("Hold to read")
+            .accessibilityValue("\(Int(engine.wordsPerMinute)) words per minute, \(engine.isPlaying ? "reading" : "paused")")
+            .accessibilityHint("Hold to read. Move right to read faster, left to read slower. Release to pause.")
+            .accessibilityAction { engine.toggle() }
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: changeSpeed(by: 10)
+                case .decrement: changeSpeed(by: -10)
+                @unknown default: break
+                }
             }
-        }
     }
     #endif
     private func reviewNotice(_ index: Int) -> some View {
@@ -291,27 +320,31 @@ struct ReaderView: View {
 }
 
 #if os(iOS)
-/// Owns one touch from down to release, even when it leaves the corner. Keeping
-/// this outside the text scroll view prevents speed movement from scrubbing words.
-private struct HoldReadingTouchSurface: UIViewRepresentable {
+/// The starting zone owns a touch until release. Keeping one surface for both
+/// roles prevents a speed adjustment from turning into a scrub at the boundary.
+private struct ReadingTouchSurface: UIViewRepresentable {
     var enabled: Bool
-    var onBegin: () -> Void
-    var onMove: (CGFloat) -> Void
+    var onBegin: (Bool) -> Void
+    var onMove: (Bool, CGFloat) -> Void
     var onEnd: () -> Void
 
-    func makeUIView(context: Context) -> HoldTouchView { HoldTouchView() }
-    func updateUIView(_ view: HoldTouchView, context: Context) {
+    func makeUIView(context: Context) -> ReadingTouchView { ReadingTouchView() }
+    func updateUIView(_ view: ReadingTouchView, context: Context) {
         view.onBegin = onBegin
         view.onMove = onMove
         view.onEnd = onEnd
+        if !enabled { view.finish() }
         view.isUserInteractionEnabled = enabled
     }
 
-    final class HoldTouchView: UIView {
-        var onBegin: (() -> Void)?
-        var onMove: ((CGFloat) -> Void)?
+    final class ReadingTouchView: UIView {
+        var onBegin: ((Bool) -> Void)?
+        var onMove: ((Bool, CGFloat) -> Void)?
         var onEnd: (() -> Void)?
         private var tracked: UITouch?
+        private var activeTouches: Set<UITouch> = []
+        private var reading = false
+        private var startX: CGFloat = 0
         private var lastX: CGFloat = 0
         private var lastSize = CGSize.zero
 
@@ -324,30 +357,39 @@ private struct HoldReadingTouchSurface: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard tracked == nil, let touch = touches.first else { return }
+            let wasIdle = activeTouches.isEmpty
+            activeTouches.formUnion(touches)
+            guard wasIdle, tracked == nil, let touch = touches.first else { return }
             tracked = touch
-            lastX = touch.location(in: window).x
-            onBegin?()
+            let point = touch.location(in: self)
+            reading = point.x >= bounds.midX && point.y >= bounds.midY
+            startX = touch.location(in: window).x
+            lastX = startX
+            onBegin?(reading)
         }
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard let tracked, touches.contains(tracked) else { return }
             let x = tracked.location(in: window).x
-            onMove?(x - lastX)
+            onMove?(reading, reading ? x - lastX : x - startX)
             lastX = x
         }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            activeTouches.subtract(touches)
             if let tracked, touches.contains(tracked) { finish() }
         }
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { finish() }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            activeTouches.subtract(touches)
+            if let tracked, touches.contains(tracked) { finish() }
+        }
         override func layoutSubviews() {
             super.layoutSubviews()
             if bounds.size != lastSize { finish(); lastSize = bounds.size }
         }
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            if window == nil { finish() }
+            if window == nil { finish(); activeTouches.removeAll() }
         }
-        private func finish() {
+        func finish() {
             guard tracked != nil else { return }
             tracked = nil
             onEnd?()

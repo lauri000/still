@@ -1,38 +1,12 @@
 repository: https://github.com/lauri000/still
 pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
 # Build locally with scripts/android-release.py. zsp uploads this signed APK.
-release_source: ./dist/still-0.1.5-android-universal.apk
+release_source: ./dist/still-0.1.6-android-universal.apk
 name: Still
-summary: Read your PDFs one word at a time, at your own pace.
+summary: An offline PDF speed reader.
 description: |
-  Still is a quiet, offline PDF speed reader.
-
-  Import a PDF, choose where to begin, and hold the bottom-right corner to read.
-  Release to pause. While holding, move right to increase the current speed or
-  left to decrease it, without a play button or slider.
-
-  The current word stays centered with surrounding words visible. Switch between
-  a single line and a passage of rows that move around the active word. One reading
-  view is shown at a time, including a compact layout for phone landscape screens.
-  Adjust the active word from 100% to 300% of the surrounding text size in both
-  views. Start with equal-sized words, or enlarge the darker centered word while
-  keeping surrounding text muted. Passage rows are justified. Optional animated
-  scrolling moves surrounding words during playback and respects reduced motion.
-  Text fills the space below a compact header with page navigation and progress.
-  Hold the invisible bottom-right quarter to read; start a swipe elsewhere to
-  move backward or forward. Each gesture keeps its starting role until release,
-  even across the boundary. WPM appears only when adjusting speed. Tapping words
-  does not jump to them.
-
-  - Adjustable speed from 60 to 900 words per minute, with optional natural pauses.
-  - Optional centered, highlighted focus letter.
-  - Saved reading progress, page boundaries, and PDF bookmark chapters.
-  - Optional text corrections and a reversible starting-page or starting-word trim.
-  - Portable book backups compatible with Still for iPad and macOS.
-  - No account, network permission, or server dependency.
-
-  Requires Android 9 or newer. Designed for PDFs with selectable text;
-  scanned PDFs need manually entered text. OCR and automatic sync are not included.
+  Import a PDF and read at your own pace, one centered word at a time.
+  Choose a single line or surrounding text, with adjustable speed and word size.
 license: MIT
 website: https://github.com/lauri000/still
 tags:
@@ -46,4 +20,4 @@ images:
   - ./docs/screenshots/full-screen-reader/android-passage.png
   - ./docs/screenshots/full-screen-reader/android-landscape.png
   - ./docs/screenshots/full-screen-reader/android-options.png
-release_notes: ./docs/releases/0.1.5.md
+release_notes: ./docs/releases/0.1.6.md
