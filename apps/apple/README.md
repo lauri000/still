@@ -31,7 +31,7 @@ xcodegen generate --spec apps/apple/project.yml
 - `shared/StillApp.swift`: common application entry point and library initialization.
 - `tests/`: `StillTests` and `StillUITests`.
 
-Passage view uses equal-sized words, a dark centered active word, and muted surrounding rows. Full rows are justified to align their edges, while short paragraph endings keep normal spacing. The single-line reader retains its larger active word.
+Passage view uses equal-sized words, a dark centered active word, and muted surrounding rows. Full rows are justified to align their edges, while short paragraph endings keep normal spacing. The single-line reader retains its larger active word. Reading options includes a persistent **Animated scrolling** toggle, off by default, for both layouts. It moves surrounding words while keeping the active word or focus letter centered, settles immediately when paused or navigated, and respects Reduce Motion.
 
 See the [reading guide](../../docs/reading.md) and [portable book contract](../../shared/FORMAT.md) for behavior shared with Android.
 
@@ -56,4 +56,4 @@ The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-imple
 
 Verified on 16 October 2026 with Xcode 26.3: the macOS target builds, and all eight iPad UI scenarios pass. The centered-passage test also passes on the iPhone 17 simulator, including portrait/landscape centering and visible rows above and below the active word. Tests cover mutually exclusive reading views, row-word selection, swiping, focus-letter alignment, and hold-to-read. Previews are in [`docs/screenshots/centered-passage/`](../../docs/screenshots/centered-passage/). The native core's 38 unit/integration tests passed in the preceding hold-to-read release.
 
-macOS UI interaction was not manually verified because desktop Computer Use permission was unavailable. Physical Apple devices and developer signing were not exercised.
+Animated-scrolling verification on 16 October 2026: 43 unit/layout tests pass, including actual intermediate SwiftUI placements, fixed centering, edge wrapping, and immediate interruption. The full eight-test iPad UI suite passes; after the final edge-wrapping refinement, the affected passage/settings/resume scenario also passes again on both iPad and iPhone in portrait and landscape. The unsigned macOS build passes, and desktop play/pause, Space/arrow keys, mode switching, focus-letter rendering, and exact resume were exercised from the build output. Physical Apple devices and developer signing were not exercised.

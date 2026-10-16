@@ -40,6 +40,7 @@ class AndroidReaderTests {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var root: File
     private lateinit var model: LibraryViewModel
+    private var previousAnimatedScrolling = false
     private var previousFocusLetter = false
     private var previousWPM = 250
     private val store = ViewModelStore()
@@ -50,9 +51,10 @@ class AndroidReaderTests {
     @Before fun before() {
         root = File(application.cacheDir, "reader-test-${newID()}").apply { mkdirs() }
         val preferences = application.getSharedPreferences("reading", 0)
+        previousAnimatedScrolling = preferences.getBoolean("animatedScrolling", false)
         previousFocusLetter = preferences.getBoolean("focusLetter", false)
         previousWPM = preferences.getInt("wpm", 250)
-        preferences.edit().putBoolean("focusLetter", false).putInt("wpm", 250).commit()
+        preferences.edit().putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).commit()
     }
     private fun launch(seed: Boolean = true) {
         if (seed) {
@@ -77,7 +79,7 @@ class AndroidReaderTests {
             compose.runOnUiThread { store.clear() }
         }
         root.deleteRecursively()
-        application.getSharedPreferences("reading", 0).edit().putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM).commit()
+        application.getSharedPreferences("reading", 0).edit().putBoolean("animatedScrolling", previousAnimatedScrolling).putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM).commit()
     }
     @Test fun androidUnicodeMatchesSwiftFixtures() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json").bufferedReader().use { it.readText() })
@@ -166,6 +168,10 @@ class AndroidReaderTests {
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
         compose.onNodeWithTag("startReading").performClick()
         compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithContentDescription("Animated scrolling").assertIsOff().performClick()
+        compose.onNodeWithText("Done").performClick()
+        assertTrue(application.getSharedPreferences("reading", 0).getBoolean("animatedScrolling", false))
         val originalCenter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
         compose.onNodeWithTag("toggleContext").performClick()
         compose.onNodeWithTag("wordRibbon").assertDoesNotExist()
@@ -230,6 +236,9 @@ class AndroidReaderTests {
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithContentDescription("Animated scrolling").assertIsOn()
+        compose.onNodeWithText("Done").performClick()
     }
 
     @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {
