@@ -157,6 +157,13 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         let word = app.staticTexts["currentWord"]
         let surface = app.otherElements["readingSurface"]
+        app.buttons["readingOptions"].tap()
+        let animation = app.switches["animatedScrolling"]
+        XCTAssertTrue(animation.waitForExistence(timeout: 5))
+        XCTAssertEqual(animation.value as? String, "0")
+        animation.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        XCTAssertEqual(animation.value as? String, "1")
+        app.buttons["Done"].tap()
         let original = word.frame
         let ordinal = wordOrdinal(in: app)
         func assertCentered() {
@@ -226,6 +233,10 @@ final class StillUITests: XCTestCase {
         app.buttons["book-The art of attention"].tap()
         app.buttons["startReading"].tap()
         XCTAssertEqual(wordOrdinal(in: app), paused)
+        app.buttons["readingOptions"].tap()
+        XCTAssertTrue(animation.waitForExistence(timeout: 5))
+        XCTAssertEqual(animation.value as? String, "1")
+        app.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .portrait
     }
 

@@ -36,6 +36,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     var activeWordSizePercent: Int
         get() = preferences.getInt("activeWordSizePercent", 100).coerceIn(100, 300)
         set(value) { preferences.edit().putInt("activeWordSizePercent", value.coerceIn(100, 300)).apply() }
+    var animatedScrolling: Boolean
+        get() = preferences.getBoolean("animatedScrolling", false)
+        set(value) { preferences.edit().putBoolean("animatedScrolling", value).apply() }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var importJob: Job? = null

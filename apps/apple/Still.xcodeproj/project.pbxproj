@@ -15,8 +15,10 @@
 		1548713BADA2872B89446785 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50037580BCA3FFC598E15040 /* BookDetailView.swift */; };
 		1DD3EC907B8C758240366987 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A1D8432AF704E26180BA16 /* LibraryStore.swift */; };
 		24BDBCB7A31C2ABD2445E1CA /* PDFPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68723776F4580F8B7E999800 /* PDFPageView.swift */; };
+		2AAC7AFFBB20BBDA61D8BD24 /* WordMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */; };
 		38E72F153ECABDD4C0C4BF21 /* StillApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC3C3F00D1698B2637FDD8B0 /* StillApp.swift */; };
 		40981CA0F4A6180ACE60470B /* ReaderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBAB60B143D3B4A32B9E9BB /* ReaderEngine.swift */; };
+		4C2CC5334A4D2E210CA8F892 /* WordMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAC736A962F9499EB8B0236 /* WordMotionTests.swift */; };
 		4E50D4D6F28B50522057F1B6 /* BookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B92CCFCCC9851B8B2938EE /* BookRepository.swift */; };
 		521EE3DBBE0185A3857DF615 /* StillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C208B356FED1C92770ADE130 /* StillUITests.swift */; };
 		52CE6F20E6D5A09D048C8CFE /* PDFPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE54C048BE151EACEFBD366 /* PDFPageView.swift */; };
@@ -40,6 +42,7 @@
 		C6D42E648E64A9352F3B4DB8 /* ReadingFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02208860076FB527CD710D5 /* ReadingFocus.swift */; };
 		C7D3941C581CD5ED59BFE01F /* ReadingStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */; };
 		CF87545D507FE5AD9B8F2B35 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 848C4D408A0722D93878CAB3 /* Assets.xcassets */; };
+		D21067C354D4644D01892056 /* WordMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */; };
 		DB18F8C09C82C45439E1CE69 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E35A40284158E90E1A8E90 /* ReaderView.swift */; };
 		DF7BAAB574DBC61D730C6841 /* FocusWord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EC546E72B53F28364F11A3 /* FocusWord.swift */; };
 		F086465BA2119988D8991EF9 /* BookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B92CCFCCC9851B8B2938EE /* BookRepository.swift */; };
@@ -80,6 +83,7 @@
 		68723776F4580F8B7E999800 /* PDFPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageView.swift; sourceTree = "<group>"; };
 		6EE54C048BE151EACEFBD366 /* PDFPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageView.swift; sourceTree = "<group>"; };
 		75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStartView.swift; sourceTree = "<group>"; };
+		7BAC736A962F9499EB8B0236 /* WordMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordMotionTests.swift; sourceTree = "<group>"; };
 		7C5AD5102F9A1148893EA146 /* StillMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StillMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		848C4D408A0722D93878CAB3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97EE9709AEE3895D9E29E798 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
@@ -89,6 +93,7 @@
 		A9B92CCFCCC9851B8B2938EE /* BookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRepository.swift; sourceTree = "<group>"; };
 		BC3C3F00D1698B2637FDD8B0 /* StillApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StillApp.swift; sourceTree = "<group>"; };
 		C208B356FED1C92770ADE130 /* StillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StillUITests.swift; sourceTree = "<group>"; };
+		C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordMotion.swift; sourceTree = "<group>"; };
 		DB2735FFD23ACE7763251013 /* SampleBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleBook.swift; sourceTree = "<group>"; };
 		DCBB333B8EFD53025AD19FD5 /* StillUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = StillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E8E35A40284158E90E1A8E90 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
@@ -134,6 +139,7 @@
 				E8E35A40284158E90E1A8E90 /* ReaderView.swift */,
 				75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */,
 				45904E4715FD200DAA0DC573 /* Theme.swift */,
+				C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -143,6 +149,7 @@
 			children = (
 				103307D43A1B1EE98A32BF32 /* ReadingFocusTests.swift */,
 				27ED443915FD63DDCF7C6DFC /* StillTests.swift */,
+				7BAC736A962F9499EB8B0236 /* WordMotionTests.swift */,
 			);
 			path = StillTests;
 			sourceTree = "<group>";
@@ -378,6 +385,7 @@
 				0CCAEBFC204A0B229A6C4266 /* SampleBook.swift in Sources */,
 				73D328BCD4BC8B8463BE2B36 /* StillApp.swift in Sources */,
 				AF7B518E0F527A2621715B5D /* Theme.swift in Sources */,
+				D21067C354D4644D01892056 /* WordMotion.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -401,6 +409,7 @@
 				8C5D9586466B02428CD99C32 /* SampleBook.swift in Sources */,
 				38E72F153ECABDD4C0C4BF21 /* StillApp.swift in Sources */,
 				C6A544FF1EA9E87133C47D30 /* Theme.swift in Sources */,
+				2AAC7AFFBB20BBDA61D8BD24 /* WordMotion.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -410,6 +419,7 @@
 			files = (
 				1474FD4AEBC613413C7B2432 /* ReadingFocusTests.swift in Sources */,
 				83087A4E5E358136D762EC4A /* StillTests.swift in Sources */,
+				4C2CC5334A4D2E210CA8F892 /* WordMotionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
