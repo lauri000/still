@@ -2,7 +2,6 @@ package com.stillreader.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
@@ -10,17 +9,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,8 +46,10 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -52,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.ReadingSession
 import com.stillreader.app.core.ReadingFocus
+import kotlin.math.abs
+import kotlin.math.sign
 import kotlin.math.roundToInt
 
 @Composable
@@ -73,15 +81,20 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         onDispose { view.keepScreenOn = false }
     }
     DisposableEffect(session) { onDispose { session.pause() } }
-    val stepPixels = with(LocalDensity.current) { 32.dp.toPx() }
-    val swipe = Modifier.pointerInput(session, stepPixels) {
-        var distance = 0f
-        detectHorizontalDragGestures(
-            onDragStart = { distance = 0f; session.beginScrubbing() },
-            onDragEnd = { session.endScrubbing() },
-            onDragCancel = { session.pause() },
-            onHorizontalDrag = { change, delta -> change.consume(); distance += delta; session.scrub((-distance / stepPixels).toInt()) },
-        )
+    var speedChange by remember(session) { mutableIntStateOf(0) }
+    var showSpeed by remember(session) { mutableStateOf(false) }
+    val changeSpeed: (Double) -> Unit = { value ->
+        val next = value.coerceIn(60.0, 900.0)
+        if (next.toInt() != wpm.toInt()) speedChange++
+        wpm = next
+        model.speed(next)
+    }
+    LaunchedEffect(speedChange) {
+        if (speedChange > 0) {
+            showSpeed = true
+            delay(650)
+            showSpeed = false
+        }
     }
     Column(Modifier.fillMaxSize().onPreviewKeyEvent {
         if (it.type != KeyEventType.KeyDown) false else when (it.key) {
@@ -92,35 +105,44 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             else -> false
         }
     }) {
-        Header(session.book.title, onClose) {
-            IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
-                Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
+        Column(Modifier.testTag("readerHeader")) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Default.ArrowBack, "Back") }
+                Column(Modifier.weight(1f).heightIn(min = 48.dp)
+                    .clickable(onClickLabel = "Go to page") { session.pause(); pagePicker = true }
+                    .padding(horizontal = 4.dp), verticalArrangement = Arrangement.Center) {
+                    Text(session.book.title, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${if (state.finished) "Finished · " else ""}Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
+                        Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
+                    Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
+                }
+                IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
+                    Icon(Icons.Default.MoreHoriz, "Reading options")
+                }
             }
-            IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
-                Icon(Icons.Default.MoreHoriz, "Reading options")
-            }
+            LinearProgressIndicator(progress = { session.progress }, modifier = Modifier.fillMaxWidth().height(2.dp).testTag("readingProgress"),
+                color = Forest, trackColor = Line, strokeCap = StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {})
         }
-        Box(Modifier.weight(1f).fillMaxWidth().then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
+        ReadingSurface(session, wpm, state.playing, !options && !pagePicker,
+            passage, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
             WordRibbon(session, state.index, focusLetter, passage, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
-        }
-        state.blockedPage?.let { page ->
-            Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 500.dp).clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
-                Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
-                TextButton(onClick = { onReview(page) }) { Text("Review this page") }
+            androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
+                Text("${wpm.toInt()} wpm", modifier = Modifier.testTag("speedOverlay")
+                    .background(Paper.copy(alpha = .94f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = Forest, fontSize = 14.sp)
             }
-        }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-            LinearProgressIndicator(progress = { session.progress }, modifier = Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { session.pause(); pagePicker = true }, modifier = Modifier.weight(1f)) {
-                    Text("Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}", color = Muted, fontSize = 12.sp)
-                }
-                HoldReadingCorner(session, wpm, state.playing, !options && !pagePicker) {
-                    wpm = it; model.speed(it)
+            state.blockedPage?.let { page ->
+                Column(Modifier.align(Alignment.BottomCenter).padding(16.dp).widthIn(max = 500.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
+                    Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+                    TextButton(onClick = { onReview(page) }) { Text("Review this page") }
                 }
             }
-            if (state.finished) Text("Finished", color = Muted, fontSize = 12.sp)
         }
     }
     if (options) {
@@ -166,47 +188,64 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
 }
 
 @Composable
-private fun HoldReadingCorner(session: ReadingSession, wpm: Double, playing: Boolean, enabled: Boolean, change: (Double) -> Unit) {
+private fun ReadingSurface(
+    session: ReadingSession, wpm: Double, playing: Boolean, enabled: Boolean, passage: Boolean,
+    change: (Double) -> Unit, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit,
+) {
     val changeSpeed by rememberUpdatedState(change)
     val density = LocalDensity.current.density
     val focused = LocalWindowInfo.current.isWindowFocused
     var size by remember { mutableStateOf(IntSize.Zero) }
-    Column(Modifier.width(176.dp).height(96.dp).onSizeChanged { size = it }
-        .background(if (playing) Surface else Paper, RoundedCornerShape(18.dp))
-        .testTag("holdToRead")
-        .pointerInput(session, density, focused, enabled, size) {
+    LaunchedEffect(focused, enabled) { if (!focused || !enabled) session.pause() }
+    Box(modifier.onSizeChanged { size = it }.testTag("readingSurface")
+        .pointerInput(session, density, focused, enabled, size, passage) {
             if (!focused || !enabled) return@pointerInput
             awaitEachGesture {
                 val down = awaitFirstDown()
+                // The initial position owns the entire gesture, even across the
+                // boundary. Additional fingers cannot switch or take over its role.
+                val reading = down.position.x >= size.width / 2f && down.position.y >= size.height / 2f
                 down.consume()
+                var distance = 0f
+                var scrubbing = false
                 try {
-                    session.play()
-                    // Only the finger that started here owns this gesture. It can
-                    // leave the corner without turning into a text scrub.
+                    if (reading) session.play() else session.pause()
                     while (true) {
-                        val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        val event = awaitPointerEvent()
+                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
                         if (!pointer.pressed || pointer.isConsumed) break
-                        val delta = (pointer.position.x - pointer.previousPosition.x) / density
-                        if (delta != 0f) changeSpeed((session.wordsPerMinute + delta * 2).coerceIn(60.0, 900.0))
-                        pointer.consume()
+                        val delta = pointer.position.x - pointer.previousPosition.x
+                        if (reading) {
+                            if (delta != 0f) changeSpeed(session.wordsPerMinute + delta / density * 2)
+                        } else {
+                            distance += delta
+                            if (!scrubbing && abs(distance) > viewConfiguration.touchSlop) {
+                                distance -= sign(distance) * viewConfiguration.touchSlop
+                                session.beginScrubbing()
+                                scrubbing = true
+                            }
+                            if (scrubbing) session.scrub((-distance / (32 * density)).toInt())
+                        }
+                        event.changes.forEach { it.consume() }
                     }
                 } finally {
                     session.pause()
                 }
             }
-        }
-        .semantics(mergeDescendants = true) {
-            contentDescription = "Hold to read. Move right to read faster, left to read slower."
-            stateDescription = "${wpm.toInt()} words per minute, ${if (playing) "reading" else "paused"}"
-            // Screen-reader users can activate without sustaining a touch.
-            onClick(if (playing) "Pause reading" else "Start reading") { session.toggle(); true }
-            customActions = listOf(
-                CustomAccessibilityAction("Read faster") { changeSpeed((wpm + 10).coerceAtMost(900.0)); true },
-                CustomAccessibilityAction("Read slower") { changeSpeed((wpm - 10).coerceAtLeast(60.0)); true })
-        }, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("${wpm.toInt()} wpm", color = Forest, fontSize = 22.sp)
-        Text(if (playing) "Release to pause" else "Hold to read", color = Muted, fontSize = 12.sp)
-        Text("← slower · faster →", color = Muted, fontSize = 10.sp)
+        }, contentAlignment = Alignment.Center) {
+        Box(Modifier.align(Alignment.BottomEnd).fillMaxWidth(.5f).fillMaxHeight(.5f).testTag("holdToRead")
+            .semantics {
+                contentDescription = "Hold to read. Move right to read faster, left to read slower."
+                stateDescription = "${wpm.toInt()} words per minute, ${if (playing) "reading" else "paused"}"
+                if (enabled) {
+                    // Screen readers can start and pause without sustaining a touch.
+                    onClick(if (playing) "Pause reading" else "Start reading") { session.toggle(); true }
+                    customActions = listOf(
+                        CustomAccessibilityAction("Read faster") { changeSpeed(wpm + 10); true },
+                        CustomAccessibilityAction("Read slower") { changeSpeed(wpm - 10); true })
+                } else disabled()
+            })
+        content()
     }
 }
 
@@ -278,7 +317,7 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
                     style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = neighborSize.sp),
                     color = if (selected) Ink else Muted,
                     modifier = Modifier.then(if (selected) Modifier.background(Paper) else Modifier)
-                        .clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
+                        .heightIn(min = neighborHeight).wrapContentHeight()
                         .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")
                         .semantics {
                             if (selected) {
@@ -286,7 +325,7 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
                                 customActions = listOf(
                                     CustomAccessibilityAction("Next word") { session.seek(index + 1); true },
                                     CustomAccessibilityAction("Previous word") { session.seek(index - 1); true })
-                            } else contentDescription = "Read from ${token.word.text}"
+                            }
                         })
             } }
         }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->

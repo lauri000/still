@@ -1,7 +1,7 @@
 repository: https://github.com/lauri000/still
 pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
 # Build locally with scripts/android-release.py. zsp uploads this signed APK.
-release_source: ./dist/still-0.1.4-android-universal.apk
+release_source: ./dist/still-0.1.5-android-universal.apk
 name: Still
 summary: Read your PDFs one word at a time, at your own pace.
 description: |
@@ -18,8 +18,11 @@ description: |
   views. Start with equal-sized words, or enlarge the darker centered word while
   keeping surrounding text muted. Passage rows are justified. Optional animated
   scrolling moves surrounding words during playback and respects reduced motion.
-  Swipe the text backward or forward, or tap a nearby word, then hold the corner
-  to resume. Text navigation stays separate from the corner's speed gesture.
+  Text fills the space below a compact header with page navigation and progress.
+  Hold the invisible bottom-right quarter to read; start a swipe elsewhere to
+  move backward or forward. Each gesture keeps its starting role until release,
+  even across the boundary. WPM appears only when adjusting speed. Tapping words
+  does not jump to them.
 
   - Adjustable speed from 60 to 900 words per minute, with optional natural pauses.
   - Optional centered, highlighted focus letter.
@@ -39,8 +42,8 @@ tags:
 icon: ./docs/store/icon.png
 images:
   - ./docs/screenshots/android/starting-page.png
-  - ./docs/screenshots/reading-options/android-single-line.png
-  - ./docs/screenshots/reading-options/android-passage.png
-  - ./docs/screenshots/reading-options/android-landscape.png
-  - ./docs/screenshots/reading-options/android-options.png
-release_notes: ./docs/releases/0.1.4.md
+  - ./docs/screenshots/full-screen-reader/android-single-line.png
+  - ./docs/screenshots/full-screen-reader/android-passage.png
+  - ./docs/screenshots/full-screen-reader/android-landscape.png
+  - ./docs/screenshots/full-screen-reader/android-options.png
+release_notes: ./docs/releases/0.1.5.md
