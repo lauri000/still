@@ -11,6 +11,8 @@ struct ReaderView: View {
     @AppStorage("naturalPauses") private var savedNaturalPauses = true
     @AppStorage("pauseAtUncheckedPages") private var pauseAtUncheckedPages = false
     @AppStorage("focusLetter") private var focusLetter = false
+    @AppStorage("activeWordSizePercent") private var savedActiveWordSizePercent = 100
+    private var activeWordSizePercent: Int { min(300, max(100, savedActiveWordSizePercent)) }
     @State private var showContext = false
     @State private var showingSettings = false
     @GestureState private var dragInProgress = false
@@ -76,7 +78,8 @@ struct ReaderView: View {
     private func wordRibbon(height: CGFloat) -> some View {
         let compact = showContext && height < 240
         let passageSize: CGFloat = compact ? 20 : 24
-        let fontSize: CGFloat = showContext ? passageSize : 68
+        let neighborSize: CGFloat = showContext ? passageSize : 22
+        let fontSize = neighborSize * CGFloat(activeWordSizePercent) / 100
         let passageRowHeight: CGFloat = compact ? 36 : 48
         let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
         let radius = showContext ? 80 : 6
@@ -95,7 +98,6 @@ struct ReaderView: View {
                         Text(focused.text)
                             .font(focused.anchor == nil ? .custom("Georgia", size: fontSize) : .custom("Georgia", fixedSize: fontSize))
                             .lineLimit(1).minimumScaleFactor(focused.anchor == nil ? 0.12 : 0.01)
-                            .padding(.horizontal, !showContext && focused.anchor == nil ? 8 : 0)
                             .frame(minHeight: showContext ? passageRowHeight : 0)
                             .foregroundStyle(Palette.ink)
                             .accessibilityIdentifier("currentWord")
@@ -111,7 +113,7 @@ struct ReaderView: View {
                     } else {
                         Button { engine.seek(token.id) } label: {
                             Text(token.word.text)
-                                .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: showContext ? passageSize : 22))
+                                .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: neighborSize))
                                 .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1)
                                 .frame(minHeight: showContext ? passageRowHeight : 44)
                         }
@@ -233,6 +235,22 @@ struct ReaderView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Reading options").font(.system(size: 22, weight: .semibold))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Active word size")
+                        Spacer()
+                        Text("\(activeWordSizePercent)%").monospacedDigit().foregroundStyle(Palette.muted)
+                            .accessibilityIdentifier("activeWordSizeValue")
+                    }
+                    Slider(value: Binding(get: { Double(activeWordSizePercent) }, set: {
+                        savedActiveWordSizePercent = min(300, max(100, Int($0.rounded())))
+                    }), in: 100...300, step: 1)
+                        .accessibilityLabel("Active word size").accessibilityValue("\(activeWordSizePercent)%")
+                        .accessibilityIdentifier("activeWordSize")
+                    Text("100% matches surrounding text. Applies to both views.")
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
+                Divider()
                 Toggle("Focus letter", isOn: $focusLetter).accessibilityIdentifier("focusLetter")
                 Text("Highlight one letter and keep it centered as words advance.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()

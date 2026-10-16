@@ -12,6 +12,7 @@ struct StillApp: App {
                 try? FileManager.default.removeItem(at: root)
                 UserDefaults.standard.set(arguments.contains("--require-review"), forKey: "pauseAtUncheckedPages")
                 UserDefaults.standard.set(false, forKey: "focusLetter")
+                UserDefaults.standard.set(100, forKey: "activeWordSizePercent")
                 UserDefaults.standard.set(250.0, forKey: "readingWPM")
             }
             _library = StateObject(wrappedValue: LibraryStore(repository: BookRepository(root: root), includeSample: !arguments.contains("--empty-library")))

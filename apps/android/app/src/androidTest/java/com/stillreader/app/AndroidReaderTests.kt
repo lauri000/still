@@ -42,6 +42,7 @@ class AndroidReaderTests {
     private lateinit var model: LibraryViewModel
     private var previousFocusLetter = false
     private var previousWPM = 250
+    private var previousActiveWordSize: Int? = null
     private val store = ViewModelStore()
     private val application get() = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
     private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name)
@@ -52,7 +53,8 @@ class AndroidReaderTests {
         val preferences = application.getSharedPreferences("reading", 0)
         previousFocusLetter = preferences.getBoolean("focusLetter", false)
         previousWPM = preferences.getInt("wpm", 250)
-        preferences.edit().putBoolean("focusLetter", false).putInt("wpm", 250).commit()
+        previousActiveWordSize = if (preferences.contains("activeWordSizePercent")) preferences.getInt("activeWordSizePercent", 100) else null
+        preferences.edit().putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).commit()
     }
     private fun launch(seed: Boolean = true) {
         if (seed) {
@@ -77,7 +79,10 @@ class AndroidReaderTests {
             compose.runOnUiThread { store.clear() }
         }
         root.deleteRecursively()
-        application.getSharedPreferences("reading", 0).edit().putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM).commit()
+        application.getSharedPreferences("reading", 0).edit().apply {
+            putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM)
+            previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
+        }.commit()
     }
     @Test fun androidUnicodeMatchesSwiftFixtures() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json").bufferedReader().use { it.readText() })
@@ -230,6 +235,57 @@ class AndroidReaderTests {
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+    }
+
+    @Test fun activeWordSizeAppliesToBothViewsAndPersists() {
+        launch()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.onNodeWithTag("nearbyWord-2").performClick()
+        val index = model.state.value.reader!!.state.value.index
+        fun assertSize(size: Float) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            val node = compose.onNodeWithTag("currentWord")
+            node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertEquals(size, layouts.single().layoutInput.style.fontSize.value, .01f)
+            val word = node.fetchSemanticsNode().boundsInRoot
+            val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
+            assertEquals(surface.center.x, word.center.x, 1f)
+            assertEquals(surface.center.y, word.center.y, 1f)
+            compose.runOnIdle {
+                assertEquals(index, model.state.value.reader!!.state.value.index)
+                assertFalse(model.state.value.reader!!.state.value.playing)
+            }
+        }
+        fun changeSize(percent: Int) {
+            compose.onNodeWithTag("readingOptions").performClick()
+            compose.onNodeWithTag("activeWordSize").performSemanticsAction(SemanticsActions.SetProgress) { it(percent.toFloat()) }
+            compose.onNodeWithTag("activeWordSizeValue").assertTextEquals("$percent%")
+            compose.onNodeWithText("Done").performClick()
+        }
+        assertSize(22f)
+        changeSize(300)
+        assertSize(66f)
+        compose.onNodeWithTag("toggleContext").performClick()
+        val compact = compose.onNodeWithTag("nearbyPassage").fetchSemanticsNode().boundsInRoot.height /
+            application.resources.displayMetrics.density < 240
+        val passageSize = if (compact) 20f else 24f
+        assertSize(passageSize * 3)
+        changeSize(100)
+        assertSize(passageSize)
+        changeSize(200)
+        assertSize(passageSize * 2)
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        assertSize(44f)
+        assertEquals(200, application.getSharedPreferences("reading", 0).getInt("activeWordSizePercent", -1))
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithTag("activeWordSizeValue").assertTextEquals("200%")
+        compose.onNodeWithContentDescription("Focus letter").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick()
+        assertFocusedCharacterCentered()
+        compose.onNodeWithTag("toggleContext").performClick()
+        assertFocusedCharacterCentered()
     }
 
     @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {

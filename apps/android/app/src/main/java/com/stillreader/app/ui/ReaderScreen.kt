@@ -56,6 +56,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     var pagePicker by remember { mutableStateOf(false) }
     var wpm by remember(session) { mutableDoubleStateOf(session.wordsPerMinute) }
     var focusLetter by remember(model) { mutableStateOf(model.focusLetter) }
+    var activeWordSizePercent by remember(model) { mutableIntStateOf(model.activeWordSizePercent) }
     val view = LocalView.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -93,7 +94,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth().then(swipe).testTag("readingSurface"), contentAlignment = Alignment.Center) {
-            WordRibbon(session, state.index, focusLetter, passage)
+            WordRibbon(session, state.index, focusLetter, passage, activeWordSizePercent)
         }
         state.blockedPage?.let { page ->
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 500.dp).clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -120,6 +121,20 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         var strict by remember { mutableStateOf(!session.allowUnreviewed) }
         AlertDialog(onDismissRequest = { options = false }, title = { Text("Reading options") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Active word size", Modifier.weight(1f), fontSize = 14.sp)
+                    Text("$activeWordSizePercent%", Modifier.testTag("activeWordSizeValue"), color = Muted)
+                }
+                Slider(value = activeWordSizePercent.toFloat(), onValueChange = {
+                    activeWordSizePercent = it.roundToInt().coerceIn(100, 300)
+                    model.activeWordSizePercent = activeWordSizePercent
+                }, valueRange = 100f..300f, steps = 199,
+                    modifier = Modifier.testTag("activeWordSize").semantics {
+                        contentDescription = "Active word size"
+                        stateDescription = "$activeWordSizePercent%"
+                    })
+                Text("100% matches surrounding text. Applies to both views.", fontSize = 12.sp, color = Muted)
+                HorizontalDivider(color = Line)
                 OptionToggle("Focus letter", focusLetter) { focusLetter = it; model.focusLetter = it }
                 Text("Highlight one letter and keep it centered as words advance.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
@@ -194,13 +209,14 @@ fun OptionToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean) {
+private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean, activeWordSizePercent: Int) {
     BoxWithConstraints(Modifier.then(if (expanded) Modifier.widthIn(max = 850.dp) else Modifier).fillMaxWidth()
         .then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
         .clipToBounds().testTag(if (expanded) "nearbyPassage" else "wordRibbon")) {
         val compact = expanded && maxHeight < 240.dp
         val passageSize = if (compact) 20f else 24f
-        val fontSize = if (expanded) passageSize else 68f
+        val neighborSize = if (expanded) passageSize else 22f
+        val fontSize = neighborSize * activeWordSizePercent / 100f
         val neighborHeight = if (compact) 36.dp else 48.dp
         val radius = if (expanded) 80 else 6
         val tokens = session.tokens.subList((index - radius).coerceAtLeast(0), (index + radius + 1).coerceAtMost(session.tokens.size))
@@ -231,7 +247,7 @@ private fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean
             tokens.forEach { token -> key(token.id) {
                 val selected = token.id == index
                 Text(if (selected) styled else AnnotatedString(token.word.text), maxLines = 1, softWrap = false,
-                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = if (expanded) passageSize.sp else 22.sp),
+                    style = if (selected) currentStyle else LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = neighborSize.sp),
                     color = if (selected) Ink else Muted,
                     modifier = Modifier.clickable { session.seek(token.id) }.heightIn(min = neighborHeight).wrapContentHeight()
                         .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")

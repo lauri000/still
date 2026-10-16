@@ -172,7 +172,7 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(word.frame.midY, original.midY, accuracy: 1)
         assertCentered()
         // Jump into a later row; equal-sized words now fit more text per row.
-        XCTAssertLessThan(word.frame.height, original.height)
+        XCTAssertGreaterThanOrEqual(word.frame.height, original.height) // Same-size default, with a taller passage touch target.
         let target = try XCTUnwrap((0..<60).map { app.buttons["passageWord-\(ordinal + $0)"] }
             .first { $0.isHittable && $0.frame.midY > word.frame.midY + 20 })
         let targetWidth = target.frame.width
@@ -226,6 +226,71 @@ final class StillUITests: XCTestCase {
         app.buttons["book-The art of attention"].tap()
         app.buttons["startReading"].tap()
         XCTAssertEqual(wordOrdinal(in: app), paused)
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor
+    func testActiveWordSizeAppliesToBothViewsAndPersists() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
+        let word = app.staticTexts["currentWord"]
+        let ordinal = wordOrdinal(in: app)
+        let baseWidth = word.frame.width
+        func assertCentered() {
+            let surface = app.otherElements["readingSurface"]
+            XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
+            XCTAssertEqual(word.frame.midY, surface.frame.midY, accuracy: 1)
+            XCTAssertEqual(wordOrdinal(in: app), ordinal)
+            XCTAssertTrue((corner(in: app).value as? String ?? "").contains("paused"))
+        }
+        func changeSize(_ fraction: CGFloat, expected: String) {
+            app.buttons["readingOptions"].tap()
+            let slider = app.sliders["activeWordSize"]
+            XCTAssertTrue(slider.waitForExistence(timeout: 5))
+            slider.adjust(toNormalizedSliderPosition: fraction)
+            // XCTest's normalized adjustment stops slightly short of native slider endpoints.
+            slider.coordinate(withNormalizedOffset: CGVector(dx: fraction == 1 ? 0.95 : 0.05, dy: 0.5))
+                .press(forDuration: 0.1, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: fraction == 1 ? 1.2 : -0.2, dy: 0.5)))
+            XCTAssertEqual(app.staticTexts["activeWordSizeValue"].label, expected)
+            app.buttons["Done"].tap()
+        }
+        assertCentered()
+        changeSize(1, expected: "300%")
+        XCTAssertEqual(word.frame.width / baseWidth, 3, accuracy: 0.08)
+        assertCentered()
+        attachScreenshot("Single-line active word at 300 percent")
+        app.buttons["toggleContext"].tap()
+        let largePassageWidth = word.frame.width
+        assertCentered()
+        attachScreenshot("Passage active word at 300 percent")
+        changeSize(0, expected: "100%")
+        XCTAssertEqual(largePassageWidth / word.frame.width, 3, accuracy: 0.08)
+        assertCentered()
+        changeSize(1, expected: "300%")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitForRotation(in: app, landscape: true, controlID: "holdToRead")
+        assertCentered()
+        attachScreenshot("Large passage active word in landscape")
+        app.buttons["Close reader"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
+        XCTAssertEqual(word.frame.width / baseWidth, 3, accuracy: 0.08)
+        assertCentered()
+        app.buttons["readingOptions"].tap()
+        XCTAssertEqual(app.staticTexts["activeWordSizeValue"].label, "300%")
+        attachScreenshot("Saved active word size option")
+        app.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .portrait
     }
 

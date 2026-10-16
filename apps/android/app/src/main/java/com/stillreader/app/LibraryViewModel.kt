@@ -33,6 +33,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     var focusLetter: Boolean
         get() = preferences.getBoolean("focusLetter", false)
         set(value) { preferences.edit().putBoolean("focusLetter", value).apply() }
+    var activeWordSizePercent: Int
+        get() = preferences.getInt("activeWordSizePercent", 100).coerceIn(100, 300)
+        set(value) { preferences.edit().putInt("activeWordSizePercent", value.coerceIn(100, 300)).apply() }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var importJob: Job? = null
