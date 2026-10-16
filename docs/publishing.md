@@ -45,7 +45,7 @@ edits are not included. Use `--ref <commit>` for a specific committed snapshot.
 
 Artifacts appear in ignored `dist/`:
 
-- `still-0.1.0-android-universal.apk`
+- `still-<version>-android-universal.apk`
 - `SHA256SUMS`
 - `release.json` with source commit, APK hash, and certificate fingerprint
 - `android-signing-certificate.pem` (public certificate only)
