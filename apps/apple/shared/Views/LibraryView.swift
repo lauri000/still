@@ -85,7 +85,7 @@ struct LibraryView: View {
         ZStack {
             Color.black.opacity(0.2).ignoresSafeArea()
             VStack(spacing: 18) {
-                Text("Importing PDF").font(.headline)
+                Text("Preparing book").font(.headline)
                 Text(library.importMessage).font(.callout).foregroundStyle(Palette.muted)
                 ProgressView(value: library.importProgress).frame(width: 250)
                 Button("Cancel") { library.cancelImport() }.buttonStyle(SecondaryButton())

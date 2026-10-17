@@ -15,7 +15,7 @@ targets:
   Still:
     type: application
     platform: iOS
-    sources: [shared, ios]
+    sources: [shared, ios, ../../shared/resources]
     configFiles:
       Debug: ios/Config.xcconfig
       Release: ios/Config.xcconfig
@@ -23,7 +23,7 @@ targets:
     type: application
     platform: macOS
     deploymentTarget: '14.0'
-    sources: [shared, macos]
+    sources: [shared, macos, ../../shared/resources]
     configFiles:
       Debug: macos/Config.xcconfig
       Release: macos/Config.xcconfig

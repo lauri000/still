@@ -20,6 +20,10 @@ The book object preserves these keys:
 
 A page has `id`, one-based `number`, display `label`, immutable `extractedText`, editable `text`, `isReviewed`, and `isIncluded`. A chapter has `id`, `title`, `pageIndex`, `level`, and `source`. Importing a duplicate book assigns a new book UUID and import date, preserving page IDs, text, and positions.
 
+Pages may also contain optional `processedText` (the automatic repair baseline) and `textProcessingVersion` (currently `1`). These additive fields do not change schema/backup version 1. Missing fields decode as null; opening a legacy book or importing a backup never silently reprocesses its text. A page is manually edited when `text != (processedText ?? extractedText)`. Restoring the raw extraction remains possible.
+
+Fresh PDF imports repair text before tokenization. An explicit **Improve text** operation processes only included, unedited pages whose processing version is older, retains the original extraction, and resets review only when the reading text changes. UTF-16 source provenance relocates the reading position and beginning trim, including suffixes carried across a physical page break. Edited/excluded pages remain untouched. For backups extracted by another native engine, geometry is used only when its text matches the immutable source exactly. Version 1 upgrades only legacy raw-text baselines; future repair versions must map from the previous processed baseline as well.
+
 Positions use **UTF-16 code-unit offsets into the stored page text**. They are not Unicode scalar, grapheme, UTF-8 byte, or global word indices. Emoji and combining characters are covered by the fixtures. A saved offset resolves to the nearest preceding token on that page, clamped to the available text. Edits to an earlier page do not move a later page's position.
 
 `readingStart` is separate from page inclusion and does not delete content. Editing its page relocates the marker using the common UTF-16 prefix/suffix. Restoring the beginning preserves manually excluded pages. Unchecked text can play immediately by default; strict review is a local preference, not a book mutation.
@@ -36,6 +40,9 @@ From the repository root:
 xcrun swiftc apps/apple/shared/Core/Book.swift apps/apple/shared/Services/SampleBook.swift \
   scripts/contract-fixtures.swift -o /tmp/still-contract-fixtures
 /tmp/still-contract-fixtures
+
+xcrun swiftc apps/apple/shared/Core/Book.swift apps/apple/shared/Core/PDFTextRepair.swift scripts/pdf-repair-contracts.swift -o /tmp/still-pdf-repair-contracts
+/tmp/still-pdf-repair-contracts
 
 cd apps/android
 ./gradlew :app:testDebugUnitTest

@@ -31,8 +31,12 @@ Choose **Export book backup…** in the book menu to save a portable JSON backup
 
 ## Extraction limits
 
+New PDFs receive automatic text cleanup before reading: broken ligatures, discretionary hyphens, wrapped words, and spacing errors supported by the PDF's glyph positions. A small bundled English vocabulary helps retain genuine compounds. Processing happens locally during import; playback does not run a parser or model.
+
+For a previously imported book, choose **… → Improve text**. Your manual corrections and excluded pages are preserved, and the reading position and beginning trim move with their words. **Undo text improvement** is available during the current session until you change or read that book again. **Edit text → Restore extracted text** restores a page's original extraction. Backups preserve both the original and processed text.
+
 - Designed for PDFs with selectable text. Scanned/image-only pages are flagged; OCR is not yet implemented. You can enter text manually or exclude them.
-- The native PDF engine's extraction order is retained without silent rewriting. Multi-column layouts, footnotes, tables, ligatures, and line-break hyphenation can require corrections. The source PDF remains visible for comparison.
+- Cleanup preserves paragraph separators and retains the native engine's reading order. Repeated page numbers/running headings are removed only when recognized at a physical margin. Multi-column layouts, footnotes, tables, unusual fonts, and ambiguous hyphens can still need corrections. The source PDF remains visible for comparison. See [the repair evaluation](pdf-repair.md).
 - Chapters come from embedded bookmarks or manual entry. Headings are not guessed automatically. Bookmark destinations are mapped to page boundaries, not exact words.
 - Tokenization separates whitespace-delimited words and preserves attached punctuation and Unicode source ranges. Languages without word-separating spaces need a future language-aware tokenizer.
 - Password-protected PDFs report an explanatory error. Apple also checks copy restrictions; the Android binding does not expose that permission flag. Imports are limited to 250 MB. See [Android's extraction limits](../apps/android/README.md#extraction-limits) for page-label and backup-memory details.

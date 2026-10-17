@@ -96,6 +96,12 @@ struct BookDetailView: View {
                 Button("Edit text", systemImage: "pencil") { library.flush(); pageIndex = startPage; section = "Edit text" }
                     .accessibilityIdentifier("editBookText")
                 Button("Chapters", systemImage: "list.bullet") { section = "Chapters" }
+                Button("Improve text", systemImage: "text.badge.checkmark") { library.improveText(bookID) }
+                    .disabled(!book.pages.contains { PDFTextRepair.eligible($0) && $0.isIncluded })
+                    .accessibilityIdentifier("improveBookText")
+                if library.undoImprovementID == bookID {
+                    Button("Undo text improvement", systemImage: "arrow.uturn.backward") { library.undoTextImprovement(bookID) }
+                }
                 Button("Choose starting word…", systemImage: "text.cursor") { library.flush(); pageIndex = startPage; trimmingBeginning = true }
                     .accessibilityIdentifier("trimBeginning")
                 Divider()
@@ -216,7 +222,7 @@ struct BookDetailView: View {
                 Eyebrow(text: "Your reading text")
                 Spacer()
                 if page.isEdited { Text("Edited").font(.system(size: 10)).foregroundStyle(Palette.muted) }
-                Button { confirmingReset = true } label: { Image(systemName: "arrow.counterclockwise").font(.system(size: 12)) }.buttonStyle(.plain).disabled(!page.isEdited).accessibilityLabel("Restore extracted text")
+                Button { confirmingReset = true } label: { Image(systemName: "arrow.counterclockwise").font(.system(size: 12)) }.buttonStyle(.plain).disabled(page.text == page.extractedText).accessibilityLabel("Restore extracted text")
             }
             VStack(alignment: .leading, spacing: 0) {
                 if !page.warnings.isEmpty {
