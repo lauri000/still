@@ -72,7 +72,7 @@ final class ImportAndPersistenceTests: XCTestCase {
         XCTAssertEqual(result.book.title, "The art of attention")
         XCTAssertEqual(result.book.chapters.map(\.pageIndex), [0, 1, 2])
         XCTAssertTrue(result.book.pages[0].extractedText.contains("particular kind of quiet"))
-        XCTAssertTrue(result.book.pages.allSatisfy { !$0.isReviewed && $0.text == $0.extractedText })
+        XCTAssertTrue(result.book.pages.allSatisfy { !$0.isReviewed && $0.text == $0.processedText && !$0.isEdited })
     }
 
     func testInvalidPDFReportsError() async {

@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.Book
+import com.stillreader.app.core.PdfTextRepair
 import com.stillreader.app.data.PdfImporter
 import kotlinx.coroutines.CancellationException
 import java.io.File
@@ -83,7 +84,7 @@ fun StillApp(model: LibraryViewModel) {
                 onClose = model::closeReader,
                 onReview = { page -> model.closeReader(); toolPage = page; tool = "Edit text" })
             book != null && tool != null -> BookTools(book, tool!!, toolPage, model, onClose = { tool = null })
-            book != null -> BookScreen(book, model, onBack = { model.select(null) },
+            book != null -> BookScreen(book, model, canUndoImprovement = state.undoImprovementID == book.id, onBack = { model.select(null) },
                 onTool = { name, page -> toolPage = page; tool = name },
                 onExport = { exportID = book.id; exporter.launch("${book.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json") })
             else -> LibraryScreen(state.books, model::select) { picker.launch(arrayOf("application/pdf", "application/json", "application/octet-stream")) }
@@ -91,7 +92,7 @@ fun StillApp(model: LibraryViewModel) {
         state.importing?.let { progress ->
             Dialog(onDismissRequest = model::cancelImport) {
                 Column(Modifier.clip(RoundedCornerShape(20.dp)).background(Surface).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Text("Importing book", fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                    Text("Preparing book", fontSize = 22.sp, fontWeight = FontWeight.Medium)
                     Text(progress.message, color = Muted)
                     LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
                     TextButton(onClick = model::cancelImport, modifier = Modifier.align(Alignment.End)) { Text("Cancel") }
@@ -156,7 +157,7 @@ fun Header(title: String, back: () -> Unit, actions: @Composable RowScope.() -> 
 }
 
 @Composable
-private fun BookScreen(book: Book, model: LibraryViewModel, onBack: () -> Unit, onTool: (String, Int) -> Unit, onExport: () -> Unit) {
+private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: Boolean, onBack: () -> Unit, onTool: (String, Int) -> Unit, onExport: () -> Unit) {
     var page by rememberSaveable(book.id) { mutableIntStateOf(book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(book.readingStartPageIndex)) }
     var changed by rememberSaveable(book.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -172,6 +173,13 @@ private fun BookScreen(book: Book, model: LibraryViewModel, onBack: () -> Unit, 
                 DropdownMenu(menu, { menu = false }) {
                     listOf("Edit text", "Chapters", "Choose starting word", "Book details").forEach { name ->
                         DropdownMenuItem(text = { Text(name) }, onClick = { menu = false; onTool(name, page) })
+                    }
+                    DropdownMenuItem(text = { Text("Improve text") },
+                        enabled = book.pages.any { PdfTextRepair.eligible(it) && it.isIncluded },
+                        onClick = { menu = false; model.improveText(book.id) })
+                    if (canUndoImprovement) {
+                        DropdownMenuItem(text = { Text("Undo text improvement") },
+                            onClick = { menu = false; model.undoTextImprovement(book.id) })
                     }
                     DropdownMenuItem(text = { Text("Export book backup") }, onClick = { menu = false; onExport() })
                     DropdownMenuItem(text = { Text("Delete book", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })

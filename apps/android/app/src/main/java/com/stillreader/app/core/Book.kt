@@ -62,8 +62,11 @@ data class BookPage(
     val text: String = extractedText,
     val isReviewed: Boolean = false,
     val isIncluded: Boolean = true,
+    val processedText: String? = null,
+    val textProcessingVersion: Int? = null,
 ) {
     val hasNoText: Boolean get() = text.isBlank()
+    val isEdited: Boolean get() = text != (processedText ?: extractedText)
 }
 
 @Serializable

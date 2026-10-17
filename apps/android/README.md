@@ -31,8 +31,8 @@ The existing Apple JSON backup format is preserved, including Foundation date en
 
 ## Extraction limits
 
-- Selectable-text PDFs only; no OCR or automatic header/footer removal.
-- Source extraction order is preserved. Complex columns, footnotes, ligatures, and hyphenated line breaks can require corrections.
+- Selectable-text PDFs only; no OCR. Import-time repair uses glyph geometry and an offline vocabulary to fix ligatures, wrapped words, and supported spacing errors. Recognized recurring margin page numbers/headings are removed.
+- Source extraction order is preserved. Complex columns, footnotes, unusual fonts, and ambiguous compounds can still require corrections. Existing books have an explicit **Improve text** command with session undo. See [the repair evaluation](../../docs/pdf-repair.md).
 - Embedded bookmarks are imported with their hierarchy and page destinations. New Android imports use sequential page labels because the PDF binding does not expose custom page labels. Custom labels in Apple backups are retained.
 - Password-protected PDFs need to be unlocked before import. The Android binding does not expose PDF copy-permission flags; it does not reproduce PDFKit's separate copy-restriction check.
 - PDFs are limited to 250 MB. Reading a large JSON backup also needs memory for its base64 string; memory failures report an error and preserve existing books.
@@ -57,3 +57,5 @@ Verified on 16 October 2026:
 - Physical Android devices, release signing, and Play Store distribution have not been exercised.
 
 PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
+
+The bundled SCOWL vocabulary and its full license are in `shared/resources/` and packaged as assets on Android and resources on Apple.

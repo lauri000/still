@@ -78,13 +78,25 @@ class PdfImporter(private val context: Context) {
                 val count = document.getPageCount()
                 require(count > 0) { "This PDF has no readable pages." }
                 val pages = ArrayList<BookPage>(count)
+                val inputs = ArrayList<PdfTextRepair.Input>(count)
                 for (index in 0 until count) {
                     currentCoroutineContext().ensureActive()
                     val page = document.openPage(index) ?: error("PDF page ${index + 1} could not be opened.")
-                    val text = page.use { it.openTextPage().use { textPage -> textPage.textPageGetText(0, textPage.textPageCountChars()) ?: "" } }
+                    val input = page.use { it.openTextPage().use { textPage ->
+                        val text = textPage.textPageGetText(0, textPage.textPageCountChars()) ?: ""
+                        PdfTextGeometry(textPage, text).input(it.getPageHeightPoint().toDouble())
+                    } }
+                    val text = input.text
+                    inputs.add(input)
                     pages.add(BookPage(number = index + 1, extractedText = text))
-                    progress(ImportProgress("Extracting page ${index + 1} of $count…", (index + 1f) / count))
+                    progress(ImportProgress("Extracting page ${index + 1} of $count…", .7f * (index + 1f) / count))
                 }
+                progress(ImportProgress("Improving word spacing and line breaks…", .7f))
+                val repaired = repair(document, inputs)
+                currentCoroutineContext().ensureActive()
+                for (index in pages.indices) pages[index] = pages[index].copy(text = repaired.pages[index].text,
+                    processedText = repaired.pages[index].text, textProcessingVersion = PdfTextRepair.VERSION)
+                progress(ImportProgress("Saving book…", 1f))
                 val chapters = mutableListOf<BookChapter>()
                 fun collect(bookmarks: List<Bookmark>, level: Int) {
                     bookmarks.forEach { bookmark ->
@@ -99,6 +111,55 @@ class PdfImporter(private val context: Context) {
                     chapters = chapters.sortedBy { it.pageIndex })
             }
         }
+    }
+
+    suspend fun improve(file: File, book: Book, progress: (ImportProgress) -> Unit): Book = withContext(Dispatchers.IO) {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+            core.newDocument(descriptor).use { document ->
+                require(document.getPageCount() == book.pages.size) { "The original PDF does not match this book." }
+                val enabled = book.pages.map { PdfTextRepair.eligible(it) && it.isIncluded }
+                val inputs = book.pages.mapIndexed { index, source ->
+                    currentCoroutineContext().ensureActive()
+                    progress(ImportProgress("Checking page ${index + 1} of ${book.pages.size}…", .7f * (index + 1f) / book.pages.size))
+                    if (!enabled[index]) PdfTextRepair.Input(source.text, enabled = false)
+                    else document.openPage(index)!!.use { page -> page.openTextPage().use { textPage ->
+                        val native = textPage.textPageGetText(0, textPage.textPageCountChars()).orEmpty()
+                        // Backups can originate in another engine. Keep their immutable source and
+                        // use text-only repair if its offsets no longer match this engine's text.
+                        if (native == source.extractedText) PdfTextGeometry(textPage, native).input(page.getPageHeightPoint().toDouble())
+                        else PdfTextRepair.Input(source.extractedText)
+                    } }
+                }
+                progress(ImportProgress("Improving word spacing and line breaks…", .7f))
+                val result = repair(document, inputs)
+                currentCoroutineContext().ensureActive()
+                PdfTextRepair.applyTo(book, result, enabled)
+            }
+        }
+    }
+
+    private suspend fun repair(document: io.legere.pdfiumandroid.PdfDocument, inputs: List<PdfTextRepair.Input>): PdfTextRepair.Result {
+        val job = currentCoroutineContext()
+        var nativePage: io.legere.pdfiumandroid.PdfPage? = null
+        var nativeText: io.legere.pdfiumandroid.PdfTextPage? = null
+        var geometry: PdfTextGeometry? = null
+        var activeIndex = -1
+        return try {
+            PdfTextRepair.repair(inputs, PdfVocabulary.words(context), checkpoint = { job.ensureActive() }) { index, offset, split ->
+                if (index != activeIndex) {
+                    nativeText?.close(); nativeText = null
+                    nativePage?.close(); nativePage = null
+                    nativePage = document.openPage(index)
+                    nativeText = nativePage?.openTextPage()
+                    geometry = nativeText?.let {
+                        val native = it.textPageGetText(0, it.textPageCountChars()).orEmpty()
+                        if (native == inputs[index].text) PdfTextGeometry(it, native) else null
+                    }
+                    activeIndex = index
+                }
+                geometry?.boundary(offset, split) == true
+            }
+        } finally { nativeText?.close(); nativePage?.close() }
     }
 
     suspend fun preview(file: File, index: Int, width: Int): Bitmap = withContext(Dispatchers.IO) {
