@@ -9,6 +9,8 @@ final class LibraryStore: ObservableObject {
     @Published var importMessage = "Opening PDF…"
     @Published var errorMessage: String?
     @Published var savedMessage = "Saved on this device"
+    @Published var undoImprovementID: UUID?
+    private var beforeImprovement: Book?
     let repository: BookRepository
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
     private var importTask: Task<Void, Never>?
@@ -51,7 +53,11 @@ final class LibraryStore: ObservableObject {
 
     func update(_ id: UUID, saveImmediately: Bool = false, _ change: (inout Book) -> Void) {
         guard let index = books.firstIndex(where: { $0.id == id }) else { return }
-        change(&books[index])
+        var updated = books[index]
+        change(&updated)
+        guard updated != books[index] else { return }
+        if beforeImprovement?.id == id { beforeImprovement = nil; undoImprovementID = nil }
+        books[index] = updated
         pendingSaves[id]?.cancel()
         savedMessage = "Saving…"
         if saveImmediately { save(id) } else {
@@ -111,9 +117,48 @@ final class LibraryStore: ObservableObject {
     }
 
     func cancelImport() { importTask?.cancel() }
+    func improveText(_ id: UUID) {
+        guard !isImporting, let original = book(id) else { return }
+        flush()
+        isImporting = true; importProgress = 0; importMessage = "Preparing text improvements…"
+        let url = repository.pdfURL(for: id)
+        importTask = Task {
+            do {
+                let worker = Task.detached {
+                    try await PDFImporter.improve(url: url, book: original) { current, total in
+                        await self.reportProgress(current, total)
+                    }
+                }
+                let updated = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                try Task.checkCancellation()
+                guard let index = books.firstIndex(where: { $0.id == id }) else { isImporting = false; return }
+                guard books[index] == original else {
+                    errorMessage = "The book changed while its text was being improved. Please try again."
+                    isImporting = false
+                    return
+                }
+                // Save atomically before publishing the new text and its mapped positions.
+                try repository.save(updated)
+                books[index] = updated
+                beforeImprovement = original; undoImprovementID = id
+                savedMessage = "Text improved"
+            } catch is CancellationError { }
+            catch { errorMessage = error.localizedDescription }
+            isImporting = false
+        }
+    }
+    func undoTextImprovement(_ id: UUID) {
+        guard let previous = beforeImprovement, previous.id == id,
+              let index = books.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            try repository.save(previous)
+            books[index] = previous; beforeImprovement = nil; undoImprovementID = nil
+            savedMessage = "Text improvement undone"
+        } catch { errorMessage = error.localizedDescription }
+    }
     private func reportProgress(_ current: Int, _ total: Int) {
-        importProgress = Double(current) / Double(total)
-        importMessage = "Extracting page \(current) of \(total)…"
+        importProgress = 0.8 * Double(current) / Double(total)
+        importMessage = current == total ? "Improving word spacing and line breaks…" : "Extracting page \(current) of \(total)…"
     }
 
     func delete(_ id: UUID) {

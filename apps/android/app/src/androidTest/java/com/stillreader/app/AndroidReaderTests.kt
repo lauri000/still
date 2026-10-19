@@ -114,7 +114,7 @@ class AndroidReaderTests {
         assertEquals("The art of attention", imported.title)
         assertEquals(listOf(0, 1, 2), imported.chapters.map { it.pageIndex })
         assertTrue(imported.pages[0].text.contains("particular kind of quiet"))
-        assertTrue(imported.pages.all { !it.isReviewed && it.text == it.extractedText })
+        assertTrue(imported.pages.all { !it.isReviewed && it.text == it.processedText && !it.isEdited })
         val image = importer.preview(file, 1, 600)
         assertEquals(600, image.width)
         assertTrue(image.height > image.width)
@@ -620,5 +620,26 @@ class AndroidReaderTests {
         assertEquals(2, model.state.value.books.map { it.id }.distinct().size)
         assertEquals(model.state.value.books[0].pages, model.state.value.books[1].pages)
         assertEquals(model.state.value.books[0].position, model.state.value.books[1].position)
+    }
+
+    @Test fun improveExistingBookPreservesCorrectionsAndCanBeUndone() {
+        launch()
+        val original = model.state.value.books.single()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithTag("bookOptions").performClick()
+        compose.onNodeWithText("Improve text").performClick()
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        compose.runOnIdle {
+            assertNull(model.state.value.error)
+            val improved = model.selectedBook()!!
+            assertEquals(PdfTextRepair.VERSION, improved.pages[0].textProcessingVersion)
+            assertEquals(original.pages[1], improved.pages[1]) // manually corrected
+            assertEquals(original.pages[2], improved.pages[2]) // excluded
+            assertEquals(original.position, improved.position)
+        }
+        compose.onNodeWithTag("bookOptions").performClick()
+        compose.onNodeWithText("Undo text improvement").performClick()
+        runBlocking { withContext(Dispatchers.Main) { model.flush() } }
+        assertEquals(original, BookRepository(File(root, "books")).load().books.single())
     }
 }

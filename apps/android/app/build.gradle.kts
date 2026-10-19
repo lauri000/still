@@ -8,11 +8,13 @@ android {
     namespace = "com.stillreader.app"
     compileSdk = 37
     defaultConfig {
-        applicationId = "com.stillreader.app"
+        // Keep opt-in PDF benchmarks isolated from the user's installed reader/library.
+        applicationId = if (providers.gradleProperty("pdfEvaluationBuild").isPresent)
+            "com.stillreader.app.pdfevaluation" else "com.stillreader.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.1.6"
+        versionCode = 8
+        versionName = "0.1.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -28,7 +30,9 @@ android {
     }
     sourceSets {
         getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
+        getByName("main").assets.srcDir("../../../shared/resources")
         getByName("test").resources.srcDir("../../../shared/fixtures")
+        getByName("test").resources.srcDir("../../../shared/resources")
         getByName("androidTest").assets.srcDir("../../../shared/fixtures")
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }

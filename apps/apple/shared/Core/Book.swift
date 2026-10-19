@@ -1,6 +1,6 @@
 import Foundation
 
-struct Book: Codable, Identifiable, Sendable {
+struct Book: Codable, Identifiable, Equatable, Sendable {
     var schemaVersion = 1
     var id: UUID
     var title: String
@@ -58,7 +58,7 @@ struct Book: Codable, Identifiable, Sendable {
     }
 }
 
-struct BookPage: Codable, Identifiable, Sendable {
+struct BookPage: Codable, Identifiable, Equatable, Sendable {
     var id: UUID
     var number: Int
     var label: String
@@ -66,9 +66,11 @@ struct BookPage: Codable, Identifiable, Sendable {
     var text: String
     var isReviewed: Bool
     var isIncluded: Bool
+    var processedText: String? = nil
+    var textProcessingVersion: Int? = nil
 
     var hasNoText: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var isEdited: Bool { text != extractedText }
+    var isEdited: Bool { text != (processedText ?? extractedText) }
     var warnings: [String] {
         var result: [String] = []
         if extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -82,7 +84,7 @@ struct BookPage: Codable, Identifiable, Sendable {
     }
 }
 
-struct BookChapter: Codable, Identifiable, Sendable {
+struct BookChapter: Codable, Identifiable, Equatable, Sendable {
     var id: UUID
     var title: String
     var pageIndex: Int

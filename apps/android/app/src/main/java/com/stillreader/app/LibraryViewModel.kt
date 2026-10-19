@@ -22,6 +22,7 @@ data class LibraryState(
     val importing: ImportProgress? = null,
     val error: String? = null,
     val saving: Boolean = false,
+    val undoImprovementID: String? = null,
 )
 
 class LibraryViewModel @JvmOverloads constructor(application: Application, private val saved: SavedStateHandle, root: File? = null) : AndroidViewModel(application) {
@@ -44,6 +45,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     private var importJob: Job? = null
     private var pendingWrites = 0
     private val pendingEdits = mutableMapOf<String, Job>()
+    private var beforeImprovement: Book? = null
 
     init {
         ioScope.launch { for (operation in operations) operation() }.invokeOnCompletion { ioScope.cancel() }
@@ -75,7 +77,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         val original = state.value.books.firstOrNull { it.id == id } ?: return
         val updated = change(original)
         if (updated == original) return
-        mutable.update { it.copy(books = it.books.map { book -> if (book.id == id) updated else book }, saving = true) }
+        if (beforeImprovement?.id == id) beforeImprovement = null
+        mutable.update { it.copy(books = it.books.map { book -> if (book.id == id) updated else book }, saving = true,
+            undoImprovementID = it.undoImprovementID?.takeUnless { undoID -> undoID == id }) }
         pendingEdits.remove(id)?.cancel()
         if (debounce) {
             pendingEdits[id] = viewModelScope.launch {
@@ -134,6 +138,41 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         }
     }
     fun cancelImport() { importJob?.cancel() }
+
+    fun improveText(bookID: String) {
+        if (state.value.importing != null) return
+        closeReader()
+        mutable.update { it.copy(importing = ImportProgress("Preparing text improvements…", 0f)) }
+        importJob = viewModelScope.launch {
+            try {
+                flush()
+                val original = state.value.books.firstOrNull { it.id == bookID } ?: return@launch
+                val updated = importer.improve(repository.pdfFile(bookID), original) { progress ->
+                    mutable.update { it.copy(importing = progress) }
+                }
+                ensureActive()
+                check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while its text was being improved. Please try again." }
+                withContext(NonCancellable) {
+                    val done = CompletableDeferred<Unit>()
+                    operations.send {
+                        try { repository.save(updated); done.complete(Unit) }
+                        catch (error: Throwable) { done.completeExceptionally(error) }
+                    }
+                    done.await()
+                    beforeImprovement = original
+                    mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoImprovementID = bookID) }
+                }
+            } catch (_: CancellationException) { }
+            catch (error: Exception) { report(error) }
+            catch (error: OutOfMemoryError) { report(error) }
+            finally { mutable.update { it.copy(importing = null) } }
+        }
+    }
+
+    fun undoTextImprovement(bookID: String) {
+        val previous = beforeImprovement?.takeIf { it.id == bookID } ?: return
+        updateBook(bookID) { previous }
+    }
 
     fun openReader(startPage: Int? = null) {
         flushEdits()

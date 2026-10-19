@@ -1,0 +1,38 @@
+Still's PDF repair vocabulary is a modified SCOWL 2020.12.07 word list.
+Source: https://wordlist.aspell.net/
+Release: https://downloads.sourceforge.net/wordlist/scowl-2020.12.07.tar.gz
+Copyright and license: SCOWL-Copyright.txt (distributed alongside this file).
+Modifications: union of lower-case ASCII words and hyphenated compounds,
+levels up to 60, English plus US and UK spelling variants; sorted/deduplicated.
+No proper-name lists or user documents are included.
+Regenerate with scripts/build-pdf-vocabulary.py.
+
+Input lists:
+american-words.10
+american-words.20
+american-words.35
+american-words.40
+american-words.50
+american-words.55
+american-words.60
+british-words.10
+british-words.20
+british-words.35
+british-words.40
+british-words.50
+british-words.55
+british-words.60
+british_z-words.10
+british_z-words.20
+british_z-words.35
+british_z-words.40
+british_z-words.50
+british_z-words.55
+british_z-words.60
+english-words.10
+english-words.20
+english-words.35
+english-words.40
+english-words.50
+english-words.55
+english-words.60

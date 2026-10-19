@@ -36,8 +36,8 @@ The existing Apple JSON backup format is preserved, including Foundation date en
 
 ## Extraction limits
 
-- Selectable-text PDFs only; no OCR or automatic header/footer removal.
-- Source extraction order is preserved. Complex columns, footnotes, ligatures, and hyphenated line breaks can require corrections.
+- Selectable-text PDFs only; no OCR. Import-time repair uses glyph geometry and an offline vocabulary to fix ligatures, wrapped words, and supported spacing errors. Recognized recurring margin page numbers/headings are removed.
+- Source extraction order is preserved. Complex columns, footnotes, unusual fonts, and ambiguous compounds can still require corrections. Existing books have an explicit **Improve text** command with session undo. See [the repair evaluation](../../docs/pdf-repair.md).
 - Embedded bookmarks are imported with their hierarchy and page destinations. New Android imports use sequential page labels because the PDF binding does not expose custom page labels. Custom labels in Apple backups are retained.
 - Password-protected PDFs need to be unlocked before import. The Android binding does not expose PDF copy-permission flags; it does not reproduce PDFKit's separate copy-restriction check.
 - PDFs are limited to 250 MB. Reading a large JSON backup also needs memory for its base64 string; memory failures report an error and preserve existing books.
@@ -70,3 +70,5 @@ Full-screen reader verification for 0.1.5: all 20 JVM tests and 17 device tests 
 PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
 
 The scrolling-passage update was checked on 17 October 2026: all 24 unit tests and 17 emulator scenarios passed (the review-prompt scenario needed an isolated rerun). The passage test also verifies continuous vertical movement between words, stable horizontal positions, and freezing on release. Debug build and lint completed with no lint errors; existing warnings remain.
+
+The bundled SCOWL vocabulary and its full license are in `shared/resources/` and packaged as assets on Android and resources on Apple.
