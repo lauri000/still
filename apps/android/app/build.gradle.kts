@@ -13,8 +13,8 @@ android {
             "com.stillreader.app.pdfevaluation" else "com.stillreader.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.1.13"
+        versionCode = 15
+        versionName = "0.1.14"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
