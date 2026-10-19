@@ -99,7 +99,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         }
     }
     Column(Modifier.fillMaxSize().onPreviewKeyEvent {
-        if (it.type != KeyEventType.KeyDown) false else when (it.key) {
+        if (it.type != KeyEventType.KeyDown || passage && it.key != Key.Escape) false else when (it.key) {
             Key.Spacebar -> { session.toggle(); true }
             Key.DirectionLeft -> { session.seek(state.index - 1); true }
             Key.DirectionRight -> { session.seek(state.index + 1); true }
@@ -125,7 +125,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                             Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
+                IconButton(onClick = { session.pause(); passage = !passage; session.passageMode = passage }, modifier = Modifier.testTag("toggleContext")) {
                     Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
                 }
                 if (!passage) IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
@@ -135,10 +135,17 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             LinearProgressIndicator(progress = { session.progress }, modifier = Modifier.fillMaxWidth().height(2.dp).testTag("readingProgress"),
                 color = Forest, trackColor = Line, strokeCap = StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {})
         }
-        ReadingSurface(session, wpm, state.playing, !options && !pagePicker && !contents,
-            passage, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
-            if (passage) PassageView(session, state)
-            else if (session.structure.headingAt(state.index) != null) {
+        if (passage) {
+            Box(Modifier.weight(1f).fillMaxWidth().testTag("readingSurface")) {
+                PassageView(session, state) { index ->
+                    session.seek(index)
+                    session.passageMode = false
+                    passage = false
+                }
+            }
+        } else ReadingSurface(session, wpm, state.playing, !options && !pagePicker && !contents,
+            false, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
+            if (session.structure.headingAt(state.index) != null) {
                 HeadingCue(session, state.index)
             } else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
             androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),

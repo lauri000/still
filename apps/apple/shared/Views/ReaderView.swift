@@ -68,9 +68,9 @@ struct ReaderView: View {
                     .buttonStyle(.plain).accessibilityLabel("Close reader").keyboardShortcut(.escape, modifiers: [])
                 pageMenu
                 #if os(macOS)
-                controls
+                if !showContext { controls }
                 #endif
-                Button { engine.pause(); showContext.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
+                Button { engine.pause(); showContext.toggle(); engine.passageMode = showContext } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
                     .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
                 if !showContext {
                     Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
@@ -105,7 +105,11 @@ struct ReaderView: View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
                 if showContext {
-                    PassageView(engine: engine)
+                    PassageView(engine: engine) { index in
+                        engine.seek(index)
+                        engine.passageMode = false
+                        showContext = false
+                    }
                         .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let heading = engine.structure.heading(at: engine.index) {
                     Text(heading.title).font(.custom("Georgia", size: 28)).foregroundStyle(Palette.ink)
@@ -128,26 +132,28 @@ struct ReaderView: View {
                     }
                 }
                 #if os(iOS)
-                ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings && !showingContents,
-                    onBegin: { reading in if reading { engine.play() } else { engine.pause() } },
-                    onMove: { reading, movement in
-                        if reading { changeSpeed(by: Double(movement) * 2) }
-                        else if abs(movement) > 12 || engine.isScrubbing {
-                            engine.beginScrubbing()
-                            engine.scrub(by: -Int(movement / 32))
-                        }
-                    },
-                    onEnd: { if engine.isPlaying || engine.isScrubbing { engine.pause() } })
-                holdCorner.frame(width: geometry.size.width / 2, height: geometry.size.height / 2)
-                    .allowsHitTesting(false)
+                if !showContext {
+                    ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings && !showingContents,
+                        onBegin: { reading in if reading { engine.play() } else { engine.pause() } },
+                        onMove: { reading, movement in
+                            if reading { changeSpeed(by: Double(movement) * 2) }
+                            else if abs(movement) > 12 || engine.isScrubbing {
+                                engine.beginScrubbing()
+                                engine.scrub(by: -Int(movement / 32))
+                            }
+                        },
+                        onEnd: { if engine.isPlaying || engine.isScrubbing { engine.pause() } })
+                    holdCorner.frame(width: geometry.size.width / 2, height: geometry.size.height / 2)
+                        .allowsHitTesting(false)
+                }
                 #endif
             }
             .contentShape(Rectangle())
             #if os(macOS)
-            .gesture(scrubGesture)
+            .gesture(scrubGesture, including: showContext ? .subviews : .all)
             #endif
             .overlay(alignment: .topTrailing) {
-                if showSpeed {
+                if showSpeed && !showContext {
                     Text("\(Int(engine.wordsPerMinute)) wpm").font(.system(size: 14)).monospacedDigit()
                         .foregroundStyle(Palette.forest).padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Palette.paper.opacity(0.94), in: RoundedRectangle(cornerRadius: 8))

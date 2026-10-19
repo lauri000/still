@@ -3,21 +3,21 @@
 
 1. Choose **Import PDF**. The imported book opens at its page selector with a PDF preview.
 2. Enter a **Start page**, use the arrows, or choose a section from **Contents**, then choose **Read**. Earlier pages are skipped. New libraries start empty; no demo book is added automatically.
-3. On iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
+3. In single-line view on iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
 
 **Contents** uses the PDF’s embedded outline, with expandable groups and the current section highlighted. It appears beside the preview on wide screens and opens in a sheet on phones. Choosing a section previews its page; **Read** confirms that page as the beginning. Opening or closing Contents alone preserves **Continue reading** and the exact saved word. Entries without a local page remain visible but cannot navigate. PDFs without an outline still use the page controls; Still does not infer headings from page text.
 
 In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. On mobile, the invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over. On Mac, drag anywhere in the text to scrub and use the header buttons to change speed in 10 WPM steps.
 
-WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again on mobile, or press Play on Mac, to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
+In single-line view, WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again on mobile, or press Play on Mac, to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
 
-Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. On Mac, Space plays/pauses, the arrow keys step one word, and Escape closes the reader. The text icon switches between a single line and a scrolling passage. Passage view shows plain, left-aligned rows with natural word spacing and no highlighted word or letter. The entire column scrolls vertically at the selected WPM, with the reading position near the middle. Paragraph and page boundaries start new rows. Matched headings use larger text with space around them. Only the current page and nearby text are laid out, and only visible rows are rendered. Switching pauses without changing your position or speed. Both modes retain the same hold, speed, and scrub controls. The ellipsis and its options are available only in single-line view.
+Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. On Mac, Space plays/pauses and the arrow keys step one word in single-line mode; Escape closes either view.
+
+The text icon switches between single-line reading and a manually scrollable passage. Passage view shows plain, left-aligned rows with natural word spacing and no highlighted word or letter. Scroll normally with a finger, mouse, or trackpad. Tap or click any word to open single-line mode paused at that exact word, ready to continue reading. The mode toggle also preserves the current word; after browsing, it uses the first word of the top visible row. Returning to passage view brings the selected word into view. Paragraph and page boundaries start new rows, and matched headings use larger text with space around them. Paragraph blocks are laid out as they appear, without measuring the whole book. Hold-to-read, WPM controls, horizontal scrubbing, and the options menu belong to single-line mode. Passage view runs no playback timer.
 
 **Active word size** in reading options controls the current word in single-line view with a percentage slider from **100% to 300%**, in 1% increments. At the default 100%, it matches the surrounding text; 200% doubles its size and 300% triples it. The setting is saved on this device across books and launches. Surrounding text stays the same size in single-line view. Passage view uses its own regular text size and is unaffected by this setting. Long words still shrink to fit the available width. Changing size pauses reading without moving your position.
 
 **Animated scrolling** in reading options moves surrounding words during single-line playback while the active word or focus letter stays centered. It is off by default and remembered on this device across books and launches. Motion eases to a stop in at most 180 ms and shortens at faster reading speeds. Pausing, navigating through text, switching views, and resizing settle immediately at the selected word; resuming single-line playback gives that word its full reading interval.
-
-Passage view always scrolls continuously during playback. Pausing freezes the column at its exact position, and resuming continues from that point. Body words receive equal time at the selected WPM; the single-line Natural pauses setting has no effect. Reliable major-section boundaries get a brief pause, described below. Speed changes take effect on the next word, so dragging the speed control cannot delay advancement. Apple’s **Reduce Motion** and Android’s disabled system animations show a stationary active row and advance the column only at row boundaries.
 
 **Focus letter** in reading options highlights one letter of the current word in red. Single-line view holds that letter at the center as words advance. Passage view has no focus-letter treatment. It is off by default and remembered on this device across books and app launches. In single-line view, turn it off to center the whole word again. The cue uses a simple word-length rule, ignores punctuation when choosing a letter, and preserves accents and complete characters. Words without letters or numbers stay centered without a highlight. This is an optional visual aid, not a promise of faster reading or better comprehension.
 
@@ -42,15 +42,14 @@ ordinary text and page navigation.
 
 - **Multiline:** a matched heading stays in the scrolling column, slightly larger,
   with space before and after it. Every source word remains in order; there is no
-  active-word highlight. Heading layout uses the same bounded nearby-text window.
+  active-word highlight. Headings are laid out with their visible paragraph block.
 - **Single-line:** the complete heading appears together, once, before body words
   resume. Its display lasts at least 1.2 seconds, or its word count at the chosen
   WPM if longer. Saved positions still identify the current source word within
   that heading. Nearby body text does not repeat heading words.
-- **Major section ending:** when both boundaries are mapped and the intervening
+- **Major section ending (single-line only):** when both boundaries are mapped and the intervening
   pages are retained and readable, the final word lasts at least 0.8 seconds.
-  Existing longer pauses take precedence; delays are not added together. The
-  multiline column reaches the boundary and rests there. Nested subsections do
+  Existing longer pauses take precedence; delays are not added together. Nested subsections do
   not add pauses unless explicitly labelled as chapters. The final book ending
   retains the normal finished state.
 - Releasing, navigating, backgrounding, or closing cancels continuation immediately.

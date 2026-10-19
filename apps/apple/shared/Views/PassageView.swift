@@ -5,90 +5,233 @@ import UIKit
 import AppKit
 #endif
 
+private enum PassageAnchor: Hashable { case block(Int), row(Int) }
+private struct PassageRowFrame: Equatable {
+    let words: Range<Int>
+    let frame: CGRect
+    let layoutWidth: CGFloat
+    let fontSize: CGFloat
+}
+private struct PassageFrames: PreferenceKey {
+    static var defaultValue: [PassageRowFrame] { [] }
+    static func reduce(value: inout [PassageRowFrame], nextValue: () -> [PassageRowFrame]) { value += nextValue() }
+}
+
 struct PassageView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var engine: ReaderEngine
+    let selectWord: (Int) -> Void
     @ScaledMetric private var baseSize: CGFloat = 24
-    @State private var layout: PassageLayout?
-    @State private var windowStart = 0
+    @State private var pendingIndex: Int?
+    @State private var reportedIndex = -1
+    @State private var positioned = false
+    @State private var userScrolling = false
+    @State private var visibleWords = 0..<0
 
     var body: some View {
         GeometryReader { geometry in
-            let fontSize = geometry.size.height < 240 ? baseSize * 20 / 24 : baseSize
-            let rowHeight = max(geometry.size.height < 240 ? 44 : 56, fontSize * 1.4 + 12)
-            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !engine.isPlaying || reduceMotion)) { _ in
-                let index = engine.index - windowStart
-                let currentRow = layout?.row(containing: index) ?? 0
-                let row = layout.flatMap { $0.rows.indices.contains(currentRow) ? $0.rows[currentRow] : nil }
-                let position = reduceMotion ? row.map { $0.top + $0.height / 2 } ?? 0
-                    : layout?.position(index: index, wordProgress: engine.motionProgress) ?? 0
-                let radius = Int(ceil(geometry.size.height / rowHeight / 2)) + 1
-                let first = max(0, currentRow - radius)
-                let end = min(layout?.rows.count ?? 0, currentRow + radius + 1)
-                ZStack(alignment: .topLeading) {
-                    if let layout, first < end {
-                        ForEach(first..<end, id: \.self) { rowIndex in
-                            let row = layout.rows[rowIndex]
-                            Text(row.text).font(.custom("Georgia", fixedSize: fontSize * (row.isHeading ? 1.2 : 1))).foregroundStyle(Palette.ink)
-                                .lineLimit(1).minimumScaleFactor(0.01)
-                                .frame(width: geometry.size.width, height: rowHeight * row.height, alignment: .leading)
-                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2 + (row.top + row.height / 2 - position) * rowHeight)
-                                .accessibilityAddTraits(row.isHeading ? .isHeader : [])
-                                .accessibilityIdentifier(row.words.contains(index) ? "currentPassageRow" : "passageRow-\(windowStart + row.words.lowerBound)")
-                                .accessibilityValue(row.words.contains(index) ? "Word \(engine.index + 1) of \(engine.tokens.count)" : "")
-                                .accessibilityAdjustableAction { direction in
-                                    switch direction {
-                                    case .increment: engine.seek(engine.index + 1)
-                                    case .decrement: engine.seek(engine.index - 1)
-                                    @unknown default: break
-                                    }
-                                }
+            let size = geometry.size.height < 240 ? baseSize * 20 / 24 : baseSize
+            let rowHeight = max(geometry.size.height < 240 ? 44 : 56, size * 1.4 + 12)
+            let width = max(1, geometry.size.width - 48)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(engine.passage.blocks) { block in
+                            PassageBlock(engine: engine, block: block, width: width, size: size, rowHeight: rowHeight)
+                                .id(PassageAnchor.block(block.id))
                         }
-                    } else if engine.tokens.isEmpty {
-                        Text("Ready?").font(.custom("Georgia", size: fontSize))
-                            .frame(width: geometry.size.width, height: geometry.size.height)
+                        if engine.tokens.isEmpty { Text("Ready?").font(.custom("Georgia", size: size)) }
+                    }
+                    .background(PassageScrollInput { userScrolling = true })
+                    .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, geometry.size.height)
+                }
+                .coordinateSpace(name: "passageScroll")
+                .accessibilityIdentifier("passageScroll")
+                .accessibilityScrollAction { edge in
+                    switch edge {
+                    case .top, .leading: engine.seek(visibleWords.upperBound)
+                    case .bottom, .trailing: engine.seek(visibleWords.lowerBound - max(1, visibleWords.count))
                     }
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                .mask {
-                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
-                                           .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
+                .onChange(of: geometry.size, initial: true) { _, _ in navigate(engine.index, proxy: proxy) }
+                .onChange(of: size) { _, _ in navigate(engine.index, proxy: proxy) }
+                .onChange(of: engine.index) { _, index in
+                    if index != reportedIndex { navigate(index, proxy: proxy) }
+                }
+                .onPreferenceChange(PassageFrames.self) { reportedFrames in
+                    // A resize first reports frames from the previous wrapping. Never
+                    // treat those intermediate frames as a user changing their place.
+                    let frames = reportedFrames.filter { $0.layoutWidth == width && $0.fontSize == size }
+                    let visible = frames.filter { $0.frame.maxY > 1 && $0.frame.minY < geometry.size.height }
+                    if let first = visible.map(\.words.lowerBound).min(), let last = visible.map(\.words.upperBound).max() {
+                        visibleWords = first..<last
+                    }
+                    if let target = pendingIndex {
+                        if let row = frames.first(where: { $0.words.contains(target) }) {
+                            if abs(row.frame.minY) < 1 {
+                                reportedIndex = target; positioned = true; pendingIndex = nil
+                            } else { proxy.scrollTo(PassageAnchor.row(row.words.lowerBound), anchor: .top) }
+                        }
+                    } else if positioned && userScrolling,
+                              let top = visible.min(by: { $0.frame.minY < $1.frame.minY }),
+                              !top.words.contains(engine.index) {
+                        reportedIndex = top.words.lowerBound
+                        engine.browse(reportedIndex)
+                    }
                 }
             }
-            .onChange(of: geometry.size.width, initial: true) { _, width in arrange(width: width, size: fontSize) }
-            .onChange(of: fontSize) { _, size in arrange(width: geometry.size.width, size: size) }
-            .onChange(of: engine.current?.pageID) { _, _ in arrange(width: geometry.size.width, size: fontSize) }
         }
-        .padding(.horizontal, 24)
+        .environment(\.openURL, OpenURLAction { url in
+            guard url.scheme == "still-word", let host = url.host, let index = Int(host), engine.tokens.indices.contains(index) else { return .discarded }
+            selectWord(index)
+            return .handled
+        })
+        .task(id: engine.index) {
+            guard engine.passageMode, pendingIndex == nil, positioned else { return }
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            engine.checkpoint()
+        }
         .accessibilityElement(children: .contain).accessibilityIdentifier("nearbyPassage")
     }
 
-    private func arrange(width: CGFloat, size: CGFloat) {
+    private func navigate(_ index: Int, proxy: ScrollViewProxy) {
+        guard !engine.passage.blocks.isEmpty else { return }
+        userScrolling = false
+        pendingIndex = index
+        reportedIndex = index
+        let block = engine.passage.blocks[engine.passage.block(containing: index)]
+        proxy.scrollTo(PassageAnchor.block(block.id), anchor: .top)
+    }
+}
+
+private struct PassageBlock: View {
+    @ObservedObject var engine: ReaderEngine
+    let block: PassageDocument.Block
+    let width: CGFloat
+    let size: CGFloat
+    let rowHeight: CGFloat
+    @State private var layout: PassageLayout?
+    @State private var arrangedWidth: CGFloat = 0
+    @State private var arrangedSize: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let layout {
+                Color.clear.frame(height: (layout.rows.first?.top ?? 0) * rowHeight)
+                ForEach(layout.rows.indices, id: \.self) { rowIndex in
+                    let row = layout.rows[rowIndex]
+                    let words = (block.id + row.words.lowerBound)..<(block.id + row.words.upperBound)
+                    Text(linked(words)).font(.custom("Georgia", fixedSize: size * (row.isHeading ? 1.2 : 1)))
+                        .foregroundStyle(Palette.ink).tint(Palette.ink)
+                        .lineLimit(1).minimumScaleFactor(0.01)
+                        .frame(width: width, height: rowHeight * row.height, alignment: .leading)
+                        .id(PassageAnchor.row(words.lowerBound))
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: PassageFrames.self,
+                                value: [PassageRowFrame(words: words, frame: geometry.frame(in: .named("passageScroll")), layoutWidth: arrangedWidth, fontSize: arrangedSize)])
+                        })
+                        .accessibilityAddTraits(row.isHeading ? .isHeader : [])
+                        .accessibilityIdentifier(words.contains(engine.index) ? "currentPassageRow" : "passageRow-\(words.lowerBound)")
+                        .accessibilityValue(words.contains(engine.index) ? "Word \(engine.index + 1) of \(engine.tokens.count)" : "")
+                }
+                Color.clear.frame(height: rowHeight * (layout.rows.last?.isHeading == true ? 0.45 : 0.2))
+            } else { Color.clear.frame(height: rowHeight) }
+        }
+        .onChange(of: width, initial: true) { _, _ in arrange() }
+        .onChange(of: size) { _, _ in arrange() }
+    }
+
+    private func linked(_ words: Range<Int>) -> AttributedString {
+        var result = AttributedString()
+        for index in words {
+            if index != words.lowerBound { result += AttributedString(" ") }
+            var word = AttributedString(engine.tokens[index].word.text)
+            word.link = URL(string: "still-word://\(index)")
+            word.foregroundColor = Palette.ink
+            result += word
+        }
+        return result
+    }
+
+    private func arrange() {
         #if os(iOS)
         let font = UIFont(name: "Georgia", size: size) ?? UIFont.systemFont(ofSize: size)
         #else
         let font = NSFont(name: "Georgia", size: size) ?? NSFont.systemFont(ofSize: size)
         #endif
-        let window = PassageLayout.window(tokens: engine.tokens, index: engine.index)
-        let nearby = Array(engine.tokens[window])
-        let spacing = (" " as NSString).size(withAttributes: [.font: font]).width
-        let headingIDs = Dictionary(uniqueKeysWithValues: nearby.compactMap { token in engine.structure.heading(at: token.id).map { (token.id, $0.words.lowerBound) } })
+        let nearby = Array(engine.tokens[block.words])
+        let ids = Dictionary(uniqueKeysWithValues: nearby.compactMap { token in engine.structure.heading(at: token.id).map { (token.id, $0.words.lowerBound) } })
         var measured: [String: Double] = [:]
         let widths = nearby.map { token in
-            let isHeading = headingIDs[token.id] != nil
-            let key = "\(isHeading):\(token.word.text)"
+            let heading = ids[token.id] != nil
+            let key = "\(heading):\(token.word.text)"
             if let cached = measured[key] { return cached }
             #if os(iOS)
-            let face = isHeading ? font.withSize(size * 1.2) : font
+            let face = heading ? font.withSize(size * 1.2) : font
             #else
-            let face = isHeading ? NSFont(name: font.fontName, size: size * 1.2) ?? font : font
+            let face = heading ? NSFont(name: font.fontName, size: size * 1.2) ?? font : font
             #endif
             let value = ceil((token.word.text as NSString).size(withAttributes: [.font: face]).width)
             measured[key] = value
             return value
         }
-        windowStart = window.lowerBound
-        layout = PassageLayout(tokens: nearby, widths: widths, availableWidth: width, spacing: spacing, headingIDs: headingIDs)
+        layout = PassageLayout(tokens: nearby, widths: widths, availableWidth: width,
+            spacing: (" " as NSString).size(withAttributes: [.font: font]).width, headingIDs: ids)
+        arrangedWidth = width; arrangedSize = size
     }
 }
+
+/// Observes native input without replacing the scroll view's gestures or delegate.
+/// Reflow and programmatic scrollTo calls must never select a different word.
+#if os(iOS)
+private struct PassageScrollInput: UIViewRepresentable {
+    let began: () -> Void
+    func makeUIView(context: Context) -> Probe { Probe(began: began) }
+    func updateUIView(_ view: Probe, context: Context) { view.began = began }
+    final class Probe: UIView {
+        var began: () -> Void
+        private weak var scroll: UIScrollView?
+        init(began: @escaping () -> Void) { self.began = began; super.init(frame: .zero); isUserInteractionEnabled = false }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            scroll?.panGestureRecognizer.removeTarget(self, action: #selector(panning))
+            var ancestor = superview
+            while let view = ancestor {
+                if let found = view as? UIScrollView {
+                    scroll = found
+                    found.panGestureRecognizer.addTarget(self, action: #selector(panning))
+                    break
+                }
+                ancestor = view.superview
+            }
+        }
+        @objc private func panning() {
+            if scroll?.panGestureRecognizer.state == .began { began() }
+        }
+    }
+}
+#else
+private struct PassageScrollInput: NSViewRepresentable {
+    let began: () -> Void
+    func makeNSView(context: Context) -> Probe { Probe(began: began) }
+    func updateNSView(_ view: Probe, context: Context) { view.began = began }
+    final class Probe: NSView {
+        var began: () -> Void
+        private var monitor: Any?
+        init(began: @escaping () -> Void) { self.began = began; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown, .keyDown]) { [weak self] event in
+                guard let self, event.window === self.window, let scroll = self.enclosingScrollView else { return event }
+                let point = scroll.convert(event.locationInWindow, from: nil)
+                if event.type == .keyDown || scroll.bounds.contains(point) { self.began() }
+                return event
+            }
+        }
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+    }
+}
+#endif

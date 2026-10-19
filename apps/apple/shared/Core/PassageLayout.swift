@@ -37,24 +37,26 @@ struct PassageLayout {
         self.rows = rows; self.wordRows = wordRows
     }
     func row(containing index: Int) -> Int { wordRows.indices.contains(index) ? wordRows[index] : 0 }
-    func position(index: Int, wordProgress: Double) -> Double {
-        guard wordRows.indices.contains(index) else { return 0 }
-        let row = wordRows[index], words = rows[wordRows[index]].words
-        let distance = row + 1 < rows.count ? rows[row + 1].top - rows[row].top : rows[row].height
-        return rows[row].top + distance * (Double(index - words.lowerBound) + min(1, max(0, wordProgress))) / Double(words.count)
-    }
+}
 
-    /// Real paragraph/page boundaries keep overlapping windows wrapped identically.
-    static func window(tokens: [ReadingToken], index: Int, contextWords: Int = 256) -> Range<Int> {
-        guard !tokens.isEmpty else { return 0..<0 }
-        let current = min(tokens.count - 1, max(0, index))
-        var start = current, end = current + 1
-        while start > 0 && tokens[start - 1].pageID == tokens[current].pageID { start -= 1 }
-        while end < tokens.count && tokens[end].pageID == tokens[current].pageID { end += 1 }
-        start = max(0, start - contextWords); end = min(tokens.count, end + contextWords)
-        func boundary(_ at: Int) -> Bool { tokens[at - 1].word.endsParagraph || tokens[at - 1].pageID != tokens[at].pageID }
-        while start > 0 && !boundary(start) { start -= 1 }
-        while end < tokens.count && !boundary(end) { end += 1 }
-        return start..<end
+/// Index only paragraph/page/heading boundaries; measure text when its block appears.
+struct PassageDocument {
+    struct Block: Identifiable { let words: Range<Int>; var id: Int { words.lowerBound } }
+    let blocks: [Block]
+    init(tokens: [ReadingToken], structure: ReadingStructure) {
+        var blocks: [Block] = [], start = 0
+        for index in tokens.indices {
+            if index > 0 && (tokens[index - 1].word.endsParagraph || tokens[index - 1].pageID != tokens[index].pageID ||
+                structure.heading(at: index - 1) != structure.heading(at: index)) {
+                blocks.append(Block(words: start..<index)); start = index
+            }
+        }
+        if start < tokens.count { blocks.append(Block(words: start..<tokens.count)) }
+        self.blocks = blocks
+    }
+    func block(containing index: Int) -> Int {
+        var low = 0, high = blocks.count
+        while low < high { let mid = (low + high) / 2; if blocks[mid].words.upperBound <= index { low = mid + 1 } else { high = mid } }
+        return min(low, max(0, blocks.count - 1))
     }
 }

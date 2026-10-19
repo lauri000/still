@@ -19,9 +19,8 @@ final class ReadingStructureTests: XCTestCase {
         XCTAssertEqual(s.section(at: 7)?.title, "Small section")
         XCTAssertEqual(s.chapterEnds, [7])
         XCTAssertEqual(s.destination(title: "chapter TWO", page: 1), 8)
-        XCTAssertEqual(s.duration(index: 7, base: 0.1, passage: true), 0.8)
-        XCTAssertEqual(s.duration(index: 0, base: 0.1, passage: false), 0.6)
-        XCTAssertEqual(s.duration(index: 0, base: 0.1, passage: true), 0.1)
+        XCTAssertEqual(s.duration(index: 7, base: 0.1), 0.8)
+        XCTAssertEqual(s.duration(index: 0, base: 0.1), 0.6)
     }
     func testUnicodeWrappedTitlesRejectProseAndDuplicateMatches() {
         var b = makeBook(["Café ☕\nA quieter\nbeginning\nThe word Ambiguous is in prose.\nRepeated\nbody\nRepeated"])
@@ -58,15 +57,15 @@ final class ReadingStructureTests: XCTestCase {
         XCTAssertEqual(layout.rows.flatMap(\.words), Array(tokens.indices))
         XCTAssertTrue(layout.rows.filter(\.isHeading).allSatisfy { row in row.words.allSatisfy { ids[$0] != nil } })
         XCTAssertTrue(layout.rows.filter { !$0.isHeading }.allSatisfy { row in row.words.allSatisfy { ids[$0] == nil } })
-        for index in 0..<(tokens.count - 1) { XCTAssertEqual(layout.position(index: index, wordProgress: 1), layout.position(index: index + 1, wordProgress: 0), accuracy: 0.000001) }
+        XCTAssertTrue(zip(layout.rows, layout.rows.dropFirst()).allSatisfy { $0.top + $0.height <= $1.top })
         XCTAssertTrue(layout.rows.contains { $0.height > 1 })
     }
     @MainActor func testLiftingDuringChapterPauseStopsPlaybackAndFreezesTheColumn() async throws {
         let engine = ReaderEngine(book: source())
-        engine.wordsPerMinute = 900; engine.passageMode = true
+        engine.wordsPerMinute = 900; engine.passageMode = false
         engine.seek(7); engine.play()
         try await Task.sleep(for: .milliseconds(160)); engine.pause()
-        XCTAssertEqual(engine.index, 7); XCTAssertEqual(engine.motionProgress, 1)
+        XCTAssertEqual(engine.index, 7); XCTAssertGreaterThan(engine.wordProgress, 0.1)
         let frozen = engine.wordProgress
         try await Task.sleep(for: .milliseconds(120))
         XCTAssertFalse(engine.isPlaying); XCTAssertEqual(engine.index, 7); XCTAssertEqual(engine.wordProgress, frozen)

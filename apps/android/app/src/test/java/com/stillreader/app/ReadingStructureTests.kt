@@ -20,9 +20,8 @@ class ReadingStructureTests {
         assertEquals("Small section", s.sectionAt(7)?.title)
         assertEquals(setOf(7), s.chapterEnds)
         assertEquals(8, s.destination("chapter TWO", 1))
-        assertEquals(.8, s.duration(7, .1, true), .00001)
-        assertEquals(.6, s.duration(0, .1, false), .00001)
-        assertEquals(.1, s.duration(0, .1, true), .00001)
+        assertEquals(.8, s.duration(7, .1), .00001)
+        assertEquals(.6, s.duration(0, .1), .00001)
     }
     @Test fun unicodeWrappedTitlesMatchButBodyPhrasesAndDuplicatesDoNot() {
         val b = book("Café ☕\nA quieter\nbeginning\nThe word Ambiguous is in prose.\nRepeated\nbody\nRepeated").copy(chapters = listOf(
@@ -56,22 +55,22 @@ class ReadingStructureTests {
         val repeated = book("My Book\nfirst body", "My Book\nsecond body").copy(title = "My Book")
         assertTrue(structure(repeated).headings.isEmpty())
     }
-    @Test fun headingRowsKeepEveryWordAndContinuousScrollAcrossSpacing() {
+    @Test fun headingRowsKeepEveryWordAndDoNotOverlap() {
         val b = source(); val tokens = Tokenizer.tokens(b); val s = structure(b)
         val ids = s.headings.flatMap { h -> h.words.map { it to h.words.first } }.toMap()
         val layout = PassageLayout(tokens, List(tokens.size) { 50.0 }, 170.0, headingIDs = ids)
         assertEquals(tokens.indices.toList(), layout.rows.flatMap { it.words.toList() })
         assertTrue(layout.rows.filter { it.isHeading }.all { row -> row.words.all { it in ids } })
         assertTrue(layout.rows.filterNot { it.isHeading }.all { row -> row.words.none { it in ids } })
-        for (index in 0 until tokens.lastIndex) assertEquals(layout.position(index, 1.0), layout.position(index + 1, 0.0), .000001)
+        assertTrue(layout.rows.zipWithNext().all { (a, b) -> a.top + a.height <= b.top })
         assertTrue(layout.rows.any { it.height > 1.0 })
     }
-    @Test fun liftingDuringAChapterPauseFreezesMotionAndResumeDoesNotRepeatIt() = runTest {
+    @Test fun singleLineChapterPauseResumesItsRemainingDuration() = runTest {
         val s = ReadingSession(source(), backgroundScope) { }
         s.clockNanos = { testScheduler.currentTime * 1_000_000 }
-        s.passageMode = true; s.wordsPerMinute = 600.0
+        s.passageMode = false; s.wordsPerMinute = 600.0
         s.seek(7); s.play(); runCurrent(); advanceTimeBy(200); runCurrent()
-        assertEquals(7, s.state.value.index); assertEquals(1.0, s.motionProgress, .001)
+        assertEquals(7, s.state.value.index); assertEquals(.25, s.wordProgress, .001)
         s.pause(); val frozen = s.wordProgress
         advanceTimeBy(1000); runCurrent(); assertEquals(7, s.state.value.index); assertEquals(frozen, s.wordProgress, .001)
         s.play(); runCurrent(); advanceTimeBy(601); runCurrent()

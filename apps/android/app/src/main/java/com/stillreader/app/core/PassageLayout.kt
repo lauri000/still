@@ -1,6 +1,6 @@
 package com.stillreader.app.core
 
-/** Plain rows for a nearby passage. Each word has the same share of its row's reading time. */
+/** Rows for one lazily displayed block of manually scrollable text. */
 class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, availableWidth: Double,
                     spacing: Double = 8.0, headingIDs: Map<Int, Int> = emptyMap()) {
     data class Row(val words: IntRange, val text: String, val width: Double,
@@ -32,28 +32,26 @@ class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, av
         rows = result
     }
     fun rowContaining(index: Int) = wordRows.getOrElse(index) { 0 }
-    fun position(index: Int, wordProgress: Double): Double {
-        if (index !in wordRows.indices) return 0.0
-        val row = wordRows[index]
-        val words = rows[row].words
-        val distance = rows.getOrNull(row + 1)?.let { it.top - rows[row].top } ?: rows[row].height
-        return rows[row].top + distance * (index - words.first + wordProgress.coerceIn(0.0, 1.0)) / words.count()
-    }
+    fun rowAtOffset(offset: Double): Row? = rows.firstOrNull { it.top + it.height > offset } ?: rows.lastOrNull()
+}
 
-    companion object {
-        /** Start at real paragraph/page boundaries so overlapping windows wrap identically. */
-        fun window(tokens: List<ReadingToken>, index: Int, contextWords: Int = 256): IntRange {
-            if (tokens.isEmpty()) return 0 until 0
-            val current = index.coerceIn(tokens.indices)
-            var start = current; var end = current + 1
-            while (start > 0 && tokens[start - 1].pageID == tokens[current].pageID) start--
-            while (end < tokens.size && tokens[end].pageID == tokens[current].pageID) end++
-            start = (start - contextWords).coerceAtLeast(0)
-            end = (end + contextWords).coerceAtMost(tokens.size)
-            fun boundary(at: Int) = tokens[at - 1].word.endsParagraph || tokens[at - 1].pageID != tokens[at].pageID
-            while (start > 0 && !boundary(start)) start--
-            while (end < tokens.size && !boundary(end)) end++
-            return start until end
+/** Stable paragraph/page/heading boundaries; no text is measured until a block is visible. */
+class PassageDocument(tokens: List<ReadingToken>, structure: ReadingStructure) {
+    data class Block(val words: IntRange) { val id get() = words.first }
+    val blocks: List<Block> = buildList {
+        var start = 0
+        for (index in 1..tokens.size) {
+            if (index == tokens.size || tokens[index - 1].word.endsParagraph ||
+                tokens[index - 1].pageID != tokens[index].pageID ||
+                structure.headingAt(index - 1) != structure.headingAt(index)) {
+                if (start < index) add(Block(start until index))
+                start = index
+            }
         }
+    }
+    fun blockContaining(index: Int): Int {
+        var low = 0; var high = blocks.size
+        while (low < high) { val mid = (low + high) / 2; if (blocks[mid].words.last < index) low = mid + 1 else high = mid }
+        return low.coerceAtMost((blocks.size - 1).coerceAtLeast(0))
     }
 }

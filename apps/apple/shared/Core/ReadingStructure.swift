@@ -113,9 +113,9 @@ struct ReadingStructure: Sendable {
     func destination(title: String, page: Int) -> Int? {
         sections.first { $0.pageIndex == page && Self.normalize($0.title) == Self.normalize(title) }?.heading?.words.lowerBound
     }
-    func duration(index: Int, base: Double, passage: Bool) -> Double {
+    func duration(index: Int, base: Double) -> Double {
         let heading = heading(at: index)
-        let reading = !passage && heading != nil ? max(base, 1.2 / Double(heading!.words.count)) : base
+        let reading = heading != nil ? max(base, 1.2 / Double(heading!.words.count)) : base
         return chapterEnds.contains(index) ? max(reading, 0.8) : reading
     }
     static func normalize(_ text: String) -> String {

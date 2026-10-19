@@ -21,7 +21,8 @@ data class ReadingState(
 class ReadingSession(val book: Book, private val scope: CoroutineScope, private val save: (ReadingPosition) -> Unit) {
     val tokens = Tokenizer.tokens(book)
     val structure = ReadingStructure(book, tokens)
-    private val keepsProgress get() = passageMode || structure.headingAt(state.value.index) != null || state.value.index in structure.chapterEnds
+    val passage by lazy { PassageDocument(tokens, structure) }
+    private val keepsProgress get() = structure.headingAt(state.value.index) != null || state.value.index in structure.chapterEnds
     private var startPage = maxOf(book.readingStartPageIndex, book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(0))
     private val mutable = MutableStateFlow(ReadingState(
         index = if (book.position != null && tokens.none { it.pageID == book.position.pageID }) {
@@ -39,15 +40,15 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     var allowUnreviewed = true
     var passageMode = false
         set(value) {
+            if (field == value) return
+            pause()
             field = value
-            if (value && tokens.isNotEmpty()) mutable.value = state.value.copy(blockedPage = null)
+            if (value) mutable.value = state.value.copy(blockedPage = null)
         }
     // Injectable monotonic clock keeps animation and the word timer in agreement in tests.
     var clockNanos: () -> Long = System::nanoTime
     private var wordStartedAt: Long? = null
     private var wordDuration = 0.0
-    private var motionDuration = 0.0
-    val motionProgress get() = if (motionDuration > 0) (wordProgress * wordDuration / motionDuration).coerceIn(0.0, 1.0) else wordProgress
     private var heldWordProgress = 0.0
     val wordProgress: Double get() = wordStartedAt?.let {
         (heldWordProgress + (clockNanos() - it) / 1_000_000_000.0 / wordDuration).coerceIn(0.0, 1.0)
@@ -57,6 +58,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
 
     fun toggle() { if (state.value.playing) pause() else play() }
     fun play() {
+        if (passageMode) return
         endScrubbing()
         if (tokens.isEmpty()) {
             mutable.value = state.value.copy(blockedPage = book.pages.indices.firstOrNull { book.includesPage(it) })
@@ -79,9 +81,8 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
         playback = scope.launch {
             while (isActive && state.value.playing) {
                 val token = current ?: break
-                val base = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses && !passageMode && structure.headingAt(token.id) == null)
-                wordDuration = structure.duration(token.id, base, passageMode)
-                motionDuration = if (token.id in structure.chapterEnds) base else wordDuration
+                val base = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses && structure.headingAt(token.id) == null)
+                wordDuration = structure.duration(token.id, base)
                 wordStartedAt = clockNanos()
                 delay((wordDuration * (1 - heldWordProgress) * 1000).roundToLong())
                 if (!isActive || !state.value.playing) break
@@ -102,7 +103,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
 
     private fun checkPages(from: Int, through: Int): Boolean {
-        val blocked = if (allowUnreviewed || passageMode) null else Tokenizer.blockingPage(book, from, through)
+        val blocked = if (allowUnreviewed) null else Tokenizer.blockingPage(book, from, through)
         if (blocked != null) { mutable.value = state.value.copy(blockedPage = blocked); pause(); return false }
         return true
     }
@@ -117,6 +118,8 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
         mutable.value = state.value.copy(scrubbing = false)
         checkpoint()
     }
+    // Scrolling updates the shared cursor; persist after settling or leaving the reader.
+    fun browse(index: Int) { if (passageMode && index != state.value.index) move(index) }
     fun seek(index: Int) {
         stop(); scrubOrigin = null
         mutable.value = state.value.copy(scrubbing = false)

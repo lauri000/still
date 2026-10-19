@@ -2,100 +2,69 @@ import XCTest
 @testable import Still
 
 final class PassageLayoutTests: XCTestCase {
-    func testWrappingPreservesEveryWordAndParagraphAndPageBoundaries() {
+    func testWrappingPreservesWordsParagraphsPagesAndNarrowLayouts() {
         let tokens = Tokenizer.tokens(for: makeBook(["one two three four.\n\nfive six", "seven"]))
         let layout = PassageLayout(tokens: tokens, widths: Array(repeating: 40, count: tokens.count), availableWidth: 160)
         XCTAssertEqual(layout.rows.map(\.words), [0..<3, 3..<4, 4..<6, 6..<7])
         XCTAssertEqual(layout.rows.flatMap(\.words), Array(tokens.indices))
-        for index in 0..<(tokens.count - 1) {
-            XCTAssertEqual(layout.position(index: index, wordProgress: 1), layout.position(index: index + 1, wordProgress: 0), accuracy: 0.000001)
-        }
+        XCTAssertTrue(PassageLayout(tokens: tokens, widths: Array(repeating: 900, count: tokens.count), availableWidth: 25).rows.allSatisfy { $0.words.count == 1 })
+        XCTAssertTrue(PassageLayout(tokens: [], widths: [], availableWidth: 0).rows.isEmpty)
     }
-
-    func testPunctuationDoesNotChangePassageMotion() {
-        let tokens = Tokenizer.tokens(for: makeBook(["one two. three"]))
-        let layout = PassageLayout(tokens: tokens, widths: [40, 40, 40], availableWidth: 500)
-        let plainMovement = layout.position(index: 0, wordProgress: 0.1) - layout.position(index: 0, wordProgress: 0)
-        let punctuationMovement = layout.position(index: 1, wordProgress: 0.1) - layout.position(index: 1, wordProgress: 0)
-        XCTAssertEqual(plainMovement, punctuationMovement, accuracy: 0.000001)
-        XCTAssertEqual(layout.position(index: 2, wordProgress: 1), 1)
+    func testDocumentIndexesParagraphsPagesAndHeadings() {
+        var b = makeBook(["one two.\n\nChapter One\nbody words", "another page"])
+        b.chapters = [BookChapter(id: UUID(), title: "Chapter One", pageIndex: 0, level: 0, source: "Manual")]
+        let tokens = Tokenizer.tokens(for: b), doc = PassageDocument(tokens: tokens, structure: ReadingStructure(book: b, tokens: tokens))
+        XCTAssertEqual(doc.blocks.map(\.words), [0..<2, 2..<4, 4..<6, 6..<8])
+        for index in tokens.indices { XCTAssertTrue(doc.blocks[doc.block(containing: index)].words.contains(index)) }
     }
-
-    func testNarrowWidthsAndEmptyBooksRemainValid() {
-        let tokens = Tokenizer.tokens(for: makeBook(["oversized word"]))
-        let layout = PassageLayout(tokens: tokens, widths: [900, 40], availableWidth: 25)
-        XCTAssertEqual(layout.rows.map(\.text), ["oversized", "word"])
-        XCTAssertEqual(layout.rows.map(\.words), [0..<1, 1..<2])
-        let empty = PassageLayout(tokens: [], widths: [], availableWidth: 0)
-        XCTAssertTrue(empty.rows.isEmpty)
-        XCTAssertEqual(empty.position(index: 0, wordProgress: 0), 0)
-    }
-    func testNearbyWindowsPreserveWrappingAcrossPageTransitionsInLargeBooks() {
+    func testLargeBookAndTrimKeepSourcePositions() {
         let text = (1...200).map { "word\($0)" }.joined(separator: " ")
-        let tokens = Tokenizer.tokens(for: makeBook(Array(repeating: text, count: 300)))
-        let all = PassageLayout(tokens: tokens, widths: Array(repeating: 40, count: tokens.count), availableWidth: 160)
-        for index in [0, 19_999, 20_000, 20_199, 20_200, tokens.count - 1] {
-            let window = PassageLayout.window(tokens: tokens, index: index)
-            XCTAssertLessThanOrEqual(window.count, 1_000)
-            XCTAssertTrue(window.contains(index))
-            let local = PassageLayout(tokens: Array(tokens[window]), widths: Array(repeating: 40, count: window.count), availableWidth: 160)
-            let globalRows = local.rows.map { ($0.words.lowerBound + window.lowerBound)..<($0.words.upperBound + window.lowerBound) }
-            XCTAssertEqual(all.rows.filter { window.contains($0.words.lowerBound) }.map(\.words), globalRows)
-            XCTAssertEqual(all.position(index: index, wordProgress: 0.4),
-                           Double(all.row(containing: window.lowerBound)) + local.position(index: index - window.lowerBound, wordProgress: 0.4), accuracy: 0.000001)
-        }
-        XCTAssertTrue(PassageLayout.window(tokens: [], index: 0).isEmpty)
+        var b = makeBook(Array(repeating: text, count: 300))
+        let tokens = Tokenizer.tokens(for: b), doc = PassageDocument(tokens: tokens, structure: ReadingStructure(book: b, tokens: tokens))
+        XCTAssertEqual(doc.blocks.count, 300)
+        XCTAssertEqual(doc.blocks.flatMap(\.words), Array(tokens.indices))
+        for index in [0, 19_999, 20_000, tokens.count - 1] { XCTAssertTrue(doc.blocks[doc.block(containing: index)].words.contains(index)) }
+        b.setReadingStart(tokens[201].position)
+        let kept = Tokenizer.tokens(for: b), trimmed = PassageDocument(tokens: kept, structure: ReadingStructure(book: b, tokens: kept))
+        XCTAssertEqual(kept.first?.position, tokens[201].position)
+        XCTAssertEqual(trimmed.blocks.flatMap(\.words), Array(kept.indices))
     }
-
+    func testEmptyDocument() {
+        let b = makeBook([""])
+        XCTAssertTrue(PassageDocument(tokens: [], structure: ReadingStructure(book: b, tokens: [])).blocks.isEmpty)
+    }
 }
 
-@MainActor
-final class PassagePlaybackTests: XCTestCase {
-    func testPauseSpeedChangeSeekAndModeSwitchPreservePosition() async throws {
-        let engine = ReaderEngine(book: makeBook(["one two three"]))
-        engine.passageMode = true
-        engine.wordsPerMinute = 60
-        engine.naturalPauses = false
-        engine.play()
-        try await Task.sleep(for: .milliseconds(100))
-        engine.pause()
-        let frozen = engine.wordProgress
-        XCTAssertGreaterThan(frozen, 0.05)
-        XCTAssertLessThan(frozen, 0.5)
-        try await Task.sleep(for: .milliseconds(80))
-        XCTAssertEqual(engine.wordProgress, frozen)
-        engine.wordsPerMinute = 120
-        engine.play()
-        try await Task.sleep(for: .milliseconds(60))
-        engine.pause()
-        XCTAssertGreaterThan(engine.wordProgress, frozen + 0.08)
-        engine.seek(1)
-        XCTAssertEqual(engine.wordProgress, 0)
-        XCTAssertEqual(engine.current?.word.text, "two")
+@MainActor final class PassagePlaybackTests: XCTestCase {
+    func testManualScrollingCannotPlayAndModeSwitchPreservesExactWord() async throws {
+        let engine = ReaderEngine(book: makeBook(["one two. three four"]))
+        var writes: [ReadingPosition] = []
+        engine.onCheckpoint = { writes.append($0) }
+        engine.seek(1); engine.passageMode = true
+        let before = writes.count
+        engine.play(); try await Task.sleep(for: .milliseconds(120))
+        XCTAssertFalse(engine.isPlaying); XCTAssertEqual(engine.index, 1)
+        engine.browse(2); engine.browse(3)
+        XCTAssertEqual(writes.count, before)
+        engine.checkpoint(); XCTAssertEqual(writes.last, engine.tokens[3].position)
         engine.passageMode = false
-        engine.play()
-        try await Task.sleep(for: .milliseconds(50))
-        engine.pause()
-        XCTAssertEqual(engine.wordProgress, 0) // Single-line resume still gives the whole word its full duration.
+        XCTAssertEqual(engine.index, 3)
+        engine.browse(0); XCTAssertEqual(engine.index, 3)
+        engine.seek(1); engine.wordsPerMinute = 600; engine.naturalPauses = true
+        engine.play(); try await Task.sleep(for: .milliseconds(100)); engine.pause()
+        XCTAssertEqual(engine.index, 1)
     }
-    func testPassageIgnoresSingleLinePausesAndReviewButPreservesPreferences() async throws {
+    func testReviewAndSpeedPreferencesOnlyAffectSingleLinePlayback() async throws {
         var book = makeBook(["one.", "two"])
         for index in book.pages.indices { book.pages[index].isReviewed = false }
         let engine = ReaderEngine(book: book)
-        engine.allowUnreviewed = false; engine.naturalPauses = true; engine.wordsPerMinute = 60
-        engine.play()
-        XCTAssertEqual(engine.blockedPage, 0)
-        engine.passageMode = true
-        XCTAssertNil(engine.blockedPage)
-        engine.play()
-        try await Task.sleep(for: .milliseconds(100))
-        engine.pause()
-        XCTAssertGreaterThan(engine.wordProgress, 0.08) // Uniform one-second words, including punctuation.
-        XCTAssertLessThan(engine.wordProgress, 0.5)
-        XCTAssertTrue(engine.naturalPauses)
-        XCTAssertFalse(engine.allowUnreviewed)
-        engine.passageMode = false; engine.seek(1); engine.play()
-        XCTAssertEqual(engine.blockedPage, 1)
+        engine.allowUnreviewed = false; engine.naturalPauses = true; engine.wordsPerMinute = 321
+        engine.play(); XCTAssertEqual(engine.blockedPage, 0)
+        engine.passageMode = true; engine.browse(1)
+        XCTAssertNil(engine.blockedPage); XCTAssertEqual(engine.index, 1)
+        engine.play(); try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(engine.isPlaying); XCTAssertTrue(engine.naturalPauses)
+        XCTAssertFalse(engine.allowUnreviewed); XCTAssertEqual(engine.wordsPerMinute, 321)
+        engine.passageMode = false; engine.play(); XCTAssertEqual(engine.blockedPage, 1)
     }
-
 }

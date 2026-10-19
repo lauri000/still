@@ -321,7 +321,7 @@ class AndroidReaderTests {
         val tokens = Tokenizer.tokens(persisted)
         assertEquals("story.", tokens[Tokenizer.index(persisted.position, tokens)].word.text)
     }
-    @Test fun passageScrollsPlainRowsAndKeepsPositionWithoutSingleLineOptions() {
+    @Test fun manualPassageScrollsAndWordTapPreservesExactPosition() {
         launch(seed = false)
         val file = File(root, "sample.pdf")
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -333,48 +333,48 @@ class AndroidReaderTests {
         compose.onNodeWithContentDescription("Animated scrolling").performClick()
         compose.onNodeWithContentDescription("Focus letter").performClick()
         compose.onNodeWithText("Done").performClick()
+        compose.runOnIdle { model.state.value.reader!!.seek(40) }
         compose.onNodeWithTag("toggleContext").performClick()
         compose.onNodeWithTag("wordRibbon").assertDoesNotExist()
         compose.onNodeWithTag("currentWord").assertDoesNotExist()
         compose.onNodeWithTag("readingOptions").assertDoesNotExist()
-        compose.onNodeWithTag("nearbyPassage").assertIsDisplayed()
-        compose.runOnIdle { model.state.value.reader!!.seek(40) }
+        compose.onNodeWithTag("holdToRead").assertDoesNotExist()
+        compose.onNodeWithTag("currentPassageRow").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(40, model.state.value.reader!!.state.value.index) }
+        compose.onNodeWithTag("passageScroll").performTouchInput { swipeUp() }
+        compose.runOnIdle {
+            val session = model.state.value.reader!!
+            assertTrue(session.state.value.index > 40)
+            assertFalse(session.state.value.playing)
+            assertTrue(session.naturalPauses)
+            assertEquals(250.0, session.wordsPerMinute, .01)
+        }
+        // Tap a noninitial word in a fully visible row using its real glyph bounds.
         val row = compose.onNodeWithTag("currentPassageRow")
         val layouts = mutableListOf<TextLayoutResult>()
         row.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-        assertTrue(layouts.single().layoutInput.text.spanStyles.isEmpty())
-        val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
-        assertTrue(kotlin.math.abs(surface.center.y - row.fetchSemanticsNode().boundsInRoot.center.y) <= 29 * application.resources.displayMetrics.density)
-        compose.onNodeWithTag("readingSurface").performTouchInput { swipe(Offset(width * .8f, height * .3f), Offset(width * .2f, height * .3f)) }
-        compose.runOnIdle {
-            assertTrue(model.state.value.reader!!.state.value.index > 40)
-            model.speed(60.0)
-            assertTrue(model.state.value.reader!!.naturalPauses)
-        }
-        val index = model.state.value.reader!!.state.value.index
-        compose.mainClock.autoAdvance = false
-        try {
-            compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
-            compose.mainClock.advanceTimeByFrame()
-            val before = row.fetchSemanticsNode().boundsInRoot
-            compose.waitUntil(2_000) { model.state.value.reader!!.wordProgress >= .4 }
-            compose.mainClock.advanceTimeByFrame()
-            val after = row.fetchSemanticsNode().boundsInRoot
-            assertEquals(index, model.state.value.reader!!.state.value.index)
-            assertEquals(before.left, after.left, 1f)
-            assertTrue("Plain text moves continuously between word advances", after.center.y < before.center.y - 1)
-            compose.onNodeWithTag("holdToRead").performTouchInput { up() }
-            compose.mainClock.advanceTimeByFrame()
-            val paused = row.fetchSemanticsNode().boundsInRoot
-            compose.mainClock.advanceTimeBy(240)
-            assertEquals(paused, row.fetchSemanticsNode().boundsInRoot)
-        } finally {
-            compose.runOnUiThread { model.pause() }
-            compose.mainClock.autoAdvance = true
-        }
-        compose.onNodeWithTag("toggleContext").performClick()
+        val layout = layouts.single()
+        val links = layout.layoutInput.text.getLinkAnnotations(0, layout.layoutInput.text.length)
+        val link = links[1.coerceAtMost(links.lastIndex)]
+        val selected = (link.item as androidx.compose.ui.text.LinkAnnotation.Clickable).tag.removePrefix("word-").toInt()
+        row.performTouchInput { click(layout.getBoundingBox(link.start).center) }
         compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
-        compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+        compose.onNodeWithTag("holdToRead").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(selected, model.state.value.reader!!.state.value.index)
+            assertFalse(model.state.value.reader!!.state.value.playing)
+        }
+        compose.onNodeWithTag("currentWord").assertTextEquals(model.state.value.reader!!.tokens[selected].word.text)
+        repeat(2) {
+            compose.onNodeWithTag("toggleContext").performClick()
+            compose.onNodeWithTag("currentPassageRow").assertIsDisplayed()
+            compose.runOnIdle { assertEquals(selected, model.state.value.reader!!.state.value.index) }
+            compose.onNodeWithTag("toggleContext").performClick()
+            compose.runOnIdle { assertEquals(selected, model.state.value.reader!!.state.value.index) }
+        }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.runOnIdle { assertEquals(selected, model.state.value.reader!!.state.value.index) }
         compose.onNodeWithTag("readingOptions").performClick()
         compose.onNodeWithContentDescription("Animated scrolling").assertIsOn()
         compose.onNodeWithContentDescription("Focus letter").assertIsOn()
@@ -596,8 +596,7 @@ class AndroidReaderTests {
         compose.onNodeWithTag("book-The art of attention").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         val surface = compose.onNodeWithTag("readingSurface")
-        repeat(2) { mode ->
-            if (mode == 1) compose.onNodeWithTag("toggleContext").performClick()
+        run {
             compose.runOnIdle { model.state.value.reader!!.seek(4) }
             var speed = 0.0
             compose.runOnIdle { speed = model.state.value.reader!!.wordsPerMinute }
@@ -652,17 +651,16 @@ class AndroidReaderTests {
         compose.onNodeWithTag("book-The art of attention").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
-        repeat(2) { mode ->
-            if (mode == 1) compose.onNodeWithTag("toggleContext").performClick()
-            val neighbor = compose.onNodeWithTag(if (mode == 0) "nearbyWord-1" else "currentPassageRow")
+        run {
+            val neighbor = compose.onNodeWithTag("nearbyWord-1")
             neighbor.assertHasNoClickAction().performTouchInput { click() }
-            compose.onNodeWithTag(if (mode == 0) "currentWord" else "currentPassageRow").assertHasNoClickAction().assertTextContains("story.", substring = true)
+            compose.onNodeWithTag("currentWord").assertHasNoClickAction().assertTextContains("story.", substring = true)
             compose.runOnIdle {
                 assertEquals(2, model.state.value.reader!!.state.value.index)
                 assertFalse(model.state.value.reader!!.state.value.playing)
             }
         }
-        val actions = compose.onNodeWithTag("currentPassageRow").fetchSemanticsNode().config[SemanticsActions.CustomActions]
+        val actions = compose.onNodeWithTag("currentWord").fetchSemanticsNode().config[SemanticsActions.CustomActions]
         compose.runOnIdle { assertTrue(actions.single { it.label == "Next word" }.action()) }
         compose.runOnIdle { assertEquals(3, model.state.value.reader!!.state.value.index) }
         compose.onNodeWithTag("holdToRead").performSemanticsAction(SemanticsActions.OnClick) { it() }

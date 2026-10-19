@@ -92,9 +92,9 @@ class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
     fun destination(title: String, page: Int): Int? = sections.firstOrNull {
         it.pageIndex == page && normalize(it.title) == normalize(title)
     }?.heading?.words?.first
-    fun duration(index: Int, base: Double, passage: Boolean): Double {
+    fun duration(index: Int, base: Double): Double {
         val heading = headingAt(index)
-        val reading = if (!passage && heading != null) maxOf(base, 1.2 / heading.words.count()) else base
+        val reading = if (heading != null) maxOf(base, 1.2 / heading.words.count()) else base
         return if (index in chapterEnds) maxOf(reading, .8) else reading
     }
     private data class Line(val text: String, val start: Int, val end: Int)

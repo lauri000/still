@@ -5,7 +5,8 @@ final class ReaderEngine: ObservableObject {
     let book: Book
     let tokens: [ReadingToken]
     let structure: ReadingStructure
-    private var keepsProgress: Bool { passageMode || structure.heading(at: index) != nil || structure.chapterEnds.contains(index) }
+    lazy var passage = PassageDocument(tokens: tokens, structure: structure)
+    private var keepsProgress: Bool { structure.heading(at: index) != nil || structure.chapterEnds.contains(index) }
     @Published private(set) var index: Int
     @Published private(set) var isPlaying = false
     @Published private(set) var isFinished = false
@@ -15,14 +16,15 @@ final class ReaderEngine: ObservableObject {
     @Published var wordsPerMinute: Double = 250
     @Published var naturalPauses = true
     @Published var allowUnreviewed = true
-    // The passage interpolates within the same word clock used by playback.
     var passageMode = false {
-        didSet { if passageMode && !tokens.isEmpty { blockedPage = nil } }
+        didSet {
+            guard passageMode != oldValue else { return }
+            pause()
+            if passageMode { blockedPage = nil }
+        }
     }
     @Published private(set) var wordStartedAt: TimeInterval?
     private var wordDuration = 0.0
-    private var motionDuration = 0.0
-    var motionProgress: Double { motionDuration > 0 ? min(1, wordProgress * wordDuration / motionDuration) : wordProgress }
     private var heldWordProgress = 0.0
     var wordProgress: Double {
         guard let wordStartedAt, wordDuration > 0 else { return heldWordProgress }
@@ -51,6 +53,7 @@ final class ReaderEngine: ObservableObject {
 
     func toggle() { isPlaying ? pause() : play() }
     func play() {
+        guard !passageMode else { return }
         endScrubbing()
         guard !tokens.isEmpty else {
             blockedPage = book.pages.indices.first { book.includesPage(at: $0) }
@@ -63,7 +66,7 @@ final class ReaderEngine: ObservableObject {
         schedulePlayback()
     }
     private func checkPages(from: Int, through: Int) -> Bool {
-        if !allowUnreviewed && !passageMode, let page = Tokenizer.blockingPage(in: book, from: from, through: through) {
+        if !allowUnreviewed, let page = Tokenizer.blockingPage(in: book, from: from, through: through) {
             blockedPage = page
             pause()
             return false
@@ -77,9 +80,8 @@ final class ReaderEngine: ObservableObject {
         wordStartedAt = nil
         playback = Task { [weak self] in
             while let self, self.isPlaying, let token = self.current {
-                let base = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses && !self.passageMode && self.structure.heading(at: token.id) == nil)
-                let duration = self.structure.duration(index: token.id, base: base, passage: self.passageMode)
-                self.motionDuration = self.structure.chapterEnds.contains(token.id) ? base : duration
+                let base = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses && self.structure.heading(at: token.id) == nil)
+                let duration = self.structure.duration(index: token.id, base: base)
                 self.wordDuration = duration
                 self.wordStartedAt = ProcessInfo.processInfo.systemUptime
                 do { try await Task.sleep(for: .seconds(duration * (1 - self.heldWordProgress))) } catch { return }
@@ -113,6 +115,8 @@ final class ReaderEngine: ObservableObject {
         playback?.cancel()
         playback = nil
     }
+    // Scroll updates are cheap; save when settling or leaving the reader.
+    func browse(_ newIndex: Int) { if passageMode && newIndex != index { move(to: newIndex) } }
     func seek(_ newIndex: Int) {
         stopPlayback()
         scrubOrigin = nil

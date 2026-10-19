@@ -52,7 +52,7 @@ class PassagePerformanceTests {
         compose.setContent {
             val state by session.state.collectAsState()
             StillTheme { Box(Modifier.fillMaxSize()) {
-                if (passage) PassageView(session, state)
+                if (passage) PassageView(session, state) { session.seek(it) }
                 else WordRibbon(session, state.index, focus, false, false, percent)
             } }
         }
