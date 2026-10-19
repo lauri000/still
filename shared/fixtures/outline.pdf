@@ -1,0 +1,125 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Outlines 20 0 R /Names << /Dests << /Names [(named) [5 0 R /Fit]] >> >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 114 >>
+stream
+BT /F1 24 Tf 60 700 Td (Beginning) Tj 0 -40 Td /F1 16 Tf (One two three four five six seven eight nine ten.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 115 >>
+stream
+BT /F1 24 Tf 60 700 Td (Named page) Tj 0 -40 Td /F1 16 Tf (One two three four five six seven eight nine ten.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 115 >>
+stream
+BT /F1 24 Tf 60 700 Td (Later page) Tj 0 -40 Td /F1 16 Tf (One two three four five six seven eight nine ten.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 116 >>
+stream
+BT /F1 24 Tf 60 700 Td (Action page) Tj 0 -40 Td /F1 16 Tf (One two three four five six seven eight nine ten.) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+20 0 obj
+<< /Type /Outlines /First 21 0 R /Last 32 0 R /Count 12 >>
+endobj
+21 0 obj
+<< /Title (Part) /Parent 20 0 R /First 22 0 R /Last 25 0 R /Count 4 /Next 26 0 R >>
+endobj
+22 0 obj
+<< /Title (Later section) /Parent 21 0 R /Dest [7 0 R /Fit] /First 23 0 R /Last 23 0 R /Count 1 /Next 24 0 R >>
+endobj
+23 0 obj
+<< /Title (Deep section) /Parent 22 0 R /Dest [7 0 R /XYZ 0 700 null] >>
+endobj
+24 0 obj
+<< /Title (Named section) /Parent 21 0 R /Dest (named) /Prev 22 0 R /Next 25 0 R >>
+endobj
+25 0 obj
+<< /Title (GoTo section) /Parent 21 0 R /A << /S /GoTo /D [9 0 R /Fit] >> /Prev 24 0 R >>
+endobj
+26 0 obj
+<< /Title (Back to beginning) /Parent 20 0 R /Prev 21 0 R /Next 27 0 R /Dest [3 0 R /Fit] >>
+endobj
+27 0 obj
+<< /Title (Same page) /Parent 20 0 R /Prev 26 0 R /Next 28 0 R /Dest [3 0 R /Fit] >>
+endobj
+28 0 obj
+<< /Title (   ) /Parent 20 0 R /Prev 27 0 R /Next 29 0 R /Dest [7 0 R /Fit] >>
+endobj
+29 0 obj
+<< /Title (Website) /Parent 20 0 R /Prev 28 0 R /Next 30 0 R /A << /S /URI /URI (https://example.com) >> >>
+endobj
+30 0 obj
+<< /Title (Remote) /Parent 20 0 R /Prev 29 0 R /Next 31 0 R /A << /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>
+endobj
+31 0 obj
+<< /Title (Broken named) /Parent 20 0 R /Prev 30 0 R /Next 32 0 R /Dest (missing) >>
+endobj
+32 0 obj
+<< /Title (Out of range) /Parent 20 0 R /Prev 31 0 R  /Dest [999 /Fit] >>
+endobj
+xref
+0 33
+0000000000 65535 f 
+0000000009 00000 n 
+0000000131 00000 n 
+0000000206 00000 n 
+0000000333 00000 n 
+0000000498 00000 n 
+0000000625 00000 n 
+0000000791 00000 n 
+0000000918 00000 n 
+0000001084 00000 n 
+0000001212 00000 n 
+0000001380 00000 n 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000000000 00000 f 
+0000001451 00000 n 
+0000001526 00000 n 
+0000001626 00000 n 
+0000001754 00000 n 
+0000001843 00000 n 
+0000001943 00000 n 
+0000002049 00000 n 
+0000002158 00000 n 
+0000002259 00000 n 
+0000002354 00000 n 
+0000002478 00000 n 
+0000002603 00000 n 
+0000002704 00000 n 
+trailer
+<< /Size 33 /Root 1 0 R >>
+startxref
+2794
+%%EOF

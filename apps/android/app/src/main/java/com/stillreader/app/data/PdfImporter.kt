@@ -7,7 +7,6 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.stillreader.app.core.*
 import io.legere.pdfiumandroid.PdfiumCore
-import io.legere.pdfiumandroid.api.Bookmark
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -97,14 +96,12 @@ class PdfImporter(private val context: Context) {
                 for (index in pages.indices) pages[index] = pages[index].copy(text = repaired.pages[index].text,
                     processedText = repaired.pages[index].text, textProcessingVersion = PdfTextRepair.VERSION)
                 progress(ImportProgress("Saving book…", 1f))
-                val chapters = mutableListOf<BookChapter>()
-                fun collect(bookmarks: List<Bookmark>, level: Int) {
-                    bookmarks.forEach { bookmark ->
-                        if (bookmark.pageIdx in 0L until count.toLong()) chapters.add(BookChapter(title = bookmark.title ?: "Untitled chapter", pageIndex = bookmark.pageIdx.toInt(), level = level, source = "PDF bookmark"))
-                        collect(bookmark.children, level + 1)
-                    }
-                }
-                collect(document.getTableOfContents(), 0)
+                val chapters = try {
+                    contents(file).mapNotNull { entry -> entry.pageIndex?.let {
+                        BookChapter(title = entry.title, pageIndex = it, level = entry.level, source = "PDF bookmark")
+                    } }
+                } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (_: Exception) { emptyList() } // Outline failure must not prevent text import.
                 val metadata = document.getDocumentMeta()
                 Book(title = metadata.title?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.').replace('_', ' '),
                     author = metadata.author.orEmpty(), originalFilename = filename, pages = pages,
@@ -160,6 +157,12 @@ class PdfImporter(private val context: Context) {
                 geometry?.boundary(offset, split) == true
             }
         } finally { nativeText?.close(); nativePage?.close() }
+    }
+
+    suspend fun contents(file: File): List<PdfContentsEntry> = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        val coroutine = currentCoroutineContext()
+        PdfContentsReader(context).read(file) { coroutine.ensureActive() }
     }
 
     suspend fun preview(file: File, index: Int, width: Int): Bitmap = withContext(Dispatchers.IO) {

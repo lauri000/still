@@ -186,9 +186,9 @@ private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: 
                 }
             }
         }
-        Column(Modifier.weight(1f).widthIn(max = 760.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(Modifier.weight(1f).widthIn(max = 1200.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             PageSelector(page, book.pages.size, if (book.position != null && !changed) "Page" else "Start page") { page = it; changed = true }
-            PdfPreview(model.importer, model.repository.pdfFile(book.id), page, Modifier.weight(1f).fillMaxWidth())
+            PdfContentsPreview(book, model.importer, model.repository.pdfFile(book.id), page, Modifier.weight(1f).fillMaxWidth()) { page = it; changed = true }
             if (book.pages[page].hasNoText) Text("No selectable text on this page. Choose another page or use Edit text.", fontSize = 12.sp, color = Muted)
             Button(onClick = { model.openReader(if (changed || book.position == null) page else null); changed = false },
                 enabled = !(book.pages[page].hasNoText && (changed || book.position == null)),

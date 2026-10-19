@@ -120,6 +120,110 @@ class AndroidReaderTests {
         assertTrue(image.height > image.width)
         image.recycle()
     }
+    @Test fun originalPdfOutlineRetainsGroupsNamedActionsAndUnavailableDestinations() = runBlocking {
+        val importer = PdfImporter(application)
+        val file = File(root, "outline.pdf")
+        fixture("outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        val before = file.readBytes()
+        val entries = importer.contents(file)
+        assertEquals(listOf("Part", "Later section", "Deep section", "Named section", "GoTo section", "Back to beginning", "Same page", "Untitled section", "Website", "Remote", "Broken named", "Out of range"), entries.map { it.title })
+        assertEquals(listOf(null, 2, 2, 1, 3, 0, 0, 2, null, null, null, null), entries.map { it.pageIndex })
+        assertEquals(listOf(0, 1, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0), entries.map { it.level })
+        assertEquals(listOf("0", "0.0"), entries[2].ancestors)
+        val imported = importer.extract(file, "outline.pdf")
+        assertEquals(listOf(0, 0, 1, 2, 2, 2, 3), imported.chapters.map { it.pageIndex })
+        assertTrue(imported.pages.all {
+            it.textProcessingVersion == PdfTextRepair.VERSION && it.text == it.processedText && !it.isEdited
+        })
+        assertArrayEquals(before, file.readBytes())
+        fixture("no-outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        assertTrue(importer.contents(file).isEmpty())
+    }
+
+    @Test fun contentsNavigatePreviewWithoutChangingTrimUntilRead() {
+        launch(seed = false)
+        val file = File(root, "outline.pdf")
+        fixture("outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.runOnIdle {
+            val book = model.state.value.books.single()
+            model.updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[1].id, 6)).copy(position = ReadingPosition(it.pages[2].id, 11)) }
+        }
+        compose.onNodeWithTag("pdfContents").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("contentsEntry-0.0.0").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("contentsEntry-0.0.0").assertIsSelected()
+        outlineScreenshot("android-contents-phone")
+        compose.onNodeWithTag("contentsToggle-0").performClick()
+        compose.onNodeWithTag("contentsEntry-0.0.0").assertDoesNotExist()
+        compose.onNodeWithTag("contentsToggle-0").performClick()
+        compose.onNodeWithTag("contentsEntry-0").assertIsNotEnabled()
+        compose.onNodeWithTag("contentsEntry-0.1").performClick()
+        compose.onNodeWithTag("pageNumber").assertTextEquals("2")
+        compose.runOnIdle {
+            val book = model.state.value.books.single()
+            assertEquals(6, book.readingStart?.utf16Offset)
+            assertEquals(11, book.position?.utf16Offset)
+            assertNull(model.state.value.reader)
+        }
+        compose.onNodeWithTag("startReading").performClick()
+        compose.runOnIdle {
+            val book = model.state.value.books.single()
+            assertEquals(book.pages[1].id, book.readingStart?.pageID)
+            assertEquals(0, book.readingStart?.utf16Offset)
+            model.state.value.reader!!.seek(2)
+        }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag("pdfContents").performClick()
+        compose.onNodeWithTag("closeContents").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.runOnIdle { assertEquals(2, model.state.value.reader!!.state.value.index) }
+    }
+
+    @Test fun contentsWideSidebarRetainsPreviewAndSelection() {
+        org.junit.Assume.assumeTrue(application.resources.configuration.screenWidthDp >= 808)
+        launch(seed = false)
+        val file = File(root, "outline.pdf")
+        fixture("outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("contentsSidebar").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("contentsSidebar").assertIsDisplayed()
+        compose.onNodeWithTag("contentsEntry-0.0").performClick()
+        compose.onNodeWithTag("pageNumber").assertTextEquals("3")
+        compose.onNodeWithTag("contentsEntry-0.0").assertIsSelected()
+        compose.onNodeWithContentDescription("PDF page 3 preview").assertIsDisplayed()
+        outlineScreenshot("android-contents-wide")
+        compose.onNodeWithTag("pdfContents").performClick()
+        compose.onNodeWithTag("contentsSidebar").assertDoesNotExist()
+        compose.onNodeWithTag("pdfContents").performClick()
+        compose.onNodeWithTag("contentsEntry-0.0").assertIsSelected()
+        compose.onNodeWithContentDescription("Previous page").performClick()
+        compose.onNodeWithTag("contentsEntry-0.1").assertIsSelected()
+    }
+
+    private fun outlineScreenshot(name: String) {
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        File(application.getExternalFilesDir(null), "$name.png").outputStream().use {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        bitmap.recycle()
+    }
+
+    @Test fun emptyContentsKeepsPageSelectionAvailable() {
+        launch(seed = false)
+        val file = File(root, "no-outline.pdf")
+        fixture("no-outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.onNodeWithTag("pdfContents").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("No PDF contents").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("No PDF contents").assertIsDisplayed()
+        compose.onNodeWithTag("closeContents").performClick()
+        compose.onNodeWithContentDescription("Next page").performClick()
+        compose.onNodeWithTag("pageNumber").assertTextEquals("2")
+    }
+
     @Test fun emptyLibraryAndPdfImportOpenStartingPage() {
         launch(seed = false)
         compose.onNodeWithText("No PDFs yet").assertIsDisplayed()

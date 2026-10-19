@@ -30,7 +30,12 @@ targets:
   StillTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [tests/StillTests]
+    sources:
+      - tests/StillTests
+      - path: ../../shared/fixtures/outline.pdf
+        buildPhase: resources
+      - path: ../../shared/fixtures/no-outline.pdf
+        buildPhase: resources
     dependencies:
       - target: Still
     settings:

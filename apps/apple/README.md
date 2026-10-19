@@ -63,3 +63,8 @@ Verified on 16 October 2026 with Xcode 26.3: 43 unit/layout tests and all 10 iPa
 The scrolling-passage update was checked on 17 October 2026: all 47 unit/layout tests and 10 iPad UI scenarios passed, including a targeted rerun after correcting the starting-page test. The current-main macOS build was launched and visually checked.
 
 Plain-passage verification on 19 October 2026: all 52 unit tests and 10 iPhone UI scenarios pass, including independent single-line preferences, plain scrolling rows, rotation, gestures, and saved positions. The macOS target builds. Large-book layout tests verify matching rows across nearby-page windows.
+
+PDF contents navigation: the starting-page chooser reads the original PDF's embedded
+outline, preserving source order, nested groups, and duplicate destinations. Wide
+screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
+changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).

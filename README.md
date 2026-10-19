@@ -1,6 +1,6 @@
 # Still
 
-A native PDF speed reader for **iPad, macOS, and Android**. Import a PDF, choose a starting page, then read in a centered single line or a vertically scrolling passage, with swipe navigation and saved progress.
+A native PDF speed reader for **iPad, macOS, and Android**. Import a PDF, choose a starting page or PDF section, then read in a centered single line or a vertically scrolling passage, with swipe navigation and saved progress.
 
 ## Apps
 

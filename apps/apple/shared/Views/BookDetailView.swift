@@ -133,10 +133,7 @@ struct BookDetailView: View {
                 Button { choosePage(startPage + 1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
                     .disabled(startPage == book.pages.count - 1).accessibilityLabel("Next starting page")
             }.buttonStyle(.plain)
-            PDFPageView(url: library.repository.pdfURL(for: bookID), pageIndex: startPage)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line))
-                .accessibilityLabel("PDF page \(startPage + 1) preview")
+            PDFContentsPreview(book: book, url: library.repository.pdfURL(for: bookID), page: startPage, choosePage: choosePage)
             HStack {
                 if book.pages[startPage].hasNoText {
                     Text("No selectable text on this page. Choose another page or use Edit text.")
@@ -151,7 +148,7 @@ struct BookDetailView: View {
                 .buttonStyle(PrimaryButton()).accessibilityIdentifier("startReading")
                 .disabled(book.pages[startPage].hasNoText && (startPageChanged || book.position == nil))
             }
-        }.padding(24).frame(maxWidth: 760).frame(maxWidth: .infinity)
+        }.padding(24).frame(maxWidth: 1200).frame(maxWidth: .infinity)
     }
 
     private func choosePage(_ index: Int) {

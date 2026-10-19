@@ -2,8 +2,10 @@
 
 
 1. Choose **Import PDF**. The imported book opens at its page selector with a PDF preview.
-2. Enter a **Start page** or use the arrows, then choose **Read**. Earlier pages are skipped. New libraries start empty; no demo book is added automatically.
+2. Enter a **Start page**, use the arrows, or choose a section from **Contents**, then choose **Read**. Earlier pages are skipped. New libraries start empty; no demo book is added automatically.
 3. On iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
+
+**Contents** uses the PDF’s embedded outline, with expandable groups and the current section highlighted. It appears beside the preview on wide screens and opens in a sheet on phones. Choosing a section previews its page; **Read** confirms that page as the beginning. Opening or closing Contents alone preserves **Continue reading** and the exact saved word. Entries without a local page remain visible but cannot navigate. PDFs without an outline still use the page controls; Still does not infer headings from page text.
 
 In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. On mobile, the invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over. On Mac, drag anywhere in the text to scrub and use the header buttons to change speed in 10 WPM steps.
 

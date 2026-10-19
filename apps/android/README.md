@@ -69,10 +69,16 @@ Animated-scrolling verification on 16 October 2026: all 20 JVM tests and 11 emul
 
 Full-screen reader verification for 0.1.5: all 20 JVM tests and 17 device tests pass. Five focused checks also pass in phone landscape, covering the compact header, gesture-zone ownership, WPM visibility, text sizing, and animation. Rotation and backgrounding cancel a held gesture and preserve the selected word. Lint reports zero errors and 18 existing dependency/SDK/API-style warnings. Current screenshots are in [`docs/screenshots/full-screen-reader/`](../../docs/screenshots/full-screen-reader/).
 
-PDFium and PdfiumAndroidKt license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
+PDFium, PdfiumAndroidKt, PDFBox-Android, and Bouncy Castle license texts are included in `app/src/main/assets/licenses/` and packaged with the APK.
 
 The scrolling-passage update was checked on 17 October 2026: all 24 unit tests and 17 emulator scenarios passed (the review-prompt scenario needed an isolated rerun). The passage test also verifies continuous vertical movement between words, stable horizontal positions, and freezing on release. Debug build and lint completed with no lint errors; existing warnings remain.
 
 The bundled SCOWL vocabulary and its full license are in `shared/resources/` and packaged as assets on Android and resources on Apple.
 
 Plain-passage verification on 19 October 2026: all 31 JVM tests and 17 emulator scenarios pass; lint has zero errors and 18 existing warnings. An opt-in test with the local 284-page, 104,789-word 1984 PDF opened multiline in 160–230 ms across the former size/focus/natural-pause combinations, compared with about 5.8 seconds with natural pauses in 0.1.8. The PDF is not bundled or committed. Multiline now lays out nearby text and does not calculate natural-pause durations for the book. Physical GrapheneOS testing remains outstanding.
+
+PDF contents navigation: the starting-page chooser reads the original PDF's embedded
+outline with PDFBox-Android, preserving source order, nested groups, and duplicate
+destinations. PDFium continues to extract text and render pages. Wide
+screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
+changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).

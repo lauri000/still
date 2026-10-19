@@ -59,6 +59,44 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
+    func testContentsChoosesPreviewAndPreservesExactResume() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        let contents = app.buttons["pdfContents"]
+        XCTAssertTrue(contents.waitForExistence(timeout: 5))
+        // iPhone presents a sheet; wide iPad/Mac layouts already show the sidebar.
+        if !app.buttons["contentsEntry-1"].waitForExistence(timeout: 2) { contents.tap() }
+        let chapter = app.buttons["contentsEntry-1"]
+        XCTAssertTrue(chapter.waitForExistence(timeout: 5), app.debugDescription)
+        attachScreenshot("PDF contents")
+        chapter.tap()
+        XCTAssertEqual(app.textFields["readingPageNumber"].value as? String, "2")
+        attachScreenshot("PDF contents selection")
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(app.staticTexts["currentWord"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["currentWord"].label, "A")
+        stepForward(in: app)
+        let word = app.staticTexts["currentWord"].label
+        let position = app.staticTexts["currentWord"].value as? String
+        app.buttons["Close reader"].tap()
+        // Opening/closing contents must not turn Continue reading into a new start.
+        contents.tap()
+        if app.buttons["closeContents"].waitForExistence(timeout: 1) { app.buttons["closeContents"].tap() }
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(app.staticTexts["currentWord"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["currentWord"].label, word)
+        XCTAssertEqual(app.staticTexts["currentWord"].value as? String, position)
+        app.buttons["Close reader"].tap()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitForRotation(in: app, landscape: true)
+        attachScreenshot("PDF contents in landscape")
+    }
+
+    @MainActor
     func testEmptyLibraryStartsWithImport() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library", "--empty-library"]
