@@ -33,7 +33,7 @@ xcodegen generate --spec apps/apple/project.yml
 
 The compact header holds page navigation and progress; text fills the remaining space. On iPhone and iPad, hold the invisible bottom-right quarter to read and drag horizontally to adjust speed. Start elsewhere to scrub; each gesture keeps its starting role until release. Tapping words no longer jumps. On Mac, header buttons handle playback, stepping, and speed (±10 WPM), with Space and arrow keys retained. WPM appears only after a speed adjustment and fades when adjustments stop.
 
-Passage view shows plain text in stable, left-aligned rows while the column scrolls vertically. It has no highlighted word or focus letter. Nearby text is laid out on demand instead of preparing the whole book. The same hold, speed, and scrub controls remain available; pausing freezes the column, and resuming continues from that position. Each word receives equal time at the selected WPM. System reduced-motion settings advance stationary rows at row boundaries.
+Passage view shows plain text in stable, left-aligned rows while the column scrolls vertically. It has no highlighted word or focus letter. Nearby text is laid out on demand instead of preparing the whole book. The same hold, speed, and scrub controls remain available; pausing freezes the column, and resuming continues from that position. Body words receive equal time at the selected WPM; reliably matched chapter endings get a brief pause. System reduced-motion settings advance stationary rows at row boundaries.
 
 The reading-options button appears only in single-line mode. **Active word size** (100%–300%), **Focus letter**, **Animated scrolling**, **Natural pauses**, and **Pause at unchecked pages** apply only to that mode. Passage view uses its own regular text size and reads unchecked text, skipping empty pages. Switching modes preserves the position, WPM, and saved single-line preferences. Backgrounding or leaving either view pauses and saves progress.
 
@@ -68,3 +68,8 @@ PDF contents navigation: the starting-page chooser reads the original PDF's embe
 outline, preserving source order, nested groups, and duplicate destinations. Wide
 screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
 changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).
+
+Book typography and reader Contents: matched headings use larger text in multiline
+and appear together in single-line reading. Tap the chapter/page header to browse
+Contents. Exact matches seek the heading; other entries navigate by page. See
+[reading](../../docs/reading.md#book-typography-and-contents) for details.

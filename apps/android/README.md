@@ -24,7 +24,7 @@ Import a PDF, choose the starting page using the PDF preview, and tap **Read**. 
 
 Start a horizontal swipe anywhere outside that corner to move forward/backward through the text. The starting zone determines the entire gesture: crossing into or out of the corner never switches between scrubbing and speed control. Additional fingers cannot take over. Scrubbing pauses playback without changing speed; hold the corner again to resume from the selected word. Tapping words does not jump to them. Screen readers retain start/pause, speed adjustments, and next/previous word actions.
 
-Passage view shows plain text in stable, left-aligned rows while the column scrolls vertically. It has no highlighted word or focus letter. Nearby text is laid out on demand instead of preparing the whole book. The same hold, speed, and scrub controls remain available; pausing freezes the column, and resuming continues from that position. Each word receives equal time at the selected WPM. System reduced-motion settings advance stationary rows at row boundaries.
+Passage view shows plain text in stable, left-aligned rows while the column scrolls vertically. It has no highlighted word or focus letter. Nearby text is laid out on demand instead of preparing the whole book. The same hold, speed, and scrub controls remain available; pausing freezes the column, and resuming continues from that position. Body words receive equal time at the selected WPM; reliably matched chapter endings get a brief pause. System reduced-motion settings advance stationary rows at row boundaries.
 
 The reading-options button appears only in single-line mode. **Active word size** (100%–300%), **Focus letter**, **Animated scrolling**, **Natural pauses**, and **Pause at unchecked pages** apply only to that mode. Passage view uses its own regular text size and reads unchecked text, skipping empty pages. Switching modes preserves the position, WPM, and saved single-line preferences. Backgrounding or leaving either view pauses and saves progress.
 
@@ -82,3 +82,8 @@ outline with PDFBox-Android, preserving source order, nested groups, and duplica
 destinations. PDFium continues to extract text and render pages. Wide
 screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
 changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).
+
+Book typography and reader Contents: matched headings use larger text in multiline
+and appear together in single-line reading. Tap the chapter/page header to browse
+Contents. Exact matches seek the heading; other entries navigate by page. See
+[reading](../../docs/reading.md#book-typography-and-contents) for details.
