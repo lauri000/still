@@ -3,7 +3,9 @@ package com.stillreader.app
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -24,6 +26,36 @@ class PassageScrollTests {
     @Test fun passageKeepsFlingingWithLivePositionUpdates() = checkMomentum(true)
 
     @Test fun passageKeepsFlingingAcrossParagraphs() = checkMomentum(true, paragraphRepeats = 1)
+
+    @Test fun rowTapSelectsExactWordAndIgnoresBlankSpace() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        lateinit var session: ReadingSession
+        var selected: Int? = null
+        compose.runOnUiThread {
+            session = ReadingSession(Book(title = "Tap test", originalFilename = "test.pdf", pages = listOf(
+                BookPage(number = 1, extractedText = "one two three.", isReviewed = true))), scope) { }
+            session.passageMode = true
+        }
+        compose.setContent {
+            val state by session.state.collectAsState()
+            StillTheme { PassageView(session, state) { selected = it } }
+        }
+        try {
+            val row = compose.onNodeWithTag("currentPassageRow")
+            val results = mutableListOf<TextLayoutResult>()
+            row.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+            val layout = results.single()
+            row.performTouchInput { click(layout.getBoundingBox(3).center) }
+            compose.runOnIdle { assertNull("A space must not select a word", selected) }
+            row.performTouchInput { click(Offset(width - 1f, layout.getBoundingBox(0).center.y)) }
+            compose.runOnIdle { assertNull("The blank end of a row must not select its last word", selected) }
+            row.performTouchInput { click(layout.getBoundingBox(5).center) }
+            compose.runOnIdle { assertEquals("Tap on two", 1, selected) }
+            val action = row.fetchSemanticsNode().config[SemanticsActions.CustomActions].single { it.label == "Read from three." }
+            compose.runOnIdle { assertTrue(action.action()) }
+            compose.runOnIdle { assertEquals("Accessibility word action", 2, selected) }
+        } finally { scope.cancel() }
+    }
 
     private fun checkMomentum(liveDrag: Boolean, paragraphRepeats: Int = 4) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

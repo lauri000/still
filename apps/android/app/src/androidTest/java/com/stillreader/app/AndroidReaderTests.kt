@@ -354,9 +354,10 @@ class AndroidReaderTests {
         val layouts = mutableListOf<TextLayoutResult>()
         row.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         val layout = layouts.single()
-        val links = layout.layoutInput.text.getLinkAnnotations(0, layout.layoutInput.text.length)
+        val links = layout.layoutInput.text.getStringAnnotations("word", 0, layout.layoutInput.text.length)
         val link = links[1.coerceAtMost(links.lastIndex)]
-        val selected = (link.item as androidx.compose.ui.text.LinkAnnotation.Clickable).tag.removePrefix("word-").toInt()
+        val selected = link.item.toInt()
+        val selectedText = layout.layoutInput.text.text.substring(link.start, link.end)
         row.performTouchInput { click(layout.getBoundingBox(link.start).center) }
         compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
         compose.onNodeWithTag("holdToRead").assertIsDisplayed()
@@ -364,7 +365,7 @@ class AndroidReaderTests {
             assertEquals(selected, model.state.value.reader!!.state.value.index)
             assertFalse(model.state.value.reader!!.state.value.playing)
         }
-        compose.onNodeWithTag("currentWord").assertTextEquals(model.state.value.reader!!.tokens[selected].word.text)
+        compose.onNodeWithTag("currentWord").assertTextEquals(selectedText)
         repeat(2) {
             compose.onNodeWithTag("toggleContext").performClick()
             compose.onNodeWithTag("currentPassageRow").assertIsDisplayed()

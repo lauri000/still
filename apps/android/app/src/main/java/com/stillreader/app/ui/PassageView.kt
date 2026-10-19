@@ -1,5 +1,6 @@
 package com.stillreader.app.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -9,12 +10,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stillreader.app.core.*
@@ -96,31 +97,55 @@ fun PassageView(session: ReadingSession, state: ReadingState, selectWord: (Int) 
                 Column {
                     Spacer(Modifier.height(with(density) { ((layout.rows.firstOrNull()?.top ?: 0.0) * rowHeight).toFloat().toDp() }))
                     layout.rows.forEach { row ->
-                        val text = remember(row, nearby) {
-                            buildAnnotatedString {
-                                row.words.forEach { local ->
-                                    if (local != row.words.first) append(" ")
-                                    val token = nearby[local]
-                                    withLink(LinkAnnotation.Clickable("word-${token.id}",
-                                        TextLinkStyles(style = SpanStyle(color = Ink, textDecoration = TextDecoration.None))) { onSelectWord(token.id) }) {
-                                        append(token.word.text)
-                                    }
-                                }
-                            }
-                        }
-                        val active = state.index - block.id in row.words
-                        Text(text, color = Ink, maxLines = 1, softWrap = false,
-                            style = style.copy(fontSize = (fontSize * (if (row.isHeading) 1.2 else 1.0) * (width / row.width).coerceAtMost(1.0)).sp),
-                            modifier = Modifier.fillMaxWidth().height(with(density) { (rowHeight * row.height).toFloat().toDp() }).wrapContentHeight()
-                                .testTag(if (active) "currentPassageRow" else "passageRow-${block.id + row.words.first}")
-                                .semantics {
-                                    if (row.isHeading) heading()
-                                    if (active) stateDescription = "Word ${state.index + 1} of ${session.tokens.size}"
-                                })
+                        PassageRow(row, nearby, style, fontSize, width, rowHeight,
+                            state.index.takeIf { it - block.id in row.words }, session.tokens.size) { onSelectWord(it) }
                     }
                     Spacer(Modifier.height(with(density) { (rowHeight * if (layout.rows.lastOrNull()?.isHeading == true) .45f else .2f).toDp() }))
                 }
             }
         }
     }
+}
+
+/** One text/tap target per row; words are character ranges, not separate link layouts. */
+@Composable
+private fun PassageRow(row: PassageLayout.Row, tokens: List<ReadingToken>, style: TextStyle,
+                       fontSize: Float, width: Double, rowHeight: Float, activeIndex: Int?,
+                       wordCount: Int, selectWord: (Int) -> Unit) {
+    val density = LocalDensity.current
+    val onSelectWord by rememberUpdatedState(selectWord)
+    val text = remember(row, tokens) {
+        buildAnnotatedString {
+            row.words.forEach { local ->
+                if (local != row.words.first) append(" ")
+                val token = tokens[local]
+                withAnnotation("word", token.id.toString()) { append(token.word.text) }
+            }
+        }
+    }
+    var layout by remember(text) { mutableStateOf<TextLayoutResult?>(null) }
+    Text(text, color = Ink, maxLines = 1, softWrap = false,
+        style = style.copy(fontSize = (fontSize * (if (row.isHeading) 1.2 else 1.0) * (width / row.width).coerceAtMost(1.0)).sp),
+        onTextLayout = { layout = it },
+        modifier = Modifier.fillMaxWidth().height(with(density) { (rowHeight * row.height).toFloat().toDp() }).wrapContentHeight()
+            .testTag(if (activeIndex != null) "currentPassageRow" else "passageRow-${tokens[row.words.first].id}")
+            .pointerInput(text) {
+                detectTapGestures { position ->
+                    val result = layout ?: return@detectTapGestures
+                    val offset = result.getOffsetForPosition(position)
+                    // Ignore empty space beside/between words instead of selecting a nearby one.
+                    if (offset < text.length && result.getBoundingBox(offset).contains(position)) {
+                        text.getStringAnnotations("word", offset, offset).firstOrNull()?.let { onSelectWord(it.item.toInt()) }
+                    }
+                }
+            }
+            .semantics {
+                if (row.isHeading) heading()
+                if (activeIndex != null) stateDescription = "Word ${activeIndex + 1} of $wordCount"
+                onClick("Continue in single-line view") { onSelectWord(activeIndex ?: tokens[row.words.first].id); true }
+                customActions = row.words.map { local ->
+                    val token = tokens[local]
+                    CustomAccessibilityAction("Read from ${token.word.text}") { onSelectWord(token.id); true }
+                }
+            })
 }

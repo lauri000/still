@@ -89,3 +89,12 @@ Contents. Exact matches seek the heading; other entries navigate by page. See
 [reading](../../docs/reading.md#book-typography-and-contents) for details.
 
 Manual-passage verification (19 October 2026): 39 JVM tests and all 22 Android reader UI scenarios pass; lint has zero errors. The new scenario checks native scrolling, tapping an exact word, repeated mode switches, reopening, and preservation of single-line options. The private 104,789-word 1984 fixture opens in every tested 100%/125%, focus-letter, and natural-pause combination. Debug emulator timings were 0.46–1.24 seconds while Apple builds/tests also ran; these are not physical-device benchmarks. No private PDF or text is bundled.
+
+
+Android passage scrolling now uses one text/tap target per row. Word ranges map a tap to the source token, and accessibility actions expose individual words. This avoids a separate Compose link layout for every word; isolating row composition also keeps cursor updates from rebuilding unaffected rows. Native fling behavior and reading-position tracking are unchanged.
+
+Scroll profiling on 19 October 2026 used the same 12 wall-clock swipes through a private 284-page fixture in the dedicated Android 16 emulator. In the controlled original/improved debug-build pair, the 95th-percentile CPU frame-path duration fell from 11.5 to 6.2 ms, and the 99th percentile from 113.4 to 41.2 ms. Both traversed 464 words. These are comparative emulator measurements, not a physical-device benchmark; no private text is bundled or logged.
+
+The opt-in `PassagePerformanceTests#scrollFrameTimings` probe reads a local `Book` JSON from `files/passage-evaluation/scroll-book.json` in the isolated `-PpdfEvaluationBuild` app. Run it with instrumentation argument `scrollEvaluation=true`. It reports frame percentiles from `Window` frame metrics, including a CPU-path sum of unknown delay, input, animation, layout, draw, sync, and command issue durations. Install test APKs directly when using this fixture so Gradle's connected-test cleanup does not remove it.
+
+Scroll-renderer verification: 39 JVM tests and all 26 Android reader/scroll UI scenarios pass, including live-drag momentum, paragraph crossings, exact word taps, ignored whitespace, accessibility word actions, mode switches, rotation, and reopening. Release compilation succeeds; debug lint reports zero errors and the existing 21 warnings.

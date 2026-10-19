@@ -1,6 +1,12 @@
 package com.stillreader.app
 
 import android.os.Debug
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.SystemClock
+import android.view.FrameMetrics
+import android.view.MotionEvent
+import android.view.Window
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
@@ -12,7 +18,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.stillreader.app.core.ReadingSession
+import com.stillreader.app.core.*
+import com.stillreader.app.data.BookCodec
 import com.stillreader.app.data.PdfImporter
 import com.stillreader.app.ui.PassageView
 import com.stillreader.app.ui.StillTheme
@@ -28,6 +35,78 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class PassagePerformanceTests {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    /** Wall-clock gestures and frame metrics; opt-in, with no private text in test output. */
+    @Test fun scrollFrameTimings() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("scrollEvaluation") == "true")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val source = File(instrumentation.targetContext.filesDir, "passage-evaluation/scroll-book.json")
+        val book = BookCodec.json.decodeFromString<Book>(source.readText())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        lateinit var session: ReadingSession
+        compose.runOnUiThread {
+            session = ReadingSession(book, scope) { }
+            session.seek(session.tokens.size / 2)
+            session.passageMode = true
+        }
+        compose.setContent {
+            val state by session.state.collectAsState()
+            StillTheme { PassageView(session, state) { session.seek(it) } }
+        }
+        compose.waitForIdle()
+        val bounds = compose.onNodeWithTag("passageScroll").fetchSemanticsNode().boundsInRoot
+        val origin = IntArray(2)
+        compose.runOnUiThread { compose.activity.window.decorView.getLocationOnScreen(origin) }
+        val frames = mutableListOf<Double>()
+        val layouts = mutableListOf<Double>()
+        val cpu = mutableListOf<Double>()
+        val draws = mutableListOf<Double>()
+        val thread = HandlerThread("scroll-frame-metrics").apply { start() }
+        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+            synchronized(frames) {
+                frames += metrics.getMetric(FrameMetrics.TOTAL_DURATION) / 1e6
+                layouts += metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION) / 1e6
+                cpu += listOf(FrameMetrics.UNKNOWN_DELAY_DURATION, FrameMetrics.INPUT_HANDLING_DURATION,
+                    FrameMetrics.ANIMATION_DURATION, FrameMetrics.LAYOUT_MEASURE_DURATION, FrameMetrics.DRAW_DURATION,
+                    FrameMetrics.SYNC_DURATION, FrameMetrics.COMMAND_ISSUE_DURATION).sumOf { metrics.getMetric(it) } / 1e6
+                draws += metrics.getMetric(FrameMetrics.DRAW_DURATION) / 1e6
+            }
+        }
+        compose.runOnUiThread { compose.activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper)) }
+        val startWord = session.state.value.index
+        try {
+            repeat(12) {
+                val down = SystemClock.uptimeMillis()
+                val x = origin[0] + bounds.center.x
+                val bottom = origin[1] + bounds.top + bounds.height * .8f
+                fun send(action: Int, y: Float) {
+                    MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).also {
+                        instrumentation.sendPointerSync(it); it.recycle()
+                    }
+                }
+                send(MotionEvent.ACTION_DOWN, bottom)
+                repeat(18) { step ->
+                    SystemClock.sleep(16)
+                    send(MotionEvent.ACTION_MOVE, bottom - bounds.height * .6f * (step + 1) / 18)
+                }
+                send(MotionEvent.ACTION_UP, bottom - bounds.height * .6f)
+                SystemClock.sleep(600)
+            }
+            compose.waitForIdle()
+            val values = synchronized(frames) { frames.sorted() }
+            fun percentile(p: Double) = values[((values.size - 1) * p).toInt()]
+            check(values.isNotEmpty())
+            val cpuValues = synchronized(frames) { cpu.sorted() }
+            val drawValues = synchronized(frames) { draws.sorted() }
+            fun cpuPercentile(p: Double) = cpuValues[((cpuValues.size - 1) * p).toInt()]
+            val drawP99 = drawValues[((drawValues.size - 1) * .99).toInt()]
+            Log.i("StillScrollProfile", "frames=${values.size} p50_ms=${percentile(.5)} p90_ms=${percentile(.9)} p95_ms=${percentile(.95)} p99_ms=${percentile(.99)} over16ms=${values.count { it > 16.67 }} over32ms=${values.count { it > 32 }} layout_ms=${layouts.sum()} cpu_p95_ms=${cpuPercentile(.95)} cpu_p99_ms=${cpuPercentile(.99)} draw_p99_ms=$drawP99 words=${session.state.value.index - startWord}")
+        } finally {
+            compose.runOnUiThread { compose.activity.window.removeOnFrameMetricsAvailableListener(listener) }
+            thread.quitSafely()
+            scope.cancel()
+        }
+    }
 
     @Test fun switchesLargeBookAtDifferentSizesAndOptions() = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("passageEvaluation") == "true")
