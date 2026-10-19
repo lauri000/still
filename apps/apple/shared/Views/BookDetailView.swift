@@ -11,6 +11,7 @@ struct BookDetailView: View {
     @State private var initialized = false
     @State private var compactPanel = "Text"
     @State private var readingBook: Book?
+    @State private var openTask: Task<Void, Never>?
     @State private var editingMetadata = false
     @State private var addingChapter = false
     @State private var trimmingBeginning = false
@@ -75,11 +76,14 @@ struct BookDetailView: View {
                 } message: { Text("This removes the imported PDF, corrections, and reading progress. Export a backup first if you want to keep them.") }
                 .confirmationDialog("Restore the extracted text on this page?", isPresented: $confirmingReset, titleVisibility: .visible) {
                     Button("Restore original text", role: .destructive) {
-                        library.editPage(bookID: bookID, pageID: book.pages[pageIndex].id, text: book.pages[pageIndex].extractedText)
+                        library.restoreExtractedText(bookID, pageIndex: pageIndex)
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: { Text("Your corrections on this page will be replaced. The PDF stays unchanged.") }
             }
+        }
+        .task(id: bookID) {
+            if let book, !book.needsReprocessing { _ = await Task.detached { book.readerCache.get(book) }.value }
         }
         .onAppear {
             guard !initialized, let book else { return }
@@ -87,12 +91,12 @@ struct BookDetailView: View {
             startPage = book.position.flatMap { position in book.pages.firstIndex { $0.id == position.pageID } } ?? book.readingStartPageIndex
             pageIndex = startPage
         }
-        .onDisappear { library.flush() }
+        .onDisappear { openTask?.cancel(); openTask = nil; library.flush() }
     }
 
     private func header(_ book: Book) -> some View {
         HStack(spacing: 16) {
-            Button(action: onBack) { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
+            Button { book.readerCache.clear(); onBack() } label: { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
                 .buttonStyle(.plain).accessibilityLabel("Back to books")
             Text(book.title).font(.system(size: 18, weight: .semibold)).lineLimit(1)
             Spacer()
@@ -100,11 +104,10 @@ struct BookDetailView: View {
                 Button("Edit text", systemImage: "pencil") { library.flush(); pageIndex = startPage; section = "Edit text" }
                     .accessibilityIdentifier("editBookText")
                 Button("Chapters", systemImage: "list.bullet") { section = "Chapters" }
-                Button("Improve text", systemImage: "text.badge.checkmark") { library.improveText(bookID) }
-                    .disabled(!book.pages.contains { PDFTextRepair.eligible($0) && $0.isIncluded })
-                    .accessibilityIdentifier("improveBookText")
-                if library.undoImprovementID == bookID {
-                    Button("Undo text improvement", systemImage: "arrow.uturn.backward") { library.undoTextImprovement(bookID) }
+                Button("Reprocess book", systemImage: "arrow.clockwise") { library.reprocess(bookID) }
+                    .accessibilityIdentifier("reprocessBook")
+                if library.undoReprocessID == bookID {
+                    Button("Undo reprocessing", systemImage: "arrow.uturn.backward") { library.undoReprocess(bookID) }
                 }
                 Button("Choose starting word…", systemImage: "text.cursor") { library.flush(); pageIndex = startPage; trimmingBeginning = true }
                     .accessibilityIdentifier("trimBeginning")
@@ -139,6 +142,10 @@ struct BookDetailView: View {
             }.buttonStyle(.plain)
             PDFContentsPreview(book: book, url: library.repository.pdfURL(for: bookID), page: startPage, choosePage: choosePage)
                 .accessibilityHidden(readingBook != nil)
+            if book.needsReprocessing {
+                Text("This book needs reader preparation. Reprocess the saved PDF to read it. Your corrections and page choices are kept.")
+                    .font(.caption).foregroundStyle(Palette.muted)
+            }
             HStack {
                 if book.pages[startPage].hasNoText {
                     Text("No selectable text on this page. Choose another page or use Edit text.")
@@ -148,10 +155,10 @@ struct BookDetailView: View {
                 Button {
                     openReader()
                 } label: {
-                    Label(book.position != nil && !startPageChanged ? (book.position?.finished == true ? "Read again" : "Continue reading") : "Read", systemImage: "play.fill")
+                    Label(openTask != nil ? "Opening…" : book.needsReprocessing ? "Reprocess book" : book.position != nil && !startPageChanged ? (book.position?.finished == true ? "Read again" : "Continue reading") : "Read", systemImage: "play.fill")
                 }
                 .buttonStyle(PrimaryButton()).accessibilityIdentifier("startReading")
-                .disabled(book.pages[startPage].hasNoText && (startPageChanged || book.position == nil))
+                .disabled(openTask != nil || (!book.needsReprocessing && book.pages[startPage].hasNoText && (startPageChanged || book.position == nil)))
             }
         }.padding(24).frame(maxWidth: 1200).frame(maxWidth: .infinity)
     }
@@ -164,6 +171,7 @@ struct BookDetailView: View {
 
     private func openReader() {
         guard let book else { return }
+        if book.needsReprocessing { library.reprocess(bookID); return }
         if startPageChanged || book.position == nil {
             library.update(bookID, saveImmediately: true) { book in
                 book.setReadingStart(ReadingPosition(pageID: book.pages[startPage].id, utf16Offset: 0))
@@ -171,7 +179,14 @@ struct BookDetailView: View {
             startPageChanged = false
         }
         library.flush()
-        readingBook = library.book(bookID)
+        guard let snapshot = library.book(bookID) else { return }
+        openTask?.cancel()
+        openTask = Task {
+            _ = await Task.detached { snapshot.readerCache.get(snapshot) }.value
+            guard !Task.isCancelled, library.book(bookID) == snapshot else { openTask = nil; return }
+            readingBook = snapshot
+            openTask = nil
+        }
     }
 
     private func reviewView(_ book: Book) -> some View {
@@ -224,7 +239,7 @@ struct BookDetailView: View {
                 Eyebrow(text: "Your reading text")
                 Spacer()
                 if page.isEdited { Text("Edited").font(.system(size: 10)).foregroundStyle(Palette.muted) }
-                Button { confirmingReset = true } label: { Image(systemName: "arrow.counterclockwise").font(.system(size: 12)) }.buttonStyle(.plain).disabled(page.text == page.extractedText).accessibilityLabel("Restore extracted text")
+                Button { confirmingReset = true } label: { Image(systemName: "arrow.counterclockwise").font(.system(size: 12)) }.buttonStyle(.plain).accessibilityLabel("Restore extracted text")
             }
             VStack(alignment: .leading, spacing: 0) {
                 if !page.warnings.isEmpty {

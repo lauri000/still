@@ -63,11 +63,11 @@ class AndroidReaderTests {
         previousActiveWordSize = if (preferences.contains("activeWordSizePercent")) preferences.getInt("activeWordSizePercent", 100) else null
         preferences.edit().putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).putBoolean("strictReview", false).commit()
     }
-    private fun launch(seed: Boolean = true) {
+    private fun launch(seed: Boolean = true, legacy: Boolean = false) {
         if (seed) {
             val backup = backup()
             val pdf = File(root, "source.pdf").apply { writeBytes(Base64.getDecoder().decode(backup.pdfData)) }
-            BookRepository(File(root, "books")).insert(backup.book, pdf)
+            BookRepository(File(root, "books")).insert(if (legacy) backup.book else ReaderPipeline.prepare(backup.book), pdf)
         }
         compose.runOnUiThread {
             model = ViewModelProvider(store, object : ViewModelProvider.Factory {
@@ -99,6 +99,7 @@ class AndroidReaderTests {
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
         compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.onNodeWithTag("readerContents").performClick()
         compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-0").isDisplayed() }
         compose.onNodeWithTag("contentsEntry-0").performClick()
@@ -130,6 +131,7 @@ class AndroidReaderTests {
         compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
         val savedIndex = session.state.value.index
         compose.onNodeWithContentDescription("Back").performClick(); compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
         compose.runOnIdle { assertEquals(savedIndex, model.state.value.reader!!.state.value.index) }
         compose.onNodeWithTag("readerContents").performClick()
@@ -214,6 +216,7 @@ class AndroidReaderTests {
             assertNull(model.state.value.reader)
         }
         compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle {
             val book = model.state.value.books.single()
             assertEquals(book.pages[1].id, book.readingStart?.pageID)
@@ -285,6 +288,7 @@ class AndroidReaderTests {
             ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) != true
         }
         compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
         compose.onNodeWithTag("currentWord").assertIsDisplayed()
         compose.runOnIdle {
@@ -328,6 +332,7 @@ class AndroidReaderTests {
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
         compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
         compose.onNodeWithTag("readingOptions").performClick()
         compose.onNodeWithContentDescription("Animated scrolling").performClick()
@@ -696,6 +701,7 @@ class AndroidReaderTests {
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
         compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle { model.options(true, true) }
         val corner = compose.onNodeWithTag("holdToRead")
         corner.performTouchInput { down(center); up() }
@@ -713,7 +719,7 @@ class AndroidReaderTests {
     }
 
     @Test fun duplicateBackupImportsRemainSeparate() {
-        launch()
+        launch(legacy = true)
         val file = File(root, "backup.json")
         fixture("apple-backup.json").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
@@ -738,13 +744,13 @@ class AndroidReaderTests {
         assertNull(model.state.value.error)
         assertEquals(listOf(original), model.state.value.books)
         compose.runOnUiThread {
-            model.improveText(original.id)
+            model.reprocess(original.id)
             model.cancelImport()
         }
         compose.waitUntil(20_000) { model.state.value.importing == null }
         runBlocking { withContext(Dispatchers.Main) { model.flush() } }
         assertNull(model.state.value.error)
-        assertNull(model.state.value.undoImprovementID)
+        assertNull(model.state.value.undoReprocessID)
         assertEquals(listOf(original), model.state.value.books)
         assertEquals(listOf(original), BookRepository(File(root, "books")).load().books)
     }
@@ -763,23 +769,42 @@ class AndroidReaderTests {
         assertEquals(1, model.state.value.books.size)
     }
 
-    @Test fun improveExistingBookPreservesCorrectionsAndCanBeUndone() {
-        launch()
+    @Test fun legacyBookRequiresExplicitReprocessingAndThenOpensPreparedText() {
+        launch(legacy = true)
+        val original = model.state.value.books.single()
+        val pdf = model.repository.pdfFile(original.id).readBytes()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithTag("startReading").assertTextContains("Reprocess book")
+        assertNull(model.state.value.reader)
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.selectedBook()?.needsReprocessing == false }
+        assertNull(model.state.value.error)
+        assertArrayEquals(pdf, model.repository.pdfFile(original.id).readBytes())
+        val stored = File(model.repository.directory(original.id), "book.json").readText()
+        assertFalse(stored.contains("extractedText")); assertFalse(stored.contains("processedText"))
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        assertEquals("the", model.state.value.reader!!.current!!.word.text)
+    }
+
+    @Test fun reprocessingLegacyBookPreservesCorrectionsAndCanBeUndone() {
+        launch(legacy = true)
         val original = model.state.value.books.single()
         compose.onNodeWithTag("book-The art of attention").performClick()
         compose.onNodeWithTag("bookOptions").performClick()
-        compose.onNodeWithText("Improve text").performClick()
+        compose.onNodeWithTag("reprocessBook").performClick()
         compose.waitUntil(20_000) { model.state.value.importing == null }
         compose.runOnIdle {
             assertNull(model.state.value.error)
             val improved = model.selectedBook()!!
             assertEquals(PdfTextRepair.VERSION, improved.pages[0].textProcessingVersion)
-            assertEquals(original.pages[1], improved.pages[1]) // manually corrected
-            assertEquals(original.pages[2], improved.pages[2]) // excluded
+            assertEquals(original.pages[1].text, improved.pages[1].text) // manually corrected
+            assertFalse(improved.pages[2].isIncluded) // excluded
+            assertFalse(improved.needsReprocessing)
             assertEquals(original.position, improved.position)
         }
         compose.onNodeWithTag("bookOptions").performClick()
-        compose.onNodeWithText("Undo text improvement").performClick()
+        compose.onNodeWithText("Undo reprocessing").performClick()
         runBlocking { withContext(Dispatchers.Main) { model.flush() } }
         assertEquals(original, BookRepository(File(root, "books")).load().books.single())
     }

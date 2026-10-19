@@ -10,6 +10,14 @@ final class PDFTextRepairTests: XCTestCase {
         XCTAssertTrue(result.book.pages.allSatisfy { $0.textProcessingVersion == PDFTextRepair.version })
     }
 
+    func testReprocessingFeedsCorrectionsIntoRepairAsProtectedPages() async throws {
+        let data = try SampleBook.pdfData()
+        var original = try await PDFImporter.extract(data: data, filename: "sample.pdf") { _, _ in }.book
+        original.editText(on: 1, to: "My manual extraordi-\nnary text")
+        let converted = try await PDFImporter.extract(data: data, filename: "sample.pdf", prepareReader: false, preserving: original) { _, _ in }
+        XCTAssertEqual(converted.book.pages[1].text, original.pages[1].text)
+    }
+
     func testRepairKeepsManualPagesAndMapsBoundaryWord() {
         let texts = ["An extraordi-", "nary beginning.", "Manual page"]
         let pages = texts.enumerated().map { index, text in
@@ -36,19 +44,21 @@ final class PDFTextRepairTests: XCTestCase {
             old.pages[index].text = old.pages[index].extractedText
             old.pages[index].processedText = nil; old.pages[index].textProcessingVersion = nil
         }
+        old.pipelineVersion = nil; old.headingMatches = nil
+        for index in old.pages.indices { old.pages[index].wordIndex = nil; old.pages[index].edited = nil }
         old.pages[1].text = "My manual correction"
         let repository = BookRepository(root: root)
         try repository.insert(old, pdfData: imported.pdfData)
         let library = LibraryStore(repository: repository)
         await library.load()
-        library.improveText(old.id)
+        library.reprocess(old.id)
         while library.isImporting { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(library.errorMessage)
-        XCTAssertEqual(library.undoImprovementID, old.id)
+        XCTAssertEqual(library.undoReprocessID, old.id)
         XCTAssertEqual(library.book(old.id)?.pages[1].text, "My manual correction")
         XCTAssertEqual(library.book(old.id)?.pages[0].textProcessingVersion, PDFTextRepair.version)
-        library.undoTextImprovement(old.id)
-        XCTAssertNil(library.undoImprovementID)
+        library.undoReprocess(old.id)
+        XCTAssertNil(library.undoReprocessID)
         XCTAssertEqual(library.book(old.id)?.pages.map(\.text), old.pages.map(\.text))
         XCTAssertEqual(try repository.load().books.first?.pages.map(\.text), old.pages.map(\.text))
     }

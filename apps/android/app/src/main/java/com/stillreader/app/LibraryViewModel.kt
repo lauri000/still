@@ -22,7 +22,8 @@ data class LibraryState(
     val importing: ImportProgress? = null,
     val error: String? = null,
     val saving: Boolean = false,
-    val undoImprovementID: String? = null,
+    val opening: Boolean = false,
+    val undoReprocessID: String? = null,
 )
 
 class LibraryViewModel @JvmOverloads constructor(application: Application, private val saved: SavedStateHandle, root: File? = null) : AndroidViewModel(application) {
@@ -43,9 +44,11 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var importJob: Job? = null
+    private var openJob: Job? = null
+    private var warmJob: Job? = null
     private var pendingWrites = 0
     private val pendingEdits = mutableMapOf<String, Job>()
-    private var beforeImprovement: Book? = null
+    private var beforeReprocess: Book? = null
 
     init {
         ioScope.launch { for (operation in operations) operation() }.invokeOnCompletion { ioScope.cancel() }
@@ -63,8 +66,13 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     fun selectedBook(): Book? = state.value.books.firstOrNull { it.id == state.value.selectedID }
     fun select(id: String?) {
         closeReader()
+        warmJob?.cancel()
+        selectedBook()?.readerCache?.clear()
         saved["selectedID"] = id
         mutable.update { it.copy(selectedID = id) }
+        selectedBook()?.takeUnless { it.needsReprocessing }?.let { book ->
+            warmJob = viewModelScope.launch(Dispatchers.Default) { book.readerCache.get(book) }
+        }
     }
     fun dismissError() { mutable.update { it.copy(error = null) } }
     private fun report(error: Throwable) {
@@ -73,13 +81,14 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         mutable.update { it.copy(error = message) }
     }
 
-    fun updateBook(id: String, debounce: Boolean = false, change: (Book) -> Book) {
+    fun updateBook(id: String, debounce: Boolean = false, rebuildReader: Boolean = true, change: (Book) -> Book) {
         val original = state.value.books.firstOrNull { it.id == id } ?: return
-        val updated = change(original)
+        val changed = change(original)
+        val updated = if (rebuildReader) ReaderPipeline.update(original, changed) else changed
         if (updated == original) return
-        if (beforeImprovement?.id == id) beforeImprovement = null
+        if (beforeReprocess?.id == id) beforeReprocess = null
         mutable.update { it.copy(books = it.books.map { book -> if (book.id == id) updated else book }, saving = true,
-            undoImprovementID = it.undoImprovementID?.takeUnless { undoID -> undoID == id }) }
+            undoReprocessID = it.undoReprocessID?.takeUnless { undoID -> undoID == id }) }
         pendingEdits.remove(id)?.cancel()
         if (debounce) {
             pendingEdits[id] = viewModelScope.launch {
@@ -145,51 +154,77 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
     fun cancelImport() { importJob?.cancel() }
 
-    fun improveText(bookID: String) = prepareBook("Preparing text improvements…") {
+    fun reprocess(bookID: String) = prepareBook("Reprocessing original PDF…") {
         closeReader()
         flush()
         val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
-        val updated = importer.improve(repository.pdfFile(bookID), original) { progress ->
-            mutable.update { it.copy(importing = progress) }
-        }
+        val updated = importer.reprocess(repository.pdfFile(bookID), original) { progress -> mutable.update { it.copy(importing = progress) } }
         ensureActive()
-        check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while its text was being improved. Please try again." }
+        check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while it was being reprocessed. Please try again." }
         withContext(NonCancellable) {
             repositoryOperation { repository.save(updated) }
-            beforeImprovement = original
-            mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoImprovementID = bookID) }
+            beforeReprocess = original
+            mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoReprocessID = bookID) }
         }
     }
 
-    fun undoTextImprovement(bookID: String) {
-        val previous = beforeImprovement?.takeIf { it.id == bookID } ?: return
-        updateBook(bookID) { previous }
+    fun restoreExtractedText(bookID: String, index: Int) = prepareBook("Reading original page…") {
+        val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
+        val text = importer.extractedPage(repository.pdfFile(bookID), index)
+        ensureActive()
+        check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed. Please try again." }
+        updateBook(bookID) { it.editText(index, text) }
     }
 
-    fun openReader(startPage: Int? = null) {
+    fun undoReprocess(bookID: String) {
+        val previous = beforeReprocess?.takeIf { it.id == bookID } ?: return
+        beforeReprocess = null
+        mutable.update { it.copy(undoReprocessID = null) }
+        updateBook(bookID, rebuildReader = false) { previous }
+    }
+
+    fun openReader(startPage: Int? = null, seekPage: Int? = null) {
+        openJob?.cancel()
         flushEdits()
         val book = selectedBook() ?: return
+        if (book.needsReprocessing) {
+            mutable.update { it.copy(error = "Reprocess this book from its original PDF before reading.") }
+            return
+        }
         if (startPage != null || book.position == null) {
             val index = (startPage ?: 0).coerceIn(book.pages.indices)
             updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[index].id, 0)) }
         }
         val sessionBook = selectedBook() ?: return
         state.value.reader?.pause()
-        val session = ReadingSession(sessionBook, viewModelScope) { position ->
-            updateBook(sessionBook.id) { it.copy(position = position) }
+        mutable.update { it.copy(opening = true) }
+        openJob = viewModelScope.launch {
+            try {
+                withContext(Dispatchers.Default) { sessionBook.readerCache.get(sessionBook) }
+                ensureActive()
+                if (state.value.selectedID != sessionBook.id || selectedBook() != sessionBook) return@launch
+                val session = ReadingSession(sessionBook, viewModelScope) { position ->
+                    updateBook(sessionBook.id) { it.copy(position = position) }
+                }
+                session.wordsPerMinute = preferences.getInt("wpm", 250).toDouble()
+                session.naturalPauses = preferences.getBoolean("naturalPauses", true)
+                session.allowUnreviewed = !preferences.getBoolean("strictReview", false)
+                seekPage?.let { session.seekPage(it) }
+                mutable.update { it.copy(reader = session, opening = false) }
+                saved["readerOpen"] = true
+                if (session.tokens.isEmpty()) session.play()
+            } catch (_: CancellationException) { }
+            catch (error: Exception) { report(error) }
+            finally { mutable.update { it.copy(opening = false) } }
         }
-        session.wordsPerMinute = preferences.getInt("wpm", 250).toDouble()
-        session.naturalPauses = preferences.getBoolean("naturalPauses", true)
-        session.allowUnreviewed = !preferences.getBoolean("strictReview", false)
-        mutable.update { it.copy(reader = session) }
-        saved["readerOpen"] = true
-        if (session.tokens.isEmpty()) session.play()
     }
     fun closeReader() {
+        openJob?.cancel(); openJob = null
         state.value.reader?.pause()
-        mutable.update { it.copy(reader = null) }
+        mutable.update { it.copy(reader = null, opening = false) }
         saved["readerOpen"] = false
     }
+
     private fun flushEdits() {
         val ids = pendingEdits.keys.toList()
         pendingEdits.values.forEach { it.cancel() }

@@ -67,7 +67,7 @@ object PdfTextRepair {
         return book.copy(position = relocate(book.position), readingStart = relocate(book.readingStart),
             pages = book.pages.mapIndexed { index, page ->
                 if (!enabled[index]) page else page.copy(text = result.pages[index].text,
-                    processedText = result.pages[index].text, textProcessingVersion = VERSION,
+                    processedText = result.pages[index].text, textProcessingVersion = VERSION, wordIndex = null, edited = false,
                     isReviewed = page.isReviewed && page.text == result.pages[index].text)
             })
     }

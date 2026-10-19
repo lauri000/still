@@ -13,6 +13,15 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
     var isSample = false
     // Optional so libraries and backups from the first version still decode.
     var readingStart: ReadingPosition? = nil
+    var pipelineVersion: Int? = nil
+    var chaptersCustomized: Bool? = nil
+    var headingMatches: [HeadingMatch]? = nil
+    var readerCache = ReaderCache()
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, title, author, originalFilename, importedAt, pages, chapters, position, isSample, readingStart, pipelineVersion, headingMatches, chaptersCustomized
+    }
+    var needsReprocessing: Bool { pipelineVersion != ReaderPipeline.version || pages.contains { $0.wordIndex == nil } || headingMatches == nil }
+
 
     var readingStartPageIndex: Int { readingStart.flatMap { start in pages.firstIndex { $0.id == start.pageID } } ?? 0 }
     func includesPage(at index: Int) -> Bool { pages.indices.contains(index) && index >= readingStartPageIndex && pages[index].isIncluded }
@@ -23,7 +32,7 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
 
     func readingWords(on index: Int) -> [TextWord] {
         guard includesPage(at: index) else { return [] }
-        let words = Tokenizer.words(in: pages[index].text)
+        let words = pages[index].words
         guard let start = readingStart, start.pageID == pages[index].id else { return words }
         return words.filter { $0.offset + $0.length > start.utf16Offset }
     }
@@ -44,12 +53,14 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
             readingStart = start
         }
         pages[index].text = text
+        pages[index].wordIndex = nil
+        pages[index].edited = true
         pages[index].isReviewed = false
         position?.finished = false
     }
 
     var hasValidStructure: Bool {
-        schemaVersion == 1 && !pages.isEmpty && Set(pages.map(\.id)).count == pages.count &&
+        (1...2).contains(schemaVersion) && !pages.isEmpty && Set(pages.map(\.id)).count == pages.count &&
             chapters.allSatisfy { pages.indices.contains($0.pageIndex) }
     }
 }
@@ -64,12 +75,23 @@ struct BookPage: Codable, Identifiable, Equatable, Sendable {
     var isIncluded: Bool
     var processedText: String? = nil
     var textProcessingVersion: Int? = nil
+    var edited: Bool? = nil
+    var wordIndex: [Int]? = nil
+
+    var words: [TextWord] {
+        guard let wordIndex else { return Tokenizer.words(in: text) }
+        let source = text as NSString
+        return stride(from: 0, to: wordIndex.count, by: 3).map { index in
+            let offset = wordIndex[index], length = wordIndex[index + 1]
+            return TextWord(text: source.substring(with: NSRange(location: offset, length: length)), offset: offset, length: length, endsParagraph: wordIndex[index + 2] == 1)
+        }
+    }
 
     var hasNoText: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var isEdited: Bool { text != (processedText ?? extractedText) }
+    var isEdited: Bool { edited ?? (text != (processedText ?? extractedText)) }
     var warnings: [String] {
         var result: [String] = []
-        if extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if hasNoText {
             result.append("No selectable text found. This may be a scanned or blank page. Enter its text or exclude the page.")
         }
         if text.contains("\u{FFFD}") { result.append("Some characters could not be decoded. Compare them with the PDF.") }
@@ -78,6 +100,36 @@ struct BookPage: Codable, Identifiable, Equatable, Sendable {
         }
         return result
     }
+}
+
+extension BookPage {
+    enum CodingKeys: String, CodingKey { case id, number, label, extractedText, text, isReviewed, isIncluded, processedText, textProcessingVersion, edited, wordIndex }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        number = try values.decode(Int.self, forKey: .number)
+        label = try values.decode(String.self, forKey: .label)
+        extractedText = try values.decodeIfPresent(String.self, forKey: .extractedText) ?? ""
+        text = try values.decode(String.self, forKey: .text)
+        isReviewed = try values.decode(Bool.self, forKey: .isReviewed)
+        isIncluded = try values.decode(Bool.self, forKey: .isIncluded)
+        processedText = try values.decodeIfPresent(String.self, forKey: .processedText)
+        textProcessingVersion = try values.decodeIfPresent(Int.self, forKey: .textProcessingVersion)
+        edited = try values.decodeIfPresent(Bool.self, forKey: .edited)
+        wordIndex = try values.decodeIfPresent([Int].self, forKey: .wordIndex)
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id); try values.encode(number, forKey: .number); try values.encode(label, forKey: .label)
+        try values.encode(text, forKey: .text); try values.encode(isReviewed, forKey: .isReviewed); try values.encode(isIncluded, forKey: .isIncluded)
+        try values.encodeIfPresent(edited, forKey: .edited); try values.encodeIfPresent(wordIndex, forKey: .wordIndex)
+        if wordIndex == nil {
+            try values.encode(extractedText, forKey: .extractedText)
+            try values.encodeIfPresent(processedText, forKey: .processedText)
+            try values.encodeIfPresent(textProcessingVersion, forKey: .textProcessingVersion)
+        }
+    }
+
 }
 
 struct BookChapter: Codable, Identifiable, Equatable, Sendable {

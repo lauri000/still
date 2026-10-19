@@ -71,11 +71,12 @@ class PdfImporter(private val context: Context) {
         } catch (error: Throwable) { file.delete(); throw error }
     }
 
-    suspend fun extract(file: File, filename: String, progress: (ImportProgress) -> Unit = {}): Book = withContext(Dispatchers.IO) {
+    suspend fun extract(file: File, filename: String, progress: (ImportProgress) -> Unit = {}, prepareReader: Boolean = true, preserving: Book? = null): Book = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         withDocument(file) { document ->
             val count = document.getPageCount()
             require(count > 0) { "This PDF has no readable pages." }
+            require(preserving == null || preserving.pages.size == count) { "The original PDF does not match this book." }
             val pages = ArrayList<BookPage>(count)
             val inputs = ArrayList<PdfTextRepair.Input>(count)
             for (index in 0 until count) {
@@ -86,7 +87,8 @@ class PdfImporter(private val context: Context) {
                     PdfTextGeometry(textPage, text).input(it.getPageHeightPoint().toDouble())
                 } }
                 val text = input.text
-                inputs.add(input)
+                val correction = preserving?.pages?.get(index)?.takeIf { it.isEdited }
+                inputs.add(correction?.let { PdfTextRepair.Input(it.text, enabled = false) } ?: input)
                 pages.add(BookPage(number = index + 1, extractedText = text))
                 progress(ImportProgress("Extracting page ${index + 1} of $count…", .7f * (index + 1f) / count))
             }
@@ -103,33 +105,27 @@ class PdfImporter(private val context: Context) {
             } catch (error: kotlinx.coroutines.CancellationException) { throw error }
             catch (_: Exception) { emptyList() } // Outline failure must not prevent text import.
             val metadata = document.getDocumentMeta()
-            Book(title = metadata.title?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.').replace('_', ' '),
+            val book = Book(title = metadata.title?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.').replace('_', ' '),
                 author = metadata.author.orEmpty(), originalFilename = filename, pages = pages,
                 chapters = chapters.sortedBy { it.pageIndex })
+            if (prepareReader) {
+                progress(ImportProgress("Preparing reader…", .95f))
+                ReaderPipeline.prepare(book)
+            } else book
         }
     }
 
-    suspend fun improve(file: File, book: Book, progress: (ImportProgress) -> Unit): Book = withContext(Dispatchers.IO) {
-        withDocument(file) { document ->
-            require(document.getPageCount() == book.pages.size) { "The original PDF does not match this book." }
-            val enabled = book.pages.map { PdfTextRepair.eligible(it) && it.isIncluded }
-            val inputs = book.pages.mapIndexed { index, source ->
-                currentCoroutineContext().ensureActive()
-                progress(ImportProgress("Checking page ${index + 1} of ${book.pages.size}…", .7f * (index + 1f) / book.pages.size))
-                if (!enabled[index]) PdfTextRepair.Input(source.text, enabled = false)
-                else document.openPage(index)!!.use { page -> page.openTextPage().use { textPage ->
-                    val native = textPage.textPageGetText(0, textPage.textPageCountChars()).orEmpty()
-                    // Backups can originate in another engine. Keep their immutable source and
-                    // use text-only repair if its offsets no longer match this engine's text.
-                    if (native == source.extractedText) PdfTextGeometry(textPage, native).input(page.getPageHeightPoint().toDouble())
-                    else PdfTextRepair.Input(source.extractedText)
-                } }
-            }
-            progress(ImportProgress("Improving word spacing and line breaks…", .7f))
-            val result = repair(document, inputs)
-            currentCoroutineContext().ensureActive()
-            PdfTextRepair.applyTo(book, result, enabled)
-        }
+    suspend fun reprocess(file: File, book: Book, progress: (ImportProgress) -> Unit): Book = withContext(Dispatchers.IO) {
+        val converted = extract(file, book.originalFilename, progress, prepareReader = false, preserving = book)
+        currentCoroutineContext().ensureActive()
+        progress(ImportProgress("Preparing reader…", .95f))
+        ReaderPipeline.reprocess(book, converted)
+    }
+
+    suspend fun extractedPage(file: File, index: Int): String = withContext(Dispatchers.IO) {
+        withDocument(file) { document -> document.openPage(index)!!.use { page -> page.openTextPage().use {
+            it.textPageGetText(0, it.textPageCountChars()).orEmpty()
+        } } }
     }
 
     /** Keep PDFium documents and their backing descriptors under one lexical owner. */

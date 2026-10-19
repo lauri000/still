@@ -75,13 +75,13 @@ private fun EditPanel(book: Book, pageIndex: Int, model: LibraryViewModel, modif
         OptionToggle("Reviewed", page.isReviewed) { reviewed ->
             model.updateBook(book.id) { it.copy(pages = it.pages.mapIndexed { index, item -> if (index == pageIndex) item.copy(isReviewed = reviewed) else item }) }
         }
-        if (page.text != page.extractedText) TextButton(onClick = { model.updateBook(book.id) { it.editText(pageIndex, page.extractedText) } }) { Text("Restore extracted text") }
+        TextButton(onClick = { model.restoreExtractedText(book.id, pageIndex) }) { Text("Restore extracted text") }
     }
 }
 
 @Composable
 private fun StartingWord(book: Book, page: Int, changePage: (Int) -> Unit, model: LibraryViewModel, close: () -> Unit) {
-    val words = remember(book.pages[page].text) { Tokenizer.words(book.pages[page].text) }
+    val words = remember(book.pages[page].text) { book.pages[page].words }
     var offset by rememberSaveable(page) { mutableIntStateOf(book.readingStart?.takeIf { it.pageID == book.pages[page].id }?.utf16Offset ?: 0) }
     val selected = words.firstOrNull { it.offset + it.length > offset }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -125,7 +125,7 @@ private fun Chapters(book: Book, initialPage: Int, model: LibraryViewModel, clos
         book.chapters.sortedBy { it.pageIndex }.forEach { chapter ->
             Row(Modifier.fillMaxWidth().clickable {
                 // Chapter navigation changes the reading position, preserving the chosen beginning.
-                model.openReader(); model.state.value.reader?.seekPage(chapter.pageIndex); close()
+                model.openReader(seekPage = chapter.pageIndex); close()
             }.padding(start = (chapter.level.coerceAtMost(6) * 12).dp)) {
                 Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
                     Text(chapter.title)

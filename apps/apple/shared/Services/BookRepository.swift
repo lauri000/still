@@ -22,7 +22,7 @@ struct BookRepository: Sendable {
                       book.id.uuidString == folder.lastPathComponent,
                       FileManager.default.fileExists(atPath: pdfURL(for: book.id).path)
                 else { throw RepositoryError.invalidBook }
-                books.append(book)
+                books.append(ReaderPipeline.loaded(book))
             } catch { unreadable += 1 }
         }
         return (books.sorted { $0.importedAt > $1.importedAt }, unreadable)
@@ -31,7 +31,7 @@ struct BookRepository: Sendable {
     func save(_ book: Book) throws {
         try FileManager.default.createDirectory(at: directory(for: book.id), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(book).write(to: directory(for: book.id).appendingPathComponent("book.json"), options: .atomic)
     }
 

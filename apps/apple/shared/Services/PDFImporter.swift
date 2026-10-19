@@ -29,18 +29,21 @@ enum PDFImporter {
         return try await extract(data: data, filename: url.lastPathComponent, vocabulary: vocabulary, progress: progress)
     }
 
-    static func extract(data: Data, filename: String, vocabulary: Set<String> = PDFVocabulary.words, progress: @Sendable (Int, Int) async -> Void) async throws -> ImportedBook {
+    static func extract(data: Data, filename: String, prepareReader: Bool = true, preserving: Book? = nil, vocabulary: Set<String> = PDFVocabulary.words, progress: @Sendable (Int, Int) async -> Void) async throws -> ImportedBook {
         guard let document = PDFDocument(data: data) else { throw PDFImportError.invalidPDF }
         guard !document.isLocked else { throw PDFImportError.locked }
         guard document.allowsCopying else { throw PDFImportError.copyingNotAllowed }
         guard document.pageCount > 0 else { throw PDFImportError.noPages }
+        guard preserving == nil || preserving?.pages.count == document.pageCount else { throw PDFImportError.invalidPDF }
         var pages: [BookPage] = []
         var inputs: [PDFTextRepair.Input] = []
         for index in 0..<document.pageCount {
             try Task.checkCancellation()
             guard let page = document.page(at: index) else { throw PDFImportError.noPages }
             let original = page.string ?? ""
-            inputs.append(PDFTextGeometry(page: page, raw: original).input())
+            if let correction = preserving?.pages[index], correction.isEdited {
+                inputs.append(PDFTextRepair.Input(text: correction.text, enabled: false))
+            } else { inputs.append(PDFTextGeometry(page: page, raw: original).input()) }
             pages.append(BookPage(id: UUID(), number: index + 1, label: page.label ?? String(index + 1),
                                   extractedText: original, text: original, isReviewed: false, isIncluded: true))
             await progress(index + 1, document.pageCount)
@@ -72,29 +75,22 @@ enum PDFImporter {
         let book = Book(id: UUID(), title: (title?.isEmpty == false ? title! : fallback), author: author,
                         originalFilename: filename, importedAt: Date(), pages: pages,
                         chapters: chapters.sorted { $0.pageIndex < $1.pageIndex })
-        return ImportedBook(book: PDFTextRepair.apply(to: book, result: repaired, enabled: Array(repeating: true, count: pages.count)), pdfData: data)
+        let repairedBook = PDFTextRepair.apply(to: book, result: repaired, enabled: Array(repeating: true, count: pages.count))
+        return ImportedBook(book: prepareReader ? ReaderPipeline.prepare(repairedBook) : repairedBook, pdfData: data)
     }
 
-    static func improve(url: URL, book: Book, progress: @Sendable (Int, Int) async -> Void) async throws -> Book {
-        guard let document = PDFDocument(url: url), document.pageCount == book.pages.count else { throw PDFImportError.invalidPDF }
+    static func reprocess(url: URL, book: Book, progress: @Sendable (Int, Int) async -> Void) async throws -> Book {
+        let data = try Data(contentsOf: url)
+        let converted = try await extract(data: data, filename: book.originalFilename, prepareReader: false, preserving: book, progress: progress)
+        guard converted.book.pages.count == book.pages.count else { throw PDFImportError.invalidPDF }
+        try Task.checkCancellation()
+        return ReaderPipeline.reprocess(book, converted: converted.book)
+    }
+
+    static func extractedPage(url: URL, index: Int) throws -> String {
+        guard let document = PDFDocument(url: url), let page = document.page(at: index) else { throw PDFImportError.invalidPDF }
         guard !document.isLocked else { throw PDFImportError.locked }
         guard document.allowsCopying else { throw PDFImportError.copyingNotAllowed }
-        let enabled = book.pages.map { PDFTextRepair.eligible($0) && $0.isIncluded }
-        var inputs: [PDFTextRepair.Input] = []
-        for index in book.pages.indices {
-            try Task.checkCancellation()
-            let source = book.pages[index]
-            if !enabled[index] { inputs.append(PDFTextRepair.Input(text: source.text, enabled: false)) }
-            else if let page = document.page(at: index), page.string == source.extractedText {
-                inputs.append(PDFTextGeometry(page: page, raw: source.extractedText).input())
-            } else { inputs.append(PDFTextRepair.Input(text: source.extractedText)) }
-            await progress(index + 1, book.pages.count)
-        }
-        let result = try PDFTextRepair.repair(inputs, englishWords: PDFVocabulary.words, checkpoint: { try Task.checkCancellation() }) { index, offset, split in
-            guard let page = document.page(at: index), page.string == inputs[index].text else { return false }
-            return PDFTextGeometry(page: page, raw: inputs[index].text).boundary(offset: offset, split: split)
-        }
-        try Task.checkCancellation()
-        return PDFTextRepair.apply(to: book, result: result, enabled: enabled)
+        return page.string ?? ""
     }
 }

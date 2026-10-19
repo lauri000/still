@@ -8,7 +8,7 @@ The book object preserves these keys:
 
 | Key | Representation |
 | --- | --- |
-| `schemaVersion` | Integer `1` |
+| `schemaVersion` | Integer `2` for prepared books; legacy `1` accepted |
 | `id` | UUID string, exported in uppercase |
 | `title`, `author`, `originalFilename` | Strings |
 | `importedAt` | Floating-point seconds since **2001-01-01 00:00:00 UTC**, matching Foundation's default `Date` encoding |
@@ -18,11 +18,17 @@ The book object preserves these keys:
 | `readingStart` | Optional position marking a reversible beginning trim |
 | `isSample` | Boolean; export even when false |
 
-A page has `id`, one-based `number`, display `label`, immutable `extractedText`, editable `text`, `isReviewed`, and `isIncluded`. A chapter has `id`, `title`, `pageIndex`, `level`, and `source`. Importing a duplicate book assigns a new book UUID and import date, preserving page IDs, text, and positions.
+New conversions use book `schemaVersion: 2` and `pipelineVersion: 1`. The backup envelope remains version 1. Both platforms accept legacy schema 1, but reading legacy/mismatched pipeline output requires the explicit **Reprocess book** action. Nothing is converted during library loading or Continue reading. Older apps reject schema 2 instead of misinterpreting its missing source fields.
 
-Pages may also contain optional `processedText` (the automatic repair baseline) and `textProcessingVersion` (currently `1`). These additive fields do not change schema/backup version 1. Missing fields decode as null; opening a legacy book or importing a backup never silently reprocesses its text. A page is manually edited when `text != (processedText ?? extractedText)`. Restoring the raw extraction remains possible.
+A prepared page stores its stable `id`, one-based `number`, display `label`, final editable `text`, `isReviewed`, `isIncluded`, `edited`, and `wordIndex`. The compact index is a flat array of UTF-16 `(offset, length, endsParagraph)` triples; the paragraph flag is 0 or 1. Only conversion or a text edit analyzes word boundaries. Loading materializes runtime words from these saved ranges. The book stores `headingMatches` as `{title, pageIndex, level, start, end}` records; titles are normalized lookup keys and spans are UTF-16, end-exclusive. An empty list is a valid prepared result.
 
-Fresh PDF imports repair text before tokenization. An explicit **Improve text** operation processes only included, unedited pages whose processing version is older, retains the original extraction, and resets review only when the reading text changes. UTF-16 source provenance relocates the reading position and beginning trim, including suffixes carried across a physical page break. Edited/excluded pages remain untouched. For backups extracted by another native engine, geometry is used only when its text matches the immutable source exactly. Version 1 upgrades only legacy raw-text baselines; future repair versions must map from the previous processed baseline as well.
+Raw extraction, repair baselines, geometry, and provenance are pipeline intermediates and are not stored in new output. The original PDF is retained unchanged. Restoring extracted text reads that PDF page on demand. Legacy `extractedText`, `processedText`, and `textProcessingVersion` are decoded only to preserve existing corrections during reprocessing.
+
+**Reprocess book** reruns extraction, repair, word indexing, and heading matching from the retained PDF, then atomically replaces the saved output. Manual page text is supplied as protected pipeline input, so cross-page repair cannot consume words from a corrected page. Book identity, title/author, inclusion choices, and stable page IDs survive. Review resets only where text changes. Positions are relocated into the resulting text. Cancel/failure leaves the prior book intact; Undo reprocessing restores it during the current session. Imported chapters refresh with the pipeline unless the chapter list was customized; legacy chapter lists are conservatively preserved. `chaptersCustomized` records this user choice separately from derived output.
+
+Bump `pipelineVersion` whenever extraction, repair, tokenization, or heading recognition changes. Incompatible output is reprocessed from the PDF rather than migrated or automatically reinterpreted. Bounds-invalid indexes require reprocessing too. Text edits rebuild affected word indexes and heading matches; title/chapter edits refresh heading recognition. Trims and page inclusion only select from the existing prepared output. Progress, speed, and display changes do not run the pipeline.
+
+Runtime word/paragraph/heading projections are built off the UI thread when a book is selected/opened and reused across reader sessions. They are not eagerly built for every book in the library. Actual text measurement remains lazy and depends on the viewport/font size.
 
 Positions use **UTF-16 code-unit offsets into the stored page text**. They are not Unicode scalar, grapheme, UTF-8 byte, or global word indices. Emoji and combining characters are covered by the fixtures. A saved offset resolves to the nearest preceding token on that page, clamped to the available text. Edits to an earlier page do not move a later page's position.
 
@@ -37,11 +43,11 @@ Unknown JSON keys can be ignored. Missing optional positions decode as null. Fut
 From the repository root:
 
 ```sh
-xcrun swiftc apps/apple/shared/Core/Book.swift apps/apple/shared/Services/SampleBook.swift \
+xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift apps/apple/shared/Services/SampleBook.swift \
   scripts/contract-fixtures.swift -o /tmp/still-contract-fixtures
 /tmp/still-contract-fixtures
 
-xcrun swiftc apps/apple/shared/Core/Book.swift apps/apple/shared/Core/PDFTextRepair.swift scripts/pdf-repair-contracts.swift -o /tmp/still-pdf-repair-contracts
+xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout,PDFTextRepair}.swift scripts/pdf-repair-contracts.swift -o /tmp/still-pdf-repair-contracts
 /tmp/still-pdf-repair-contracts
 
 cd apps/android
@@ -54,3 +60,18 @@ cd ../..
 The Swift checker uses the production model and tokenizer. Android's tests decode a Swift-generated backup and export it again for the Swift checker. Device tests also run the tokenizer fixtures against Android's regex implementation, which differs from a desktop JVM's implementation.
 
 Only run the checker with `--write` when intentionally regenerating the fixtures. The sample PDF contains original sample prose and embedded bookmarks; it contains no user-uploaded book.
+
+Prepared-output compatibility is checked separately:
+
+```sh
+xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift scripts/reader-contracts.swift -o /tmp/still-reader-contracts
+/tmp/still-reader-contracts
+# After Android unit tests:
+/tmp/still-reader-contracts --book=apps/android/app/build/contract-output/android-prepared.json
+```
+
+## Prepared-reader verification (19 October 2026)
+
+Verified with 46 Android JVM tests, the Android device suite plus targeted reprocess/undo/cancel checks, 72 Apple unit/layout tests, all 12 iPhone UI scenarios, and a macOS build. Android lint reports no errors (21 existing warnings). The legacy tokenizer/backup and repair contracts still pass, and the new prepared-book fixture round-trips Swift → Kotlin → Swift.
+
+The supplied Hume PDF's Android output preserves all 124,009 word records exactly. In the same debug emulator, Continue-to-idle fell from 988–1,583 ms to 116–184 ms over three runs. Prepared JSON is 1,898,669 bytes; intermediate text copies previously occupied a 2,380,513-byte book JSON. Loading and materializing the new output happen off the UI thread. The native Apple importer was also checked on the same PDF: saved/reloaded words and heading cues match its original native output exactly. These measurements are not physical Pixel timings. Private PDFs and extracted text are not included in fixtures or the repository.

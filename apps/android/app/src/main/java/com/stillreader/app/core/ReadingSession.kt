@@ -19,15 +19,16 @@ data class ReadingState(
 
 /** One owner, on the UI thread. The coroutine scope supplies native scheduling; tests supply virtual time. */
 class ReadingSession(val book: Book, private val scope: CoroutineScope, private val save: (ReadingPosition) -> Unit) {
-    val tokens = Tokenizer.tokens(book)
-    val structure = ReadingStructure(book, tokens)
-    val passage by lazy { PassageDocument(tokens, structure) }
+    private val document = book.readerCache.get(book)
+    val tokens = document.tokens
+    val structure = document.structure
+    val passage get() = document.passage
     private val keepsProgress get() = structure.headingAt(state.value.index) != null || state.value.index in structure.chapterEnds
     private var startPage = maxOf(book.readingStartPageIndex, book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(0))
     private val mutable = MutableStateFlow(ReadingState(
-        index = if (book.position != null && tokens.none { it.pageID == book.position.pageID }) {
+        index = if (book.position != null && !document.hasPage(book.position.pageID)) {
             tokens.firstOrNull { it.pageIndex >= startPage }?.id ?: (tokens.size - 1).coerceAtLeast(0)
-        } else Tokenizer.index(book.position, tokens),
+        } else document.index(book.position),
         finished = book.position?.finished ?: false,
     ))
     val state = mutable.asStateFlow()

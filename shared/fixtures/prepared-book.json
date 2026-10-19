@@ -1,0 +1,104 @@
+{
+  "author" : "Still",
+  "chapters" : [
+    {
+      "id" : "BBBBBBBB-BBBB-4BBB-8BBB-000000000001",
+      "level" : 0,
+      "pageIndex" : 0,
+      "source" : "PDF bookmark",
+      "title" : "Chapter One"
+    },
+    {
+      "id" : "BBBBBBBB-BBBB-4BBB-8BBB-000000000002",
+      "level" : 0,
+      "pageIndex" : 1,
+      "source" : "PDF bookmark",
+      "title" : "Chapter Two"
+    }
+  ],
+  "headingMatches" : [
+    {
+      "end" : 11,
+      "level" : 0,
+      "pageIndex" : 0,
+      "start" : 0,
+      "title" : "chapter one"
+    },
+    {
+      "end" : 11,
+      "level" : 0,
+      "pageIndex" : 1,
+      "start" : 0,
+      "title" : "chapter two"
+    }
+  ],
+  "id" : "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+  "importedAt" : 800000000,
+  "isSample" : false,
+  "originalFilename" : "sample.pdf",
+  "pages" : [
+    {
+      "edited" : false,
+      "id" : "00000000-0000-4000-8000-000000000001",
+      "isIncluded" : true,
+      "isReviewed" : true,
+      "label" : "1",
+      "number" : 1,
+      "text" : "Chapter One\nCafé 🌿 begin.\n\nNext paragraph.",
+      "wordIndex" : [
+        0,
+        7,
+        0,
+        8,
+        3,
+        0,
+        12,
+        4,
+        0,
+        17,
+        2,
+        0,
+        20,
+        6,
+        1,
+        28,
+        4,
+        0,
+        33,
+        10,
+        0
+      ]
+    },
+    {
+      "edited" : false,
+      "id" : "00000000-0000-4000-8000-000000000002",
+      "isIncluded" : true,
+      "isReviewed" : true,
+      "label" : "2",
+      "number" : 2,
+      "text" : "Chapter Two\nThe end.",
+      "wordIndex" : [
+        0,
+        7,
+        0,
+        8,
+        3,
+        0,
+        12,
+        3,
+        0,
+        16,
+        4,
+        0
+      ]
+    }
+  ],
+  "pipelineVersion" : 1,
+  "position" : {
+    "finished" : false,
+    "pageID" : "00000000-0000-4000-8000-000000000001",
+    "utf16Offset" : 20
+  },
+  "schemaVersion" : 2,
+  "title" : "Prepared book"
+}

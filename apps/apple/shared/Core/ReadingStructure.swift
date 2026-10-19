@@ -1,6 +1,6 @@
 import Foundation
 
-/// Rebuilt from current text when opening the reader; no persisted or stale heading offsets.
+/// Applies saved heading matches to the current trim and page selection.
 struct ReadingStructure: Sendable {
     struct Heading: Equatable, Sendable {
         let title: String
@@ -15,6 +15,7 @@ struct ReadingStructure: Sendable {
         let index: Int
         let heading: Heading?
     }
+    let matches: [HeadingMatch]
     let sections: [Section]
     let headings: [Heading]
     let chapterEnds: Set<Int>
@@ -29,33 +30,42 @@ struct ReadingStructure: Sendable {
         }
         struct Line { let text: String; let range: NSRange }
         var lines: [Int: [Line]] = [:]
+        var savedMatches: [HeadingMatch] = []
         let linePattern = try! NSRegularExpression(pattern: "[^\\r\\n]+")
         func match(_ title: String, page: Int, level: Int) -> Heading? {
             let normalized = Self.normalize(title)
             guard (3...240).contains(normalized.utf16.count), starts[page] >= 0 else { return nil }
-            let source = book.pages[page].text as NSString
-            let rows: [Line]
-            if let cached = lines[page] { rows = cached }
-            else {
-                rows = linePattern.matches(in: source as String, range: NSRange(location: 0, length: source.length)).map { Line(text: source.substring(with: $0.range), range: $0.range) }
-                lines[page] = rows
-            }
-            var matches: [NSRange] = []
-            for first in rows.indices {
-                if Self.normalize(rows[first].text).isEmpty { continue }
-                var text = ""
-                for last in first..<min(first + 3, rows.count) {
-                    if last > first {
-                        let gap = source.substring(with: NSRange(location: NSMaxRange(rows[last - 1].range), length: rows[last].range.location - NSMaxRange(rows[last - 1].range)))
-                        if gap.filter({ $0 == "\n" }).count > 1 { break }
-                    }
-                    text += " " + rows[last].text
-                    let value = Self.normalize(text)
-                    if value == normalized { matches.append(NSRange(location: rows[first].range.location, length: NSMaxRange(rows[last].range) - rows[first].range.location)) }
-                    if value.utf16.count >= normalized.utf16.count { break }
+            let span: NSRange?
+            if let prepared = book.headingMatches {
+                span = prepared.first { $0.pageIndex == page && $0.title == normalized && $0.level == level }
+                    .map { NSRange(location: $0.start, length: $0.end - $0.start) }
+            } else {
+                let source = book.pages[page].text as NSString
+                let rows: [Line]
+                if let cached = lines[page] { rows = cached }
+                else {
+                    rows = linePattern.matches(in: source as String, range: NSRange(location: 0, length: source.length)).map { Line(text: source.substring(with: $0.range), range: $0.range) }
+                    lines[page] = rows
                 }
+                var matches: [NSRange] = []
+                for first in rows.indices {
+                    if Self.normalize(rows[first].text).isEmpty { continue }
+                    var text = ""
+                    for last in first..<min(first + 3, rows.count) {
+                        if last > first {
+                            let gap = source.substring(with: NSRange(location: NSMaxRange(rows[last - 1].range), length: rows[last].range.location - NSMaxRange(rows[last - 1].range)))
+                            if gap.filter({ $0 == "\n" }).count > 1 { break }
+                        }
+                        text += " " + rows[last].text
+                        let value = Self.normalize(text)
+                        if value == normalized { matches.append(NSRange(location: rows[first].range.location, length: NSMaxRange(rows[last].range) - rows[first].range.location)) }
+                        if value.utf16.count >= normalized.utf16.count { break }
+                    }
+                }
+                span = matches.count == 1 ? matches.first : nil
             }
-            guard matches.count == 1, let span = matches.first else { return nil }
+            guard let span else { return nil }
+            savedMatches.append(HeadingMatch(title: normalized, pageIndex: page, level: level, start: span.location, end: NSMaxRange(span)))
             let pageTokens = tokens[starts[page]..<ends[page]]
             guard let first = pageTokens.first(where: { $0.word.offset >= span.location }),
                   let last = pageTokens.last(where: { $0.word.offset + $0.word.length <= NSMaxRange(span) }), last.id >= first.id else { return nil }
@@ -103,6 +113,7 @@ struct ReadingStructure: Sendable {
             if (section.pageIndex...next.pageIndex).allSatisfy({ book.includesPage(at: $0) && !book.pages[$0].hasNoText }) { pauses.insert(end) }
         }
         chapterEnds = pauses
+        matches = savedMatches
     }
     func heading(at index: Int) -> Heading? { headingWords[index] }
     func section(at index: Int) -> Section? {

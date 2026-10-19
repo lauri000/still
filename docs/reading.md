@@ -65,7 +65,7 @@ stale cues. No book/backup schema or stored single-line preferences change.
 
 Each book is stored as `original.pdf` and `book.json` in its own UUID directory. Apple uses the app's Application Support directory (inside the container on a sandboxed Mac); Android uses app-private `files/Still/`. The source PDF is never edited.
 
-The JSON retains the original filename, title/author, import date, page labels and boundaries, the original extracted text, corrected text, inclusion/review flags, bookmark hierarchy, manual chapter boundaries, a reading position, and an optional reading-start boundary. Old libraries and backups without that boundary continue to open. A position contains a page ID and UTF-16 text offset, so changing an earlier page does not shift the saved location on a later page. Within an edited page, a position resolves to the nearest preceding token and is clamped to available text. Paragraph separators remain in page text. Trimming stores a separate page ID and text offset; it never deletes page text or chapters. The start marker moves with edits before its chosen word, and replay/seek stay within the retained text.
+The JSON retains the original filename, title/author, import date, page labels and boundaries, the final reading text, prepared word ranges and heading matches, inclusion/review flags, bookmark hierarchy, manual chapter boundaries, a reading position, and an optional reading-start boundary. Old libraries and backups without that boundary continue to open. A position contains a page ID and UTF-16 text offset, so changing an earlier page does not shift the saved location on a later page. Within an edited page, a position resolves to the nearest preceding token and is clamped to available text. Paragraph separators remain in page text. Trimming stores a separate page ID and text offset; it never deletes page text or chapters. The start marker moves with edits before its chosen word, and replay/seek stay within the retained text.
 
 Edits are debounced by 500 ms and flushed when navigating, starting the reader, or backgrounding the app. Writes are atomic. Playback checkpoints every 20 words and on pause, close, or backgrounding. Swipe selection previews words without writing each intermediate position; the final source position is saved on release or interruption. Swiping respects beginning trims and excluded pages. Save failures are shown and are not reported as successful.
 
@@ -75,7 +75,7 @@ Choose **Export book backup…** in the book menu to save a portable JSON backup
 
 New PDFs receive automatic text cleanup before reading: broken ligatures, discretionary hyphens, wrapped words, and spacing errors supported by the PDF's glyph positions. A small bundled English vocabulary helps retain genuine compounds. Processing happens locally during import; playback does not run a parser or model.
 
-For a previously imported book, choose **… → Improve text**. Your manual corrections and excluded pages are preserved, and the reading position and beginning trim move with their words. **Undo text improvement** is available during the current session until you change or read that book again. **Edit text → Restore extracted text** restores a page's original extraction. Backups preserve both the original and processed text.
+For a previously imported book, choose **… → Reprocess book**. Your manual corrections and page choices are preserved, and saved positions are mapped to the new output. **Undo reprocessing** is available during the current session until you change or read that book again. **Edit text → Restore extracted text** reads the original PDF page again. Backups contain the PDF and prepared reader data; intermediate extraction and repair copies are omitted.
 
 - Designed for PDFs with selectable text. Scanned/image-only pages are flagged; OCR is not yet implemented. You can enter text manually or exclude them.
 - Cleanup preserves paragraph separators and retains the native engine's reading order. Repeated page numbers/running headings are removed only when recognized at a physical margin. Multi-column layouts, footnotes, tables, unusual fonts, and ambiguous hyphens can still need corrections. The source PDF remains visible for comparison. See [the repair evaluation](pdf-repair.md).
@@ -83,3 +83,9 @@ For a previously imported book, choose **… → Improve text**. Your manual cor
 - Tokenization separates whitespace-delimited words and preserves attached punctuation and Unicode source ranges. Languages without word-separating spaces need a future language-aware tokenizer.
 - Password-protected PDFs report an explanatory error. Apple also checks copy restrictions; the Android binding does not expose that permission flag. Imports are limited to 250 MB. See [Android's extraction limits](../apps/android/README.md#extraction-limits) for page-label and backup-memory details.
 - There are no claims that faster playback improves comprehension. The pace is user controlled.
+
+## Prepared books and reprocessing
+
+PDF import prepares the word index and heading matches once. Continue reading uses that saved output and restores your position. The original PDF remains available for preview and reprocessing.
+
+Older books show **Reprocess book** before reading. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.

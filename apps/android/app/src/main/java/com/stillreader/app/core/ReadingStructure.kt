@@ -2,10 +2,11 @@ package com.stillreader.app.core
 
 import java.util.Locale
 
-/** Derived from the current text, never persisted as stale offsets or rebuilt during playback. */
+/** Applies saved heading matches to the current trim and page selection. */
 class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
     data class Heading(val title: String, val words: IntRange, val level: Int, val pageIndex: Int)
     data class Section(val title: String, val pageIndex: Int, val level: Int, val index: Int, val heading: Heading?)
+    val matches = mutableListOf<HeadingMatch>()
     val sections: List<Section>
     val headings: List<Heading>
     val chapterEnds: Set<Int>
@@ -19,22 +20,28 @@ class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
         fun match(title: String, page: Int, level: Int): Heading? {
             val normalized = normalize(title)
             if (normalized.length < 3 || normalized.length > 240 || starts[page] < 0) return null
-            val source = book.pages[page].text
-            val rows = lines.getOrPut(page) { Regex("[^\\r\\n]+").findAll(source).map { Line(it.value, it.range.first, it.range.last + 1) }.toList() }
-            // A bookmark label must match a complete line/block, not a phrase in body prose.
-            val matches = mutableListOf<IntRange>()
-            rows.indices.forEach { first ->
-                if (rows[first].text.isBlank()) return@forEach
-                var text = ""
-                for (last in first..minOf(first + 2, rows.lastIndex)) {
-                    if (last > first && source.substring(rows[last - 1].end, rows[last].start).count { it == '\n' } > 1) break
-                    text += " " + rows[last].text
-                    val value = normalize(text)
-                    if (value == normalized) matches += rows[first].start until rows[last].end
-                    if (value.length >= normalized.length) break
+            val span = if (book.headingMatches != null) {
+                book.headingMatches.firstOrNull { it.pageIndex == page && it.title == normalized && it.level == level }
+                    ?.let { it.start until it.end }
+            } else {
+                val source = book.pages[page].text
+                val rows = lines.getOrPut(page) { Regex("[^\\r\\n]+").findAll(source).map { Line(it.value, it.range.first, it.range.last + 1) }.toList() }
+                // A bookmark label must match a complete line/block, not a phrase in body prose.
+                val matches = mutableListOf<IntRange>()
+                rows.indices.forEach { first ->
+                    if (rows[first].text.isBlank()) return@forEach
+                    var text = ""
+                    for (last in first..minOf(first + 2, rows.lastIndex)) {
+                        if (last > first && source.substring(rows[last - 1].end, rows[last].start).count { it == '\n' } > 1) break
+                        text += " " + rows[last].text
+                        val value = normalize(text)
+                        if (value == normalized) matches += rows[first].start until rows[last].end
+                        if (value.length >= normalized.length) break
+                    }
                 }
-            }
-            val span = matches.singleOrNull() ?: return null
+                matches.singleOrNull()
+            } ?: return null
+            matches += HeadingMatch(normalized, page, level, span.first, span.last + 1)
             val pageTokens = tokens.subList(starts[page], ends[page])
             val first = pageTokens.firstOrNull { it.word.offset >= span.first } ?: return null
             val last = pageTokens.lastOrNull { it.word.offset + it.word.length <= span.last + 1 } ?: return null

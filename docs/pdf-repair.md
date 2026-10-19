@@ -4,11 +4,11 @@ Still repairs native PDF text at import time on Android, iPad/iPhone, and macOS.
 
 ## How it works
 
-1. Retain the original text and collect selective glyph geometry. Android checks that PDFium character indices agree with UTF-16 source offsets. Apple uses PDF selections because characterBounds(at:) can disagree with page.string around ligatures and newlines.
+1. Read the original text and collect selective glyph geometry in memory. Android checks that PDFium character indices agree with UTF-16 source offsets. Apple uses PDF selections because characterBounds(at:) can disagree with page.string around ligatures and newlines.
 2. Expand presentation ligatures, remove soft hyphens, normalize line separators, and interpret PDFium's discretionary-hyphen marker. Geometry distinguishes invented spaces following malformed ligature advances from actual word boundaries.
 3. Learn vocabulary from the document, excluding wrapped fragments. Use a bundled 79,669-word SCOWL vocabulary only when common English words supply evidence that the document is English. Preserve recognized hyphenated compounds; join wrapped continuations, including words spanning pages or several lines.
 4. Repair other missing/extra spaces only when the document supports the resulting words and native geometry supports the boundary. Decorative initials have a separate size/alignment check. Unknown long tokens are not exhaustively segmented.
-5. Remove recognized recurring numeric margin furniture. Preserve paragraphs, content order, punctuation, and original extraction. Track UTF-16 provenance through each repair to relocate saved positions.
+5. Remove recognized recurring numeric margin furniture. Preserve paragraphs, content order, and punctuation. Track UTF-16 provenance during repair, then discard these intermediate maps after preparing the reader output. The PDF remains the source.
 
 Native pages are opened selectively for candidate boundaries; Android holds only one such page at a time. Dictionary loading is cached. Cancellation is checked between pages and repair passes. Shared fixtures cover Unicode, genuine compounds, paragraph breaks, cross-page continuations, disabled pages, furniture, geometry gating, and offset relocation.
 
@@ -16,7 +16,7 @@ This is formatting repair, not spelling correction. It does not replace unfamili
 
 ## Existing books
 
-New imports receive version 1 automatically. Existing libraries and portable backups remain unchanged when opened. **Improve text** upgrades included pages without manual edits; an immediate **Undo text improvement** restores the previous book. Undo lasts for the session and is invalidated by another mutation of that book. Page IDs, metadata, chapters, exclusions, and the immutable PDF are retained. See [the format contract](../shared/FORMAT.md).
+New imports produce versioned reader output containing final text, word ranges, and heading matches. **Reprocess book** reruns the full pipeline from the original PDF when an existing book needs a newer pipeline version; opening a library or backup does not silently convert it. Corrections and page choices survive. **Undo reprocessing** restores the previous saved book during the session. See [the format contract](../shared/FORMAT.md).
 
 ## Evaluation
 
@@ -44,7 +44,7 @@ Run from the repository root on a Mac with Xcode. Choose an output directory out
 
 ~~~sh
 xcrun swiftc -O \
-  apps/apple/shared/Core/Book.swift \
+  apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift \
   apps/apple/shared/Core/PDFTextRepair.swift \
   apps/apple/shared/Services/PDFImporter.swift \
   apps/apple/shared/Services/PDFTextGeometry.swift \

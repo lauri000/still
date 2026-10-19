@@ -83,6 +83,7 @@ enum PDFTextRepair {
             updated.pages[index].text = result.pages[index].text
             updated.pages[index].processedText = result.pages[index].text
             updated.pages[index].textProcessingVersion = version
+            updated.pages[index].wordIndex = nil; updated.pages[index].edited = false
             updated.pages[index].isReviewed = book.pages[index].isReviewed && book.pages[index].text == result.pages[index].text
         }
         return updated

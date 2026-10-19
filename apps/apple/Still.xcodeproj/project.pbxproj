@@ -65,6 +65,7 @@
 		C6A544FF1EA9E87133C47D30 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45904E4715FD200DAA0DC573 /* Theme.swift */; };
 		C6D42E648E64A9352F3B4DB8 /* ReadingFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02208860076FB527CD710D5 /* ReadingFocus.swift */; };
 		C7D3941C581CD5ED59BFE01F /* ReadingStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */; };
+		C897FA96AFD857214DF066AC /* ReaderPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D12A92F036259467441D155 /* ReaderPipeline.swift */; };
 		CD03A1E62A75DE021644081C /* PDFTextRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F699A2EC99CBF235D54461A /* PDFTextRepairTests.swift */; };
 		CDFD91D5381F2E63E4311825 /* SingleLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCE709587A3274AF9C3F759 /* SingleLineView.swift */; };
 		CE3C8FF58F0E265D7583382E /* pdf-english-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = E3F2964EB7BABE0C8D6F94B0 /* pdf-english-words.txt */; };
@@ -73,6 +74,7 @@
 		D9DC8900DD6CB046EF7A84FC /* PDF-Vocabulary-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4B6E0A746E05AD57432786D4 /* PDF-Vocabulary-NOTICE.txt */; };
 		DB18F8C09C82C45439E1CE69 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E35A40284158E90E1A8E90 /* ReaderView.swift */; };
 		DC40815018657D69A50E717B /* PassageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CE93DC3B56DCB5F4E685E2 /* PassageTests.swift */; };
+		DDC58D985824FD628B41725E /* ReaderPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D12A92F036259467441D155 /* ReaderPipeline.swift */; };
 		DF7BAAB574DBC61D730C6841 /* FocusWord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EC546E72B53F28364F11A3 /* FocusWord.swift */; };
 		E2047F2C938F8DA694517769 /* PDFContents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5248E0BE7DBEDE8A1AAA60FA /* PDFContents.swift */; };
 		E5F2ED8A7C6CB1C532F70509 /* SCOWL-Copyright.txt in Resources */ = {isa = PBXBuildFile; fileRef = EB5717B2C64A21274D4C7AA2 /* SCOWL-Copyright.txt */; };
@@ -81,6 +83,7 @@
 		F262D0A47148F5224E96199D /* ReadingFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02208860076FB527CD710D5 /* ReadingFocus.swift */; };
 		F3748C541E2F9CA711AAA58B /* PDFVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A9FF1E207D5E18A2C332DF2 /* PDFVocabulary.swift */; };
 		F37D420C9230437C200004BC /* ReadingStructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25903F7922EDD8653AB42E7F /* ReadingStructureTests.swift */; };
+		FCE9F5EE72557892D80FDB10 /* ReaderPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261DE2A4DC7BB02CDF13A1EA /* ReaderPipelineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,9 +114,11 @@
 		1E6B8811C4AD1FAD6A61CB74 /* PDFContentsPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFContentsPreview.swift; sourceTree = "<group>"; };
 		1F699A2EC99CBF235D54461A /* PDFTextRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFTextRepairTests.swift; sourceTree = "<group>"; };
 		25903F7922EDD8653AB42E7F /* ReadingStructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStructureTests.swift; sourceTree = "<group>"; };
+		261DE2A4DC7BB02CDF13A1EA /* ReaderPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPipelineTests.swift; sourceTree = "<group>"; };
 		27ED443915FD63DDCF7C6DFC /* StillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StillTests.swift; sourceTree = "<group>"; };
 		28B1024E36E57E02537C928E /* PDFTextRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFTextRepair.swift; sourceTree = "<group>"; };
 		31A1D8432AF704E26180BA16 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		3D12A92F036259467441D155 /* ReaderPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPipeline.swift; sourceTree = "<group>"; };
 		4339C338A646CAA6B49DA331 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 		45904E4715FD200DAA0DC573 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		4A9FF1E207D5E18A2C332DF2 /* PDFVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFVocabulary.swift; sourceTree = "<group>"; };
@@ -217,6 +222,7 @@
 				76CE93DC3B56DCB5F4E685E2 /* PassageTests.swift */,
 				088D7453CA4435B050CA4421 /* PDFContentsTests.swift */,
 				1F699A2EC99CBF235D54461A /* PDFTextRepairTests.swift */,
+				261DE2A4DC7BB02CDF13A1EA /* ReaderPipelineTests.swift */,
 				103307D43A1B1EE98A32BF32 /* ReadingFocusTests.swift */,
 				25903F7922EDD8653AB42E7F /* ReadingStructureTests.swift */,
 				27ED443915FD63DDCF7C6DFC /* StillTests.swift */,
@@ -293,6 +299,7 @@
 				5248E0BE7DBEDE8A1AAA60FA /* PDFContents.swift */,
 				28B1024E36E57E02537C928E /* PDFTextRepair.swift */,
 				9CBAB60B143D3B4A32B9E9BB /* ReaderEngine.swift */,
+				3D12A92F036259467441D155 /* ReaderPipeline.swift */,
 				A02208860076FB527CD710D5 /* ReadingFocus.swift */,
 				1BFC86C4B269476967EAAB66 /* ReadingStructure.swift */,
 			);
@@ -512,6 +519,7 @@
 				684229A93AAF45FF15580E76 /* PassageLayout.swift in Sources */,
 				5FCAA500ADA6F736F71EABE2 /* PassageView.swift in Sources */,
 				943C1B6E9AE0DE7C0A0CB425 /* ReaderEngine.swift in Sources */,
+				DDC58D985824FD628B41725E /* ReaderPipeline.swift in Sources */,
 				C050B96609440783EFE66D2C /* ReaderView.swift in Sources */,
 				F262D0A47148F5224E96199D /* ReadingFocus.swift in Sources */,
 				0BE187247FEC589CCC262759 /* ReadingStartView.swift in Sources */,
@@ -546,6 +554,7 @@
 				B578BCF57CC2B90AEC10AF52 /* PassageLayout.swift in Sources */,
 				C1B480D75818F944228BFD38 /* PassageView.swift in Sources */,
 				40981CA0F4A6180ACE60470B /* ReaderEngine.swift in Sources */,
+				C897FA96AFD857214DF066AC /* ReaderPipeline.swift in Sources */,
 				DB18F8C09C82C45439E1CE69 /* ReaderView.swift in Sources */,
 				C6D42E648E64A9352F3B4DB8 /* ReadingFocus.swift in Sources */,
 				C7D3941C581CD5ED59BFE01F /* ReadingStartView.swift in Sources */,
@@ -565,6 +574,7 @@
 				B1D1930283563EF017DB225A /* PDFContentsTests.swift in Sources */,
 				CD03A1E62A75DE021644081C /* PDFTextRepairTests.swift in Sources */,
 				DC40815018657D69A50E717B /* PassageTests.swift in Sources */,
+				FCE9F5EE72557892D80FDB10 /* ReaderPipelineTests.swift in Sources */,
 				1474FD4AEBC613413C7B2432 /* ReadingFocusTests.swift in Sources */,
 				F37D420C9230437C200004BC /* ReadingStructureTests.swift in Sources */,
 				83087A4E5E358136D762EC4A /* StillTests.swift in Sources */,

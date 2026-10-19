@@ -524,7 +524,7 @@ final class LibraryOperationTests: XCTestCase {
         let repository = BookRepository(root: root)
         let valid = makeBook(["one", "two"])
         let mutations: [(inout Book) -> Void] = [
-            { $0.schemaVersion = 2 },
+            { $0.schemaVersion = 999 },
             { $0.pages = [] },
             { $0.pages[1].id = $0.pages[0].id },
             { $0.chapters = [BookChapter(id: UUID(), title: "Outside", pageIndex: 2, level: 0, source: "Manual")] },

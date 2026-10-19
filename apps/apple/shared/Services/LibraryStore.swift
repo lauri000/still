@@ -9,8 +9,8 @@ final class LibraryStore: ObservableObject {
     @Published var importMessage = "Opening PDF…"
     @Published var errorMessage: String?
     @Published var savedMessage = "Saved on this device"
-    var undoImprovementID: UUID? { beforeImprovement?.id }
-    @Published private var beforeImprovement: Book?
+    var undoReprocessID: UUID? { beforeReprocess?.id }
+    @Published private var beforeReprocess: Book?
     let repository: BookRepository
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
     @Published private var importTask: Task<Void, Never>?
@@ -26,7 +26,8 @@ final class LibraryStore: ObservableObject {
         guard !hasLoaded else { return }
         hasLoaded = true
         do {
-            let result = try repository.load()
+            let repository = repository
+            let result = try await Task.detached { try repository.load() }.value
             books = result.books
             if result.unreadableCount > 0 {
                 errorMessage = "\(result.unreadableCount) book(s) could not be opened. Their files have been kept."
@@ -42,6 +43,7 @@ final class LibraryStore: ObservableObject {
                     sample.book.pages[index].text = (ProcessInfo.processInfo.arguments.contains("--with-headings") ? SampleBook.sections[index].0 + "\n\n" : "") + SampleBook.sections[index].1
                     sample.book.pages[index].isReviewed = true
                 }
+                sample.book = ReaderPipeline.prepare(sample.book)
                 try repository.insert(sample.book, pdfData: sample.pdfData)
                 books = [sample.book]
                 try Data().write(to: marker)
@@ -56,7 +58,8 @@ final class LibraryStore: ObservableObject {
         var updated = books[index]
         change(&updated)
         guard updated != books[index] else { return }
-        if beforeImprovement?.id == id { beforeImprovement = nil }
+        updated = ReaderPipeline.update(from: books[index], to: updated)
+        if beforeReprocess?.id == id { beforeReprocess = nil }
         books[index] = updated
         pendingSaves[id]?.cancel()
         savedMessage = "Saving…"
@@ -104,27 +107,34 @@ final class LibraryStore: ObservableObject {
     }
 
     func cancelImport() { importTask?.cancel() }
-    func improveText(_ id: UUID) {
+    func reprocess(_ id: UUID) {
         guard !isImporting, let original = book(id) else { return }
         flush()
         let url = repository.pdfURL(for: id)
-        performImport(message: "Preparing text improvements…") {
-            try await PDFImporter.improve(url: url, book: original) { current, total in
-                await self.reportProgress(current, total)
-            }
+        performImport(message: "Reprocessing original PDF…") {
+            try await PDFImporter.reprocess(url: url, book: original) { current, total in await self.reportProgress(current, total) }
         } completion: { updated in
-            guard let index = self.books.firstIndex(where: { $0.id == id }) else { return }
-            guard self.books[index] == original else {
-                self.errorMessage = "The book changed while its text was being improved. Please try again."
+            guard let index = self.books.firstIndex(where: { $0.id == id }), self.books[index] == original else {
+                self.errorMessage = "The book changed while it was being reprocessed. Please try again."
                 return
             }
-            // Save atomically before publishing the new text and its mapped positions.
             try self.repository.save(updated)
-            self.books[index] = updated
-            self.beforeImprovement = original
-            self.savedMessage = "Text improved"
+            self.books[index] = updated; self.beforeReprocess = original
+            self.savedMessage = "Book reprocessed"
         }
     }
+
+    func restoreExtractedText(_ id: UUID, pageIndex: Int) {
+        guard let original = book(id) else { return }
+        let url = repository.pdfURL(for: id)
+        performImport(message: "Reading original page…") {
+            try PDFImporter.extractedPage(url: url, index: pageIndex)
+        } completion: { text in
+            guard self.book(id) == original else { return }
+            self.editPage(bookID: id, pageID: original.pages[pageIndex].id, text: text)
+        }
+    }
+
     private func performImport<Value: Sendable>(message: String,
         operation: @escaping @Sendable () async throws -> Value,
         completion: @escaping (Value) throws -> Void) {
@@ -144,13 +154,13 @@ final class LibraryStore: ObservableObject {
             }
         }
     }
-    func undoTextImprovement(_ id: UUID) {
-        guard let previous = beforeImprovement, previous.id == id,
+    func undoReprocess(_ id: UUID) {
+        guard let previous = beforeReprocess, previous.id == id,
               let index = books.firstIndex(where: { $0.id == id }) else { return }
         do {
             try repository.save(previous)
-            books[index] = previous; beforeImprovement = nil
-            savedMessage = "Text improvement undone"
+            books[index] = previous; beforeReprocess = nil
+            savedMessage = "Reprocessing undone"
         } catch { errorMessage = error.localizedDescription }
     }
     private func reportProgress(_ current: Int, _ total: Int) {
@@ -191,6 +201,6 @@ struct BookBackup: Codable, FileDocument {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let backup = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
         try backup.validate()
-        return ImportedBook(book: backup.book, pdfData: backup.pdfData)
+        return ImportedBook(book: ReaderPipeline.loaded(backup.book), pdfData: backup.pdfData)
     }
 }

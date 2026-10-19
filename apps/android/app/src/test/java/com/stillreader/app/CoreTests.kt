@@ -55,7 +55,7 @@ class CoreTests {
     }
     @Test fun validatesIDsChaptersAndFutureVersions() {
         val original = book("Hello")
-        listOf(original.copy(id = "../../escape"), original.copy(schemaVersion = 2),
+        listOf(original.copy(id = "../../escape"), original.copy(schemaVersion = 999),
             original.copy(chapters = listOf(BookChapter(title = "Bad", pageIndex = 10))),
             original.copy(pages = original.pages + original.pages),
             original.copy(position = ReadingPosition(newID(), 0))).forEach {

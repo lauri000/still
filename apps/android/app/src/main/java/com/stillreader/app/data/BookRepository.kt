@@ -2,8 +2,7 @@ package com.stillreader.app.data
 
 import com.stillreader.app.core.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.io.File
 import java.io.FilterOutputStream
 import java.io.OutputStream
@@ -25,7 +24,7 @@ object BookCodec {
         return id.uppercase(Locale.ROOT)
     }
     fun validate(book: Book): Book {
-        require(book.schemaVersion == 1) { "This book uses a newer format. Update Still to open it." }
+        require(book.schemaVersion in 1..2) { "This book uses a newer format. Update Still to open it." }
         require(book.pages.isNotEmpty() && book.importedAt.isFinite()) { "The book data is incomplete." }
         val normalized = book.copy(id = canonicalID(book.id),
             pages = book.pages.map { it.copy(id = canonicalID(it.id)) },
@@ -38,10 +37,31 @@ object BookCodec {
         listOfNotNull(normalized.position, normalized.readingStart).forEach {
             require(it.pageID in ids && it.utf16Offset >= 0) { "The book contains an invalid reading position." }
         }
-        return normalized
+        val validIndex = normalized.pages.all { page ->
+            val words = page.wordIndex ?: return@all false
+            var end = 0
+            words.size % 3 == 0 && (words.indices step 3).all { index ->
+                val offset = words[index]; val length = words[index + 1]; val paragraph = words[index + 2]
+                (offset >= end && length > 0 && offset <= page.text.length - length && paragraph in 0..1).also { end = offset + length }
+            }
+        } && normalized.headingMatches?.all { match ->
+            match.pageIndex in normalized.pages.indices && match.start >= 0 && match.end > match.start && match.end <= normalized.pages[match.pageIndex].text.length
+        } == true
+        return if (validIndex) normalized else normalized.copy(pipelineVersion = null, headingMatches = null,
+            pages = normalized.pages.map { it.copy(wordIndex = null) })
     }
     fun decode(text: String): Book = validate(json.decodeFromString<Book>(text))
-    fun encode(book: Book): String = json.encodeToString(validate(book))
+    fun encode(book: Book): String {
+        val valid = validate(book)
+        val objectValue = json.encodeToJsonElement(valid).jsonObject.toMutableMap()
+        if (!valid.needsReprocessing) {
+            // The PDF is the retained source. Do not persist intermediate extraction/repair copies.
+            objectValue["pages"] = JsonArray(objectValue.getValue("pages").jsonArray.map { page ->
+                JsonObject(page.jsonObject.filterKeys { it !in setOf("extractedText", "processedText", "textProcessingVersion") })
+            })
+        }
+        return JsonObject(objectValue).toString()
+    }
 }
 
 @Serializable

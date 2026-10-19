@@ -84,7 +84,7 @@ fun StillApp(model: LibraryViewModel) {
                 onClose = model::closeReader,
                 onReview = { page -> model.closeReader(); toolPage = page; tool = "Edit text" })
             book != null && tool != null -> BookTools(book, tool!!, toolPage, model, onClose = { tool = null })
-            book != null -> BookScreen(book, model, canUndoImprovement = state.undoImprovementID == book.id, onBack = { model.select(null) },
+            book != null -> BookScreen(book, model, canUndoImprovement = state.undoReprocessID == book.id, onBack = { model.select(null) },
                 onTool = { name, page -> toolPage = page; tool = name },
                 onExport = { exportID = book.id; exporter.launch("${book.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json") })
             else -> LibraryScreen(state.books, model::select) { picker.launch(arrayOf("application/pdf", "application/json", "application/octet-stream")) }
@@ -159,6 +159,7 @@ fun Header(title: String, back: () -> Unit, actions: @Composable RowScope.() -> 
 @Composable
 private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: Boolean, onBack: () -> Unit, onTool: (String, Int) -> Unit, onExport: () -> Unit) {
     var page by rememberSaveable(book.id) { mutableIntStateOf(book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(book.readingStartPageIndex)) }
+    val opening by model.state.collectAsState()
     var changed by rememberSaveable(book.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -174,12 +175,11 @@ private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: 
                     listOf("Edit text", "Chapters", "Choose starting word", "Book details").forEach { name ->
                         DropdownMenuItem(text = { Text(name) }, onClick = { menu = false; onTool(name, page) })
                     }
-                    DropdownMenuItem(text = { Text("Improve text") },
-                        enabled = book.pages.any { PdfTextRepair.eligible(it) && it.isIncluded },
-                        onClick = { menu = false; model.improveText(book.id) })
+                    DropdownMenuItem(text = { Text("Reprocess book") }, modifier = Modifier.testTag("reprocessBook"),
+                        onClick = { menu = false; model.reprocess(book.id) })
                     if (canUndoImprovement) {
-                        DropdownMenuItem(text = { Text("Undo text improvement") },
-                            onClick = { menu = false; model.undoTextImprovement(book.id) })
+                        DropdownMenuItem(text = { Text("Undo reprocessing") },
+                            onClick = { menu = false; model.undoReprocess(book.id) })
                     }
                     DropdownMenuItem(text = { Text("Export book backup") }, onClick = { menu = false; onExport() })
                     DropdownMenuItem(text = { Text("Delete book", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })
@@ -190,10 +190,11 @@ private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: 
             PageSelector(page, book.pages.size, if (book.position != null && !changed) "Page" else "Start page") { page = it; changed = true }
             PdfContentsPreview(book, model.importer, model.repository.pdfFile(book.id), page, Modifier.weight(1f).fillMaxWidth()) { page = it; changed = true }
             if (book.pages[page].hasNoText) Text("No selectable text on this page. Choose another page or use Edit text.", fontSize = 12.sp, color = Muted)
-            Button(onClick = { model.openReader(if (changed || book.position == null) page else null); changed = false },
-                enabled = !(book.pages[page].hasNoText && (changed || book.position == null)),
+            if (book.needsReprocessing) Text("This book needs reader preparation. Reprocess the saved PDF to read it. Your corrections and page choices are kept.", fontSize = 13.sp, color = Muted)
+            Button(onClick = { if (book.needsReprocessing) model.reprocess(book.id) else model.openReader(if (changed || book.position == null) page else null); changed = false },
+                enabled = !opening.opening && (book.needsReprocessing || !(book.pages[page].hasNoText && (changed || book.position == null))),
                 modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp).testTag("startReading"), shape = RoundedCornerShape(12.dp)) {
-                Text(if (book.position != null && !changed) { if (book.position.finished) "Read again" else "Continue reading" } else "Read")
+                Text(if (opening.opening) "Opening…" else if (book.needsReprocessing) "Reprocess book" else if (book.position != null && !changed) { if (book.position.finished) "Read again" else "Continue reading" } else "Read")
             }
         }
     }

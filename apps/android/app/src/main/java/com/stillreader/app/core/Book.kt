@@ -1,6 +1,8 @@
 package com.stillreader.app.core
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import java.util.regex.Pattern
 import java.util.Locale
 import java.util.UUID
 
@@ -20,14 +22,20 @@ data class Book(
     val position: ReadingPosition? = null,
     val isSample: Boolean = false,
     val readingStart: ReadingPosition? = null,
+    val pipelineVersion: Int? = null,
+    val chaptersCustomized: Boolean = false,
+    val headingMatches: List<HeadingMatch>? = null,
+    @Transient val readerCache: ReaderCache = ReaderCache(),
 ) {
+    val needsReprocessing: Boolean get() = pipelineVersion != ReaderPipeline.VERSION || pages.any { it.wordIndex == null } || headingMatches == null
+
     val readingStartPageIndex: Int
         get() = pages.indexOfFirst { it.id == readingStart?.pageID }.coerceAtLeast(0)
 
     fun includesPage(index: Int) = index in pages.indices && index >= readingStartPageIndex && pages[index].isIncluded
     fun readingWords(index: Int): List<TextWord> {
         if (!includesPage(index)) return emptyList()
-        val words = Tokenizer.words(pages[index].text)
+        val words = pages[index].words
         val start = readingStart?.takeIf { it.pageID == pages[index].id } ?: return words
         return words.filter { it.offset + it.length > start.utf16Offset }
     }
@@ -44,7 +52,7 @@ data class Book(
             if (it.pageID == pages[index].id) it.copy(utf16Offset = Tokenizer.relocatedOffset(it.utf16Offset, pages[index].text, text)) else it
         }
         return copy(
-            pages = pages.mapIndexed { i, page -> if (i == index) page.copy(text = text, isReviewed = false) else page },
+            pages = pages.mapIndexed { i, page -> if (i == index) page.copy(text = text, isReviewed = false, edited = true, wordIndex = null) else page },
             readingStart = start, position = position?.copy(finished = false),
         )
     }
@@ -55,15 +63,27 @@ data class BookPage(
     val id: String = newID(),
     val number: Int,
     val label: String = number.toString(),
-    val extractedText: String,
+    val extractedText: String = "",
     val text: String = extractedText,
     val isReviewed: Boolean = false,
     val isIncluded: Boolean = true,
     val processedText: String? = null,
     val textProcessingVersion: Int? = null,
+    val edited: Boolean? = null,
+    val wordIndex: List<Int>? = null,
 ) {
+    // The index is compact UTF-16 (offset, length, paragraph flag) triples.
+    val words: List<TextWord> get() {
+        val index = wordIndex ?: return Tokenizer.words(text)
+        return buildList(index.size / 3) {
+            for (i in index.indices step 3) {
+                val offset = index[i]; val length = index[i + 1]
+                add(TextWord(text.substring(offset, offset + length), offset, length, index[i + 2] == 1))
+            }
+        }
+    }
     val hasNoText: Boolean get() = text.isBlank()
-    val isEdited: Boolean get() = text != (processedText ?: extractedText)
+    val isEdited: Boolean get() = edited ?: (text != (processedText ?: extractedText))
 }
 
 @Serializable
@@ -87,16 +107,20 @@ object Tokenizer {
     // Offsets are UTF-16 code units, matching Foundation's NSRange and the existing backup format.
     // Android's ICU regex rejects the JVM's (?U) flag. Spell out Unicode White_Space
     // so both engines match Foundation without changing source text or its offsets.
-    private val wordPattern = Regex("[^\\p{Z}\\u0009-\\u000D\\u0085]+")
+    private val wordPattern = Pattern.compile("[^\\p{Z}\\u0009-\\u000D\\u0085]+")
     private val graphemePattern = Regex("\\X")
 
     fun words(text: String): List<TextWord> {
-        val matches = wordPattern.findAll(text).toList()
-        return matches.mapIndexed { index, match ->
-            val end = match.range.last + 1
-            val next = matches.getOrNull(index + 1)?.range?.first ?: text.length
-            val gap = text.substring(end, next)
-            TextWord(match.value, match.range.first, match.value.length, "\n\n" in gap || "\r\n\r\n" in gap)
+        val matcher = wordPattern.matcher(text)
+        return buildList {
+            if (!matcher.find()) return@buildList
+            do {
+                val start = matcher.start(); val end = matcher.end()
+                val word = matcher.group()
+                val next = matcher.find()
+                val gap = text.substring(end, if (next) matcher.start() else text.length)
+                add(TextWord(word, start, end - start, "\n\n" in gap || "\r\n\r\n" in gap))
+            } while (next)
         }
     }
 

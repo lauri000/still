@@ -5,7 +5,7 @@ final class ReaderEngine: ObservableObject {
     let book: Book
     let tokens: [ReadingToken]
     let structure: ReadingStructure
-    lazy var passage = PassageDocument(tokens: tokens, structure: structure)
+    let passage: PassageDocument
     private var keepsProgress: Bool { structure.heading(at: index) != nil || structure.chapterEnds.contains(index) }
     @Published private(set) var index: Int
     @Published private(set) var isPlaying = false
@@ -37,11 +37,13 @@ final class ReaderEngine: ObservableObject {
 
     init(book: Book) {
         self.book = book
-        tokens = Tokenizer.tokens(for: book)
-        structure = ReadingStructure(book: book, tokens: tokens)
-        index = Tokenizer.index(for: book.position, in: tokens)
+        let document = book.readerCache.get(book)
+        tokens = document.tokens
+        structure = document.structure
+        passage = document.passage
+        index = document.index(book.position)
         startPage = max(book.readingStartPageIndex, book.position.flatMap { position in book.pages.firstIndex { $0.id == position.pageID } } ?? book.readingStartPageIndex)
-        if let position = book.position, !tokens.contains(where: { $0.pageID == position.pageID }) {
+        if let position = book.position, !document.hasPage(position.pageID) {
             index = tokens.first(where: { $0.pageIndex >= startPage })?.id ?? max(0, tokens.count - 1)
         }
         isFinished = book.position?.finished ?? false
