@@ -170,7 +170,7 @@ class AndroidReaderTests {
         val tokens = Tokenizer.tokens(persisted)
         assertEquals("story.", tokens[Tokenizer.index(persisted.position, tokens)].word.text)
     }
-    @Test fun passageReplacesRibbonAndKeepsSelectedWordCentered() {
+    @Test fun passageKeepsStableRowsAndMovesHighlightThroughText() {
         launch(seed = false)
         val file = File(root, "sample.pdf")
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -182,34 +182,28 @@ class AndroidReaderTests {
         compose.onNodeWithContentDescription("Animated scrolling").assertIsOff().performClick()
         compose.onNodeWithText("Done").performClick()
         assertTrue(application.getSharedPreferences("reading", 0).getBoolean("animatedScrolling", false))
-        val originalCenter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
         compose.onNodeWithTag("toggleContext").performClick()
         compose.onNodeWithTag("wordRibbon").assertDoesNotExist()
         compose.onNodeWithTag("nearbyPassage").assertIsDisplayed()
-        val expandedCenter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
-        assertEquals(originalCenter.x, expandedCenter.x, 1f)
-        assertEquals(originalCenter.y, expandedCenter.y, 1f)
-        fun assertCentered() {
+        fun assertPositioned() {
             val word = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
             val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
-            assertEquals(surface.center.x, word.center.x, 1f)
-            assertEquals(surface.center.y, word.center.y, 1f)
+            if (compose.onNodeWithTag("nearbyPassage").isDisplayed()) {
+                assertTrue(kotlin.math.abs(surface.center.y - word.center.y) <= 29 * application.resources.displayMetrics.density)
+                assertTrue(word.left >= surface.left && word.right <= surface.right)
+            } else {
+                assertEquals(surface.center.x, word.center.x, 1f)
+                assertEquals(surface.center.y, word.center.y, 1f)
+            }
         }
-        assertCentered() // Beginning of book also remains at the fixed center.
+        assertPositioned()
         compose.runOnIdle { model.state.value.reader!!.seek(40) }
-        assertCentered()
+        assertPositioned()
         val centerY = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center.y
         val visible = (0..79).filter { it != 40 }.mapNotNull { id ->
             val node = compose.onNodeWithTag("passageWord-$id")
             if (node.isDisplayed()) id to node.fetchSemanticsNode().boundsInRoot else null
         }
-        val column = compose.onNodeWithTag("nearbyPassage").fetchSemanticsNode().boundsInRoot
-        val inset = (24f * application.resources.displayMetrics.density).coerceAtMost(column.width / 8)
-        val alignedRows = visible.groupBy { it.second.center.y.toInt() }.values.count { words ->
-            words.size > 1 && kotlin.math.abs(words.minOf { it.second.left } - column.left - inset) < 2f &&
-                kotlin.math.abs(words.maxOf { it.second.right } - column.right + inset) < 2f
-        }
-        assertTrue("Full passage rows align to both column edges", alignedRows >= 2)
         assertTrue(visible.any { it.first < 40 && it.second.center.y < centerY - 20 })
         val below = visible.first { it.first > 40 && it.second.center.y > centerY + 20 }.first
         val activeLayouts = mutableListOf<TextLayoutResult>()
@@ -218,31 +212,67 @@ class AndroidReaderTests {
         compose.onNodeWithTag("passageWord-$below").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(neighborLayouts) }
         assertEquals(activeLayouts.single().layoutInput.style.fontSize, neighborLayouts.single().layoutInput.style.fontSize)
         val beforeSelection = compose.onNodeWithTag("passageWord-$below").fetchSemanticsNode().boundsInRoot
+        val neighborID = below + 1
+        val neighborBefore = compose.onNodeWithTag("passageWord-$neighborID").fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { model.state.value.reader!!.seek(below) }
         val afterSelection = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+        assertEquals(beforeSelection.left, afterSelection.left, 1f)
         assertEquals(beforeSelection.width, afterSelection.width, 1f)
         assertEquals(beforeSelection.height, afterSelection.height, 1f)
+        val neighborAfter = compose.onNodeWithTag("passageWord-$neighborID").fetchSemanticsNode().boundsInRoot
+        assertEquals(neighborBefore.left, neighborAfter.left, 1f)
+        assertEquals(afterSelection.center.y - beforeSelection.center.y, neighborAfter.center.y - neighborBefore.center.y, 1f)
         compose.runOnIdle { assertEquals(below, model.state.value.reader!!.state.value.index) }
-        assertCentered()
+        assertPositioned()
         compose.onNodeWithTag("readingSurface").performTouchInput { swipe(Offset(width * .8f, height * .3f), Offset(width * .2f, height * .3f)) }
         compose.runOnIdle {
             assertTrue(model.state.value.reader!!.state.value.index > below)
             assertFalse(model.state.value.reader!!.state.value.playing)
             assertEquals(250.0, model.state.value.reader!!.wordsPerMinute, .01)
         }
-        assertCentered()
-        compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
-        compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
-        compose.onNodeWithTag("holdToRead").performTouchInput { up() }
-        assertCentered()
+        assertPositioned()
+        compose.runOnIdle { model.speed(60.0); model.state.value.reader!!.naturalPauses = false }
+        val playingIndex = model.state.value.reader!!.state.value.index
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
+            compose.mainClock.advanceTimeByFrame()
+            val activeBefore = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+            val nearby = compose.onNodeWithTag("passageWord-${playingIndex + 1}")
+            val nearbyBefore = nearby.fetchSemanticsNode().boundsInRoot
+            compose.waitUntil(2_000) { model.state.value.reader!!.wordProgress >= .4 }
+            compose.mainClock.advanceTimeByFrame()
+            val activeAfter = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+            val nearbyAfter = nearby.fetchSemanticsNode().boundsInRoot
+            assertEquals(playingIndex, model.state.value.reader!!.state.value.index)
+            assertEquals(activeBefore.left, activeAfter.left, 1f)
+            assertEquals(nearbyBefore.left, nearbyAfter.left, 1f)
+            assertTrue("The column moves between word advances", activeAfter.center.y < activeBefore.center.y - 1)
+            assertEquals(activeAfter.center.y - activeBefore.center.y, nearbyAfter.center.y - nearbyBefore.center.y, 1f)
+            compose.onNodeWithTag("holdToRead").performTouchInput { up() }
+            compose.mainClock.advanceTimeByFrame()
+            val paused = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot
+            compose.mainClock.advanceTimeBy(240)
+            assertEquals(paused, compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot)
+        } finally {
+            compose.runOnUiThread { model.pause() }
+            compose.mainClock.autoAdvance = true
+        }
+        assertPositioned()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
+            File(application.cacheDir, "passage-preview.png").outputStream().use {
+                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            screenshot.recycle()
+        }
         compose.runOnIdle { model.state.value.reader!!.seek(model.state.value.reader!!.tokens.lastIndex) }
-        assertCentered()
+        assertPositioned()
         val index = model.state.value.reader!!.state.value.index
         compose.onNodeWithTag("toggleContext").performClick()
         compose.onNodeWithTag("nearbyPassage").assertDoesNotExist()
         compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
-        assertCentered()
+        assertPositioned()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Continue reading").performClick()
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
@@ -264,8 +294,14 @@ class AndroidReaderTests {
             assertEquals(size, layouts.single().layoutInput.style.fontSize.value, .01f)
             val word = node.fetchSemanticsNode().boundsInRoot
             val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
-            assertEquals(surface.center.x, word.center.x, 1f)
-            assertEquals(surface.center.y, word.center.y, 1f)
+            if (compose.onNodeWithTag("nearbyPassage").isDisplayed()) {
+                val metrics = application.resources.displayMetrics
+                val row = maxOf(56 * metrics.density, size * metrics.scaledDensity * 1.4f + 12 * metrics.density)
+                assertTrue(kotlin.math.abs(surface.center.y - word.center.y) <= row / 2 + 2)
+            } else {
+                assertEquals(surface.center.x, word.center.x, 1f)
+                assertEquals(surface.center.y, word.center.y, 1f)
+            }
             compose.runOnIdle {
                 assertEquals(index, model.state.value.reader!!.state.value.index)
                 assertFalse(model.state.value.reader!!.state.value.playing)
@@ -343,7 +379,8 @@ class AndroidReaderTests {
         assertEquals("t", layout.layoutInput.text.text.substring(span.start, span.end))
         val center = node.fetchSemanticsNode().boundsInRoot.left + layout.getBoundingBox(span.start).center.x
         val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
-        assertEquals(surface.center.x, center, 1f)
+        if (!compose.onNodeWithTag("nearbyPassage").isDisplayed()) assertEquals(surface.center.x, center, 1f)
+        else assertTrue(center in surface.left..surface.right)
     }
 
     @Test fun textCorrectionsRemainOptionalAndPersist() {

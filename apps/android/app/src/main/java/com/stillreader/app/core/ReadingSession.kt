@@ -31,11 +31,19 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     val current get() = tokens.getOrNull(state.value.index)
     val progress get() = if (tokens.isEmpty()) 0f else if (state.value.finished) 1f else state.value.index.toFloat() / tokens.size
     var wordsPerMinute: Double = 250.0
-        // Apply on the next word; restarting the timer on every drag frame
-        // would keep postponing advancement while the finger moves.
+        // Speed changes take effect on the next word, so dragging never restarts its timer.
         set(value) { field = value.coerceIn(60.0, 900.0) }
     var naturalPauses = true
     var allowUnreviewed = true
+    var passageMode = false
+    // Injectable monotonic clock keeps animation and the word timer in agreement in tests.
+    var clockNanos: () -> Long = System::nanoTime
+    private var wordStartedAt: Long? = null
+    private var wordDuration = 0.0
+    private var heldWordProgress = 0.0
+    val wordProgress: Double get() = wordStartedAt?.let {
+        (heldWordProgress + (clockNanos() - it) / 1_000_000_000.0 / wordDuration).coerceIn(0.0, 1.0)
+    } ?: heldWordProgress
     private var playback: Job? = null
     private var scrubOrigin: Int? = null
 
@@ -47,6 +55,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
             return
         }
         if (state.value.finished) {
+            heldWordProgress = 0.0
             mutable.value = state.value.copy(index = 0, finished = false)
             startPage = book.readingStartPageIndex
         }
@@ -56,11 +65,15 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
 
     private fun schedule() {
+        val progress = if (passageMode) wordProgress else 0.0
         playback?.cancel()
+        heldWordProgress = progress; wordStartedAt = null
         playback = scope.launch {
             while (isActive && state.value.playing) {
                 val token = current ?: break
-                delay((Tokenizer.duration(token.word, wordsPerMinute, naturalPauses) * 1000).roundToLong())
+                wordDuration = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses)
+                wordStartedAt = clockNanos()
+                delay((wordDuration * (1 - heldWordProgress) * 1000).roundToLong())
                 if (!isActive || !state.value.playing) break
                 if (state.value.index + 1 >= tokens.size) {
                     if (!checkPages(token.pageIndex, book.pages.lastIndex)) break
@@ -70,6 +83,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
                 }
                 val next = tokens[state.value.index + 1]
                 if (!checkPages(token.pageIndex, next.pageIndex)) break
+                heldWordProgress = 0.0; wordStartedAt = null
                 startPage = next.pageIndex
                 mutable.value = state.value.copy(index = next.id)
                 if (next.id % 20 == 0) checkpoint()
@@ -83,7 +97,11 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
         return true
     }
 
-    private fun stop() { playback?.cancel(); playback = null; mutable.value = state.value.copy(playing = false) }
+    private fun stop() {
+        heldWordProgress = if (passageMode) wordProgress else 0.0
+        wordStartedAt = null
+        playback?.cancel(); playback = null; mutable.value = state.value.copy(playing = false)
+    }
     fun pause() {
         stop(); scrubOrigin = null
         mutable.value = state.value.copy(scrubbing = false)
@@ -96,6 +114,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
     private fun move(index: Int) {
         if (tokens.isEmpty()) return
+        heldWordProgress = 0.0
         val clamped = index.coerceIn(0, tokens.lastIndex)
         startPage = tokens[clamped].pageIndex
         mutable.value = state.value.copy(index = clamped, finished = false, blockedPage = null)

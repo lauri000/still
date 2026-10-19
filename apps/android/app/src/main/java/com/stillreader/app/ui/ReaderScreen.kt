@@ -66,6 +66,7 @@ import kotlin.math.roundToInt
 fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -> Unit, onReview: (Int) -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
     var passage by rememberSaveable(session.book.id) { mutableStateOf(false) }
+    SideEffect { session.passageMode = passage }
     var options by remember { mutableStateOf(false) }
     var pagePicker by remember { mutableStateOf(false) }
     var wpm by remember(session) { mutableDoubleStateOf(session.wordsPerMinute) }
@@ -128,7 +129,8 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         }
         ReadingSurface(session, wpm, state.playing, !options && !pagePicker,
             passage, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
-            WordRibbon(session, state.index, focusLetter, passage, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
+            if (passage) PassageView(session, state, focusLetter, activeWordSizePercent)
+            else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
             androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                 enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
                 Text("${wpm.toInt()} wpm", modifier = Modifier.testTag("speedOverlay")
@@ -151,7 +153,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         AlertDialog(onDismissRequest = { options = false }, title = { Text("Reading options") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Active word size", Modifier.weight(1f), fontSize = 14.sp)
+                    Text(if (passage) "Passage text size" else "Active word size", Modifier.weight(1f), fontSize = 14.sp)
                     Text("$activeWordSizePercent%", Modifier.testTag("activeWordSizeValue"), color = Muted)
                 }
                 Slider(value = activeWordSizePercent.toFloat(), onValueChange = {
@@ -159,16 +161,16 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                     model.activeWordSizePercent = activeWordSizePercent
                 }, valueRange = 100f..300f, steps = 199,
                     modifier = Modifier.testTag("activeWordSize").semantics {
-                        contentDescription = "Active word size"
+                        contentDescription = if (passage) "Passage text size" else "Active word size"
                         stateDescription = "$activeWordSizePercent%"
                     })
-                Text("100% matches surrounding text. Applies to both views.", fontSize = 12.sp, color = Muted)
+                Text(if (passage) "Scales all passage text together to keep natural spacing." else "100% matches surrounding text. In passage view, this scales all text together.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Focus letter", focusLetter) { focusLetter = it; model.focusLetter = it }
-                Text("Highlight one letter and keep it centered as words advance.", fontSize = 12.sp, color = Muted)
+                Text("Highlight one letter. In single-line view, keep that letter centered.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Animated scrolling", animatedScrolling) { animatedScrolling = it; model.animatedScrolling = it }
-                Text("Move surrounding words as you read. Respects the system animation setting.", fontSize = 12.sp, color = Muted)
+                Text("Animate single-line word transitions. Passage view scrolls continuously. Both respect the system animation setting.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)

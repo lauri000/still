@@ -9,11 +9,19 @@ final class ReaderEngine: ObservableObject {
     @Published private(set) var isFinished = false
     @Published private(set) var isScrubbing = false
     @Published var blockedPage: Int?
-    // The running loop picks up speed changes on the next word. Frequent
-    // movement must not restart the current word's timer.
+    // Speed changes take effect on the next word, so dragging never restarts its timer.
     @Published var wordsPerMinute: Double = 250
     @Published var naturalPauses = true
     @Published var allowUnreviewed = true
+    // The passage interpolates within the same word clock used by playback.
+    var passageMode = false
+    @Published private(set) var wordStartedAt: TimeInterval?
+    private var wordDuration = 0.0
+    private var heldWordProgress = 0.0
+    var wordProgress: Double {
+        guard let wordStartedAt, wordDuration > 0 else { return heldWordProgress }
+        return min(1, heldWordProgress + (ProcessInfo.processInfo.systemUptime - wordStartedAt) / wordDuration)
+    }
     private var playback: Task<Void, Never>?
     private var startPage: Int
     private var scrubOrigin: Int?
@@ -41,7 +49,7 @@ final class ReaderEngine: ObservableObject {
             blockedPage = book.pages.indices.first { book.includesPage(at: $0) }
             return
         }
-        if isFinished { index = 0; startPage = book.readingStartPageIndex; isFinished = false }
+        if isFinished { heldWordProgress = 0; index = 0; startPage = book.readingStartPageIndex; isFinished = false }
         guard checkPages(from: min(startPage, current!.pageIndex), through: max(startPage, current!.pageIndex)) else { return }
         blockedPage = nil
         isPlaying = true
@@ -56,11 +64,16 @@ final class ReaderEngine: ObservableObject {
         return true
     }
     private func schedulePlayback() {
+        let progress = passageMode ? wordProgress : 0
         playback?.cancel()
+        heldWordProgress = progress
+        wordStartedAt = nil
         playback = Task { [weak self] in
             while let self, self.isPlaying, let token = self.current {
                 let duration = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses)
-                do { try await Task.sleep(for: .seconds(duration)) } catch { return }
+                self.wordDuration = duration
+                self.wordStartedAt = ProcessInfo.processInfo.systemUptime
+                do { try await Task.sleep(for: .seconds(duration * (1 - self.heldWordProgress))) } catch { return }
                 guard !Task.isCancelled, self.isPlaying else { return }
                 if self.index + 1 >= self.tokens.count {
                     guard self.checkPages(from: token.pageIndex, through: self.book.pages.count - 1) else { return }
@@ -70,6 +83,8 @@ final class ReaderEngine: ObservableObject {
                 }
                 let next = self.tokens[self.index + 1]
                 guard self.checkPages(from: token.pageIndex, through: next.pageIndex) else { return }
+                self.heldWordProgress = 0
+                self.wordStartedAt = nil
                 self.index += 1
                 self.startPage = next.pageIndex
                 if self.index % 20 == 0 { self.checkpoint() }
@@ -83,6 +98,8 @@ final class ReaderEngine: ObservableObject {
         checkpoint()
     }
     private func stopPlayback() {
+        heldWordProgress = passageMode ? wordProgress : 0
+        wordStartedAt = nil
         isPlaying = false
         playback?.cancel()
         playback = nil
@@ -113,6 +130,7 @@ final class ReaderEngine: ObservableObject {
     }
     private func move(to newIndex: Int) {
         guard !tokens.isEmpty else { return }
+        heldWordProgress = 0
         index = min(max(0, newIndex), tokens.count - 1)
         startPage = tokens[index].pageIndex
         isFinished = false

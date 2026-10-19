@@ -48,6 +48,7 @@ struct ReaderView: View {
             withAnimation(.easeOut(duration: 0.18)) { showSpeed = false }
         }
         .onDisappear { engine.pause(); setAwake(false) }
+        .onChange(of: showContext) { _, passage in engine.passageMode = passage }
         .onChange(of: engine.isPlaying) { _, playing in setAwake(playing) }
         .onChange(of: engine.wordsPerMinute) { _, value in savedWPM = value }
         .onChange(of: dragInProgress) { _, dragging in if !dragging { engine.endScrubbing() } }
@@ -109,10 +110,14 @@ struct ReaderView: View {
     private var focusStage: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
-                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
-                    wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
-                        .frame(maxWidth: showContext ? 850 : .infinity)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if showContext {
+                    PassageView(engine: engine, focusLetter: focusLetter, activeWordSizePercent: activeWordSizePercent)
+                        .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
+                        wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
                 #if os(iOS)
                 ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings,
@@ -277,7 +282,7 @@ struct ReaderView: View {
                 Text("Reading options").font(.system(size: 22, weight: .semibold))
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Active word size")
+                        Text(showContext ? "Passage text size" : "Active word size")
                         Spacer()
                         Text("\(activeWordSizePercent)%").monospacedDigit().foregroundStyle(Palette.muted)
                             .accessibilityIdentifier("activeWordSizeValue")
@@ -285,17 +290,17 @@ struct ReaderView: View {
                     Slider(value: Binding(get: { Double(activeWordSizePercent) }, set: {
                         savedActiveWordSizePercent = min(300, max(100, Int($0.rounded())))
                     }), in: 100...300, step: 1)
-                        .accessibilityLabel("Active word size").accessibilityValue("\(activeWordSizePercent)%")
+                        .accessibilityLabel(showContext ? "Passage text size" : "Active word size").accessibilityValue("\(activeWordSizePercent)%")
                         .accessibilityIdentifier("activeWordSize")
-                    Text("100% matches surrounding text. Applies to both views.")
+                    Text(showContext ? "Scales all passage text together to keep natural spacing." : "100% matches surrounding text. In passage view, this scales all text together.")
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Divider()
                 Toggle("Focus letter", isOn: $focusLetter).accessibilityIdentifier("focusLetter")
-                Text("Highlight one letter and keep it centered as words advance.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Text("Highlight one letter. In single-line view, keep that letter centered.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
                 Toggle("Animated scrolling", isOn: $animatedScrolling).accessibilityIdentifier("animatedScrolling")
-                Text("Move surrounding words as you read. Uses immediate placement when Reduce Motion is on.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Text("Animate single-line word transitions. Passage view scrolls continuously. Both respect Reduce Motion.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)

@@ -238,7 +238,7 @@ final class PlaybackTests: XCTestCase {
     }
 }
 
-private func makeBook(_ texts: [String]) -> Book {
+func makeBook(_ texts: [String]) -> Book {
     Book(id: UUID(), title: "Test book", author: "", originalFilename: "test.pdf", importedAt: Date(),
          pages: texts.enumerated().map { index, text in BookPage(id: UUID(), number: index + 1, label: String(index + 1), extractedText: text, text: text, isReviewed: true, isIncluded: true) }, chapters: [])
 }
