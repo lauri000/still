@@ -165,7 +165,7 @@ final class StillUITests: XCTestCase {
         let ordinal = wordOrdinal(in: app)
         func assertPositioned() {
             if surface.value as? String == "Passage view" {
-                XCTAssertLessThanOrEqual(abs(word.frame.midY - surface.frame.midY), (word.frame.height + 8) / 2 + 2)
+                assertPassageRowNearCenter(in: app)
                 XCTAssertGreaterThanOrEqual(word.frame.minX, surface.frame.minX)
                 XCTAssertLessThanOrEqual(word.frame.maxX, surface.frame.maxX)
             } else {
@@ -261,7 +261,7 @@ final class StillUITests: XCTestCase {
         func assertCentered() {
             let surface = app.otherElements["readingSurface"]
             if surface.value as? String == "Passage view" {
-                XCTAssertLessThanOrEqual(abs(word.frame.midY - surface.frame.midY), (word.frame.height + 8) / 2 + 2)
+                assertPassageRowNearCenter(in: app)
             } else {
                 XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
                 XCTAssertEqual(word.frame.midY, surface.frame.midY, accuracy: 1)
@@ -344,7 +344,7 @@ final class StillUITests: XCTestCase {
         app.buttons["toggleContext"].tap()
         XCTAssertEqual(word.label, text)
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
-        XCTAssertLessThanOrEqual(abs(word.frame.midY - app.otherElements["readingSurface"].frame.midY), (word.frame.height + 8) / 2 + 2)
+        assertPassageRowNearCenter(in: app)
         XCTAssertEqual(app.otherElements["readingSurface"].value as? String, "Passage view")
         attachScreenshot("Focus letter in portrait")
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -369,6 +369,22 @@ final class StillUITests: XCTestCase {
         let surface = app.otherElements["readingSurface"]
         XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor private func assertPassageRowNearCenter(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let word = app.staticTexts["currentWord"].frame
+        let surface = app.otherElements["readingSurface"].frame
+        // Without a background, text accessibility frames omit the row's padding.
+        // Measure the distance to a complete neighboring row instead of using glyph height.
+        let neighbors = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "passageWord-"))
+            .allElementsBoundByIndex.map(\.frame)
+            .filter { $0.height > 0 && $0.minY > surface.minY && $0.maxY < surface.maxY }
+        let rowSpacing = neighbors.map { abs($0.midY - word.midY) }.filter { $0 > 5 }.min()
+        guard let rowSpacing else {
+            XCTFail("Expected another complete passage row", file: file, line: line)
+            return
+        }
+        XCTAssertLessThanOrEqual(abs(word.midY - surface.midY), rowSpacing / 2 + 2, file: file, line: line)
     }
 
     @MainActor private func corner(in app: XCUIApplication) -> XCUIElement {
