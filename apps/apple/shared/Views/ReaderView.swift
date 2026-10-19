@@ -75,8 +75,10 @@ struct ReaderView: View {
                 #endif
                 Button { engine.pause(); showContext.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
                     .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
-                Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                    .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
+                if !showContext {
+                    Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                        .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
+                }
             }.padding(.horizontal, 12).padding(.vertical, 4)
             GeometryReader { geometry in
                 Rectangle().fill(Palette.line)
@@ -111,7 +113,7 @@ struct ReaderView: View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
                 if showContext {
-                    PassageView(engine: engine, focusLetter: focusLetter, activeWordSizePercent: activeWordSizePercent)
+                    PassageView(engine: engine)
                         .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
@@ -279,10 +281,10 @@ struct ReaderView: View {
     private var optionsSheet: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Reading options").font(.system(size: 22, weight: .semibold))
+                Text("Single-line options").font(.system(size: 22, weight: .semibold))
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text(showContext ? "Passage text size" : "Active word size")
+                        Text("Active word size")
                         Spacer()
                         Text("\(activeWordSizePercent)%").monospacedDigit().foregroundStyle(Palette.muted)
                             .accessibilityIdentifier("activeWordSizeValue")
@@ -290,17 +292,17 @@ struct ReaderView: View {
                     Slider(value: Binding(get: { Double(activeWordSizePercent) }, set: {
                         savedActiveWordSizePercent = min(300, max(100, Int($0.rounded())))
                     }), in: 100...300, step: 1)
-                        .accessibilityLabel(showContext ? "Passage text size" : "Active word size").accessibilityValue("\(activeWordSizePercent)%")
+                        .accessibilityLabel("Active word size").accessibilityValue("\(activeWordSizePercent)%")
                         .accessibilityIdentifier("activeWordSize")
-                    Text(showContext ? "Scales all passage text together to keep natural spacing." : "100% matches surrounding text. In passage view, this scales all text together.")
+                    Text("100% matches surrounding text.")
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Divider()
                 Toggle("Focus letter", isOn: $focusLetter).accessibilityIdentifier("focusLetter")
-                Text("Highlight one letter. In single-line view, keep that letter centered.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Text("Highlight one letter and keep it centered.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
                 Toggle("Animated scrolling", isOn: $animatedScrolling).accessibilityIdentifier("animatedScrolling")
-                Text("Animate single-line word transitions. Passage view scrolls continuously. Both respect Reduce Motion.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                Text("Animate word transitions. Respects Reduce Motion.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)

@@ -36,6 +36,10 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     var naturalPauses = true
     var allowUnreviewed = true
     var passageMode = false
+        set(value) {
+            field = value
+            if (value && tokens.isNotEmpty()) mutable.value = state.value.copy(blockedPage = null)
+        }
     // Injectable monotonic clock keeps animation and the word timer in agreement in tests.
     var clockNanos: () -> Long = System::nanoTime
     private var wordStartedAt: Long? = null
@@ -71,7 +75,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
         playback = scope.launch {
             while (isActive && state.value.playing) {
                 val token = current ?: break
-                wordDuration = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses)
+                wordDuration = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses && !passageMode)
                 wordStartedAt = clockNanos()
                 delay((wordDuration * (1 - heldWordProgress) * 1000).roundToLong())
                 if (!isActive || !state.value.playing) break
@@ -92,7 +96,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
 
     private fun checkPages(from: Int, through: Int): Boolean {
-        val blocked = if (allowUnreviewed) null else Tokenizer.blockingPage(book, from, through)
+        val blocked = if (allowUnreviewed || passageMode) null else Tokenizer.blockingPage(book, from, through)
         if (blocked != null) { mutable.value = state.value.copy(blockedPage = blocked); pause(); return false }
         return true
     }

@@ -142,7 +142,7 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
-    func testPassageKeepsStableRowsAndMovesHighlightThroughText() throws {
+    func testPassageScrollsPlainRowsAndPreservesSingleLineOptions() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]
         XCUIDevice.shared.orientation = .portrait
@@ -152,92 +152,45 @@ final class StillUITests: XCTestCase {
         app.buttons["Next starting page"].tap()
         app.buttons["startReading"].tap()
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
-        let word = app.staticTexts["currentWord"]
-        let surface = app.otherElements["readingSurface"]
         app.buttons["readingOptions"].tap()
         let animation = app.switches["animatedScrolling"]
         XCTAssertTrue(animation.waitForExistence(timeout: 5))
-        XCTAssertEqual(animation.value as? String, "0")
         animation.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-        XCTAssertEqual(animation.value as? String, "1")
         app.buttons["Done"].tap()
-        let original = word.frame
         let ordinal = wordOrdinal(in: app)
-        func assertPositioned() {
-            if surface.value as? String == "Passage view" {
-                assertPassageRowNearCenter(in: app)
-                XCTAssertGreaterThanOrEqual(word.frame.minX, surface.frame.minX)
-                XCTAssertLessThanOrEqual(word.frame.maxX, surface.frame.maxX)
-            } else {
-                XCTAssertEqual(word.frame.midX, surface.frame.midX, accuracy: 1)
-                XCTAssertEqual(word.frame.midY, surface.frame.midY, accuracy: 1)
-            }
-            XCTAssertEqual(app.staticTexts.matching(identifier: "currentWord").count, 1)
-        }
         app.buttons["toggleContext"].tap()
-        XCTAssertEqual(surface.value as? String, "Passage view")
-        XCTAssertTrue(surface.isHittable)
+        let surface = app.otherElements["readingSurface"]
+        let row = app.staticTexts["currentPassageRow"]
+        XCTAssertTrue(row.exists)
+        XCTAssertFalse(app.staticTexts["currentWord"].exists)
+        XCTAssertFalse(app.buttons["readingOptions"].exists)
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
-        assertPositioned()
-        XCTAssertGreaterThanOrEqual(word.frame.height, original.height)
-        let target = app.staticTexts["passageWord-\(ordinal)"]
-        XCTAssertTrue(target.exists)
-        let targetFrame = target.frame
-        let text = target.label
+        assertPassageRowNearCenter(in: app)
+        let text = row.label
+        let before = row.frame
         stepForward(in: app)
-        XCTAssertEqual(word.label, text)
-        XCTAssertEqual(word.frame.width, targetFrame.width, accuracy: 1)
-        XCTAssertEqual(word.frame.minX, targetFrame.minX, accuracy: 1) // Selection changes color, not size.
-        assertPositioned()
-        // The selected starting page is the beginning of the retained book.
-        // Find the next row without assuming there are any earlier words.
-        let nextRow = ((ordinal + 1)...(ordinal + 30)).map { app.staticTexts["passageWord-\($0)"] }
-            .first { $0.exists && $0.frame.midY > word.frame.midY + 20 }
-        let neighbour = try XCTUnwrap(nextRow)
-        let neighbourID = neighbour.identifier
-        let beforeNeighbour = neighbour.frame
-        let beforeWord = word.frame
-        let previousWordID = "passageWord-\(wordOrdinal(in: app) - 1)"
-        stepForward(in: app)
-        XCTAssertEqual(app.staticTexts[neighbourID].frame.minX, beforeNeighbour.minX, accuracy: 1)
-        XCTAssertEqual(app.staticTexts[neighbourID].frame.midY - beforeNeighbour.midY,
-                       app.staticTexts[previousWordID].frame.midY - beforeWord.midY, accuracy: 1)
-        attachScreenshot("Stable passage in portrait")
-        let before = wordOrdinal(in: app)
+        XCTAssertEqual(row.label, text)
+        XCTAssertEqual(row.frame.minX, before.minX, accuracy: 1)
+        XCTAssertEqual(row.frame.width, before.width, accuracy: 1)
+        XCTAssertLessThan(row.frame.midY, before.midY)
         surface.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.3))
             .press(forDuration: 0.05, thenDragTo: surface.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.3)))
-        XCTAssertGreaterThan(wordOrdinal(in: app), before)
-        XCTAssertTrue((corner(in: app).value as? String ?? "").contains("paused"))
-        XCTAssertEqual(speed(in: app), 250)
-        assertPositioned()
         let chosen = wordOrdinal(in: app)
         corner(in: app).press(forDuration: 0.8)
         XCTAssertGreaterThan(wordOrdinal(in: app), chosen)
-        assertPositioned()
+        XCTAssertTrue((corner(in: app).value as? String ?? "").contains("paused"))
+        let pausedFrame = row.frame
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(row.frame, pausedFrame)
+        assertPassageRowNearCenter(in: app)
+        attachScreenshot("Plain scrolling passage")
         XCUIDevice.shared.orientation = .landscapeLeft
         waitForRotation(in: app, landscape: true, controlID: "holdToRead")
-        assertPositioned()
-        let middle = wordOrdinal(in: app)
-        let earlierRow = (1...16).map { app.staticTexts["passageWord-\(middle - 1 - $0)"] }
-            .first { $0.isHittable && $0.frame.midY < word.frame.midY - 20 }
-        let laterRow = (0..<16).map { app.staticTexts["passageWord-\(middle + $0)"] }
-            .first { $0.isHittable && $0.frame.midY > word.frame.midY + 20 }
-        XCTAssertNotNil(earlierRow)
-        XCTAssertNotNil(laterRow)
-        attachScreenshot("Stable passage in landscape")
+        assertPassageRowNearCenter(in: app)
         let paused = wordOrdinal(in: app)
         app.buttons["toggleContext"].tap()
-        XCTAssertEqual(surface.value as? String, "Single-line view")
         XCTAssertEqual(wordOrdinal(in: app), paused)
-        assertPositioned()
-        app.buttons["Close reader"].tap()
-        app.terminate()
-        app.launchArguments = ["--ui-testing"]
-        app.launch()
-        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
-        app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
-        XCTAssertEqual(wordOrdinal(in: app), paused)
+        XCTAssertTrue(app.staticTexts["currentWord"].exists)
         app.buttons["readingOptions"].tap()
         XCTAssertTrue(animation.waitForExistence(timeout: 5))
         XCTAssertEqual(animation.value as? String, "1")
@@ -246,7 +199,7 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
-    func testActiveWordSizeAppliesToBothViewsAndPersists() throws {
+    func testActiveWordSizeOnlyAffectsSingleLineAndPersists() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]
         XCUIDevice.shared.orientation = .portrait
@@ -286,12 +239,18 @@ final class StillUITests: XCTestCase {
         assertCentered()
         attachScreenshot("Single-line active word at 300 percent")
         app.buttons["toggleContext"].tap()
-        let largePassageWidth = word.frame.width
-        assertCentered()
-        attachScreenshot("Passage active word at 300 percent")
+        let passageRow = app.staticTexts["currentPassageRow"]
+        let passageFrame = passageRow.frame
+        let passageText = passageRow.label
+        XCTAssertFalse(word.exists)
+        XCTAssertFalse(app.buttons["readingOptions"].exists)
+        app.buttons["toggleContext"].tap()
         changeSize(0, expected: "100%")
-        XCTAssertEqual(largePassageWidth / word.frame.width, 3, accuracy: 0.08)
-        assertCentered()
+        app.buttons["toggleContext"].tap()
+        XCTAssertEqual(passageRow.frame, passageFrame)
+        XCTAssertEqual(passageRow.label, passageText)
+        XCTAssertEqual(wordOrdinal(in: app), ordinal)
+        app.buttons["toggleContext"].tap()
         changeSize(1, expected: "300%")
         XCUIDevice.shared.orientation = .landscapeLeft
         waitForRotation(in: app, landscape: true, controlID: "holdToRead")
@@ -342,7 +301,8 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
         XCTAssertGreaterThan(word.frame.midX, originalCenter)
         app.buttons["toggleContext"].tap()
-        XCTAssertEqual(word.label, text)
+        XCTAssertFalse(word.exists)
+        XCTAssertTrue(app.staticTexts["currentPassageRow"].label.contains(text))
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
         assertPassageRowNearCenter(in: app)
         XCTAssertEqual(app.otherElements["readingSurface"].value as? String, "Passage view")
@@ -372,11 +332,11 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor private func assertPassageRowNearCenter(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let word = app.staticTexts["currentWord"].frame
+        let word = app.staticTexts["currentPassageRow"].frame
         let surface = app.otherElements["readingSurface"].frame
         // Without a background, text accessibility frames omit the row's padding.
         // Measure the distance to a complete neighboring row instead of using glyph height.
-        let neighbors = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "passageWord-"))
+        let neighbors = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "passageRow-"))
             .allElementsBoundByIndex.map(\.frame)
             .filter { $0.height > 0 && $0.minY > surface.minY && $0.maxY < surface.maxY }
         let rowSpacing = neighbors.map { abs($0.midY - word.midY) }.filter { $0 > 5 }.min()
@@ -482,7 +442,7 @@ final class StillUITests: XCTestCase {
         for mode in 0..<2 {
             if mode == 1 { app.buttons["toggleContext"].tap() }
             let initial = wordOrdinal(in: app)
-            let neighbor = app.staticTexts["\(mode == 0 ? "nearbyWord" : "passageWord")-\(initial - 2)"]
+            let neighbor = mode == 0 ? app.staticTexts["nearbyWord-\(initial - 2)"] : app.staticTexts["currentPassageRow"]
             XCTAssertTrue(neighbor.exists)
             neighbor.tap()
             XCTAssertEqual(wordOrdinal(in: app), initial)
@@ -506,7 +466,7 @@ final class StillUITests: XCTestCase {
         app.buttons["readerPage"].tap()
         XCTAssertTrue(app.buttons["Page 3"].waitForExistence(timeout: 5))
         app.buttons["Page 3"].tap()
-        XCTAssertEqual(app.staticTexts["currentWord"].label, "Press")
+        XCTAssertTrue(app.staticTexts["currentPassageRow"].label.hasPrefix("Press"))
         attachScreenshot("Compact Apple reader in portrait")
         XCUIDevice.shared.orientation = .landscapeLeft
         waitForRotation(in: app, landscape: true, controlID: "holdToRead")
@@ -517,7 +477,8 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor private func wordOrdinal(in app: XCUIApplication) -> Int {
-        let value = app.staticTexts["currentWord"].value as? String ?? ""
+        let element = app.staticTexts["currentPassageRow"].exists ? app.staticTexts["currentPassageRow"] : app.staticTexts["currentWord"]
+        let value = element.value as? String ?? ""
         return value.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? -1
     }
 

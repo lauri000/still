@@ -1,46 +1,50 @@
 import Foundation
 
-/// A stable layout of the retained book. Playback never changes the wrapping.
+/// Plain nearby rows, independent of single-line reading preferences.
 struct PassageLayout {
     struct Row {
         let words: Range<Int>
-        let duration: Double
+        let text: String
+        let width: Double
     }
     let rows: [Row]
-    let widths: [Double]
-    let spacing: Double
     private let wordRows: [Int]
-    private let elapsed: [Double]
-    private let durations: [Double]
 
-    init(tokens: [ReadingToken], widths: [Double], availableWidth: Double, spacing: Double = 8, naturalPauses: Bool) {
-        self.spacing = spacing
-        let width = max(1, availableWidth)
-        self.widths = widths.map { min(width, max(1, $0)) }
-        durations = tokens.map { Tokenizer.duration(for: $0.word, wordsPerMinute: 60, naturalPauses: naturalPauses) }
-        var rows: [Row] = [], wordRows: [Int] = [], elapsed: [Double] = []
-        var start = 0, used = 0.0, duration = 0.0
+    init(tokens: [ReadingToken], widths: [Double], availableWidth: Double, spacing: Double = 8) {
+        var rows: [Row] = [], wordRows: [Int] = []
+        var start = 0, used = 0.0
+        func append(_ end: Int) {
+            rows.append(Row(words: start..<end, text: tokens[start..<end].map { $0.word.text }.joined(separator: " "), width: used))
+        }
         for index in tokens.indices {
             let newParagraph = index > 0 && (tokens[index - 1].word.endsParagraph || tokens[index - 1].pageID != tokens[index].pageID)
-            if index > start && (newParagraph || used + spacing + self.widths[index] > width) {
-                rows.append(Row(words: start..<index, duration: duration))
-                start = index; used = 0; duration = 0
+            if index > start && (newParagraph || used + spacing + widths[index] > max(1, availableWidth)) {
+                append(index); start = index; used = 0
             }
             wordRows.append(rows.count)
-            elapsed.append(duration)
-            used += (index == start ? 0 : spacing) + self.widths[index]
-            duration += durations[index]
+            used += (index == start ? 0 : spacing) + max(1, widths[index])
         }
-        if start < tokens.count { rows.append(Row(words: start..<tokens.count, duration: duration)) }
-        self.rows = rows; self.wordRows = wordRows; self.elapsed = elapsed
+        if start < tokens.count { append(tokens.count) }
+        self.rows = rows; self.wordRows = wordRows
     }
-
     func row(containing index: Int) -> Int { wordRows.indices.contains(index) ? wordRows[index] : 0 }
-
-    /// Moves one row over that row's total reading time, continuously across word/row boundaries.
     func position(index: Int, wordProgress: Double) -> Double {
         guard wordRows.indices.contains(index) else { return 0 }
-        let row = wordRows[index]
-        return Double(row) + (elapsed[index] + durations[index] * min(1, max(0, wordProgress))) / rows[row].duration
+        let row = wordRows[index], words = rows[wordRows[index]].words
+        return Double(row) + (Double(index - words.lowerBound) + min(1, max(0, wordProgress))) / Double(words.count)
+    }
+
+    /// Real paragraph/page boundaries keep overlapping windows wrapped identically.
+    static func window(tokens: [ReadingToken], index: Int, contextWords: Int = 256) -> Range<Int> {
+        guard !tokens.isEmpty else { return 0..<0 }
+        let current = min(tokens.count - 1, max(0, index))
+        var start = current, end = current + 1
+        while start > 0 && tokens[start - 1].pageID == tokens[current].pageID { start -= 1 }
+        while end < tokens.count && tokens[end].pageID == tokens[current].pageID { end += 1 }
+        start = max(0, start - contextWords); end = min(tokens.count, end + contextWords)
+        func boundary(_ at: Int) -> Bool { tokens[at - 1].word.endsParagraph || tokens[at - 1].pageID != tokens[at].pageID }
+        while start > 0 && !boundary(start) { start -= 1 }
+        while end < tokens.count && !boundary(end) { end += 1 }
+        return start..<end
     }
 }

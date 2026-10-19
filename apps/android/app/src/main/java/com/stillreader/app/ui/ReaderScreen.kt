@@ -120,7 +120,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
                     Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
                 }
-                IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
+                if (!passage) IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
                     Icon(Icons.Default.MoreHoriz, "Reading options")
                 }
             }
@@ -129,7 +129,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         }
         ReadingSurface(session, wpm, state.playing, !options && !pagePicker,
             passage, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
-            if (passage) PassageView(session, state, focusLetter, activeWordSizePercent)
+            if (passage) PassageView(session, state)
             else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
             androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                 enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
@@ -150,10 +150,10 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     if (options) {
         var natural by remember { mutableStateOf(session.naturalPauses) }
         var strict by remember { mutableStateOf(!session.allowUnreviewed) }
-        AlertDialog(onDismissRequest = { options = false }, title = { Text("Reading options") }, text = {
+        AlertDialog(onDismissRequest = { options = false }, title = { Text("Single-line options") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (passage) "Passage text size" else "Active word size", Modifier.weight(1f), fontSize = 14.sp)
+                    Text("Active word size", Modifier.weight(1f), fontSize = 14.sp)
                     Text("$activeWordSizePercent%", Modifier.testTag("activeWordSizeValue"), color = Muted)
                 }
                 Slider(value = activeWordSizePercent.toFloat(), onValueChange = {
@@ -161,16 +161,16 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                     model.activeWordSizePercent = activeWordSizePercent
                 }, valueRange = 100f..300f, steps = 199,
                     modifier = Modifier.testTag("activeWordSize").semantics {
-                        contentDescription = if (passage) "Passage text size" else "Active word size"
+                        contentDescription = "Active word size"
                         stateDescription = "$activeWordSizePercent%"
                     })
-                Text(if (passage) "Scales all passage text together to keep natural spacing." else "100% matches surrounding text. In passage view, this scales all text together.", fontSize = 12.sp, color = Muted)
+                Text("100% matches surrounding text.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Focus letter", focusLetter) { focusLetter = it; model.focusLetter = it }
-                Text("Highlight one letter. In single-line view, keep that letter centered.", fontSize = 12.sp, color = Muted)
+                Text("Highlight one letter and keep it centered.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Animated scrolling", animatedScrolling) { animatedScrolling = it; model.animatedScrolling = it }
-                Text("Animate single-line word transitions. Passage view scrolls continuously. Both respect the system animation setting.", fontSize = 12.sp, color = Muted)
+                Text("Animate word transitions. Respects the system animation setting.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)

@@ -14,7 +14,9 @@ final class ReaderEngine: ObservableObject {
     @Published var naturalPauses = true
     @Published var allowUnreviewed = true
     // The passage interpolates within the same word clock used by playback.
-    var passageMode = false
+    var passageMode = false {
+        didSet { if passageMode && !tokens.isEmpty { blockedPage = nil } }
+    }
     @Published private(set) var wordStartedAt: TimeInterval?
     private var wordDuration = 0.0
     private var heldWordProgress = 0.0
@@ -56,7 +58,7 @@ final class ReaderEngine: ObservableObject {
         schedulePlayback()
     }
     private func checkPages(from: Int, through: Int) -> Bool {
-        if !allowUnreviewed, let page = Tokenizer.blockingPage(in: book, from: from, through: through) {
+        if !allowUnreviewed && !passageMode, let page = Tokenizer.blockingPage(in: book, from: from, through: through) {
             blockedPage = page
             pause()
             return false
@@ -70,7 +72,7 @@ final class ReaderEngine: ObservableObject {
         wordStartedAt = nil
         playback = Task { [weak self] in
             while let self, self.isPlaying, let token = self.current {
-                let duration = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses)
+                let duration = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses && !self.passageMode)
                 self.wordDuration = duration
                 self.wordStartedAt = ProcessInfo.processInfo.systemUptime
                 do { try await Task.sleep(for: .seconds(duration * (1 - self.heldWordProgress))) } catch { return }
