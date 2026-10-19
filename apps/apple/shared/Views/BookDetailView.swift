@@ -46,11 +46,15 @@ struct BookDetailView: View {
                 }
                 .background(Palette.paper)
                 .readerPresentation(item: $readingBook) { snapshot in
-                    ReaderView(book: snapshot, onReviewPage: { page in pageIndex = page; section = "Edit text" }) { position in
+                    ReaderView(book: snapshot, pdfURL: library.repository.pdfURL(for: bookID), onReviewPage: { page in pageIndex = page; section = "Edit text" }) { position in
                         library.update(bookID, saveImmediately: true) { $0.position = position }
-                        if let index = library.book(bookID)?.pages.firstIndex(where: { $0.id == position.pageID }) { startPage = index }
                         startPageChanged = false
                     }
+                }
+                .onChange(of: readingBook?.id) { _, id in
+                    // Keep the hidden PDF preview still while the reader checkpoints pages.
+                    if id == nil, let current = library.book(bookID), let position = current.position,
+                       let index = current.pages.firstIndex(where: { $0.id == position.pageID }) { startPage = index }
                 }
                 .sheet(isPresented: $editingMetadata) { metadataSheet(book) }
                 .sheet(isPresented: $addingChapter) { chapterSheet(book) }
@@ -134,6 +138,7 @@ struct BookDetailView: View {
                     .disabled(startPage == book.pages.count - 1).accessibilityLabel("Next starting page")
             }.buttonStyle(.plain)
             PDFContentsPreview(book: book, url: library.repository.pdfURL(for: bookID), page: startPage, choosePage: choosePage)
+                .accessibilityHidden(readingBook != nil)
             HStack {
                 if book.pages[startPage].hasNoText {
                     Text("No selectable text on this page. Choose another page or use Edit text.")

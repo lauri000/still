@@ -69,6 +69,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     SideEffect { session.passageMode = passage }
     var options by remember { mutableStateOf(false) }
     var pagePicker by remember { mutableStateOf(false) }
+    var contents by remember { mutableStateOf(false) }
     var wpm by remember(session) { mutableDoubleStateOf(session.wordsPerMinute) }
     var focusLetter by remember(model) { mutableStateOf(model.focusLetter) }
     var activeWordSizePercent by remember(model) { mutableIntStateOf(model.activeWordSizePercent) }
@@ -110,12 +111,19 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Default.ArrowBack, "Back") }
                 Column(Modifier.weight(1f).heightIn(min = 48.dp)
-                    .clickable(onClickLabel = "Go to page") { session.pause(); pagePicker = true }
+                    .clickable(onClickLabel = "Contents and pages") { session.pause(); contents = true }
+                    .testTag("readerContents")
                     .padding(horizontal = 4.dp), verticalArrangement = Arrangement.Center) {
                     Text(session.book.title, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${if (state.finished) "Finished · " else ""}Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
-                        Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        session.structure.sectionAt(state.index)?.let { section ->
+                            Text(section.title, Modifier.weight(1f).testTag("readerChapter"), color = Muted, fontSize = 11.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text("${if (state.finished) "Finished · " else ""}Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
+                            Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 IconButton(onClick = { session.pause(); passage = !passage }, modifier = Modifier.testTag("toggleContext")) {
                     Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
@@ -127,10 +135,12 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             LinearProgressIndicator(progress = { session.progress }, modifier = Modifier.fillMaxWidth().height(2.dp).testTag("readingProgress"),
                 color = Forest, trackColor = Line, strokeCap = StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {})
         }
-        ReadingSurface(session, wpm, state.playing, !options && !pagePicker,
+        ReadingSurface(session, wpm, state.playing, !options && !pagePicker && !contents,
             passage, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
             if (passage) PassageView(session, state)
-            else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
+            else if (session.structure.headingAt(state.index) != null) {
+                HeadingCue(session, state.index)
+            } else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
             androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                 enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
                 Text("${wpm.toInt()} wpm", modifier = Modifier.testTag("speedOverlay")
@@ -180,12 +190,39 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             }
         }, confirmButton = { TextButton(onClick = { options = false }) { Text("Done") } })
     }
+    if (contents) ReaderContentsSheet(session, model, onClose = { contents = false }, onPage = { contents = false; pagePicker = true })
     if (pagePicker) {
         var page by remember { mutableIntStateOf(session.current?.pageIndex ?: session.book.readingStartPageIndex) }
         AlertDialog(onDismissRequest = { pagePicker = false }, title = { Text("Go to page") },
             text = { PageSelector(page, session.book.pages.size) { page = it } },
             confirmButton = { TextButton(onClick = { session.seekPage(page); pagePicker = false }) { Text("Go") } },
             dismissButton = { TextButton(onClick = { pagePicker = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun HeadingCue(session: ReadingSession, index: Int) {
+    val title = session.structure.headingAt(index)?.title ?: return
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.widthIn(max = 700.dp).fillMaxSize().padding(24.dp)) {
+        val style = LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = 28.sp)
+        val size = remember(title, maxWidth, maxHeight, density, style) {
+            with(density) {
+                (28 downTo 14 step 2).firstOrNull { points ->
+                    measurer.measure(title, style.copy(fontSize = points.sp), constraints = Constraints(maxWidth = maxWidth.roundToPx()))
+                        .size.height <= maxHeight.roundToPx()
+                } ?: 14
+            }
+        }
+        Text(title, color = Ink, style = style.copy(fontSize = size.sp), textAlign = TextAlign.Center,
+            modifier = Modifier.align(Alignment.Center).testTag("currentHeading").semantics {
+                heading()
+                stateDescription = "Word ${index + 1} of ${session.tokens.size}"
+                customActions = listOf(
+                    CustomAccessibilityAction("Next word") { session.seek(index + 1); true },
+                    CustomAccessibilityAction("Previous word") { session.seek(index - 1); true })
+            })
     }
 }
 
@@ -288,7 +325,11 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
         val fontSize = neighborSize * activeWordSizePercent / 100f
         val neighborHeight = if (compact) 36.dp else 48.dp
         val radius = if (expanded) 80 else 6
-        val tokens = session.tokens.subList((index - radius).coerceAtLeast(0), (index + radius + 1).coerceAtMost(session.tokens.size))
+        var start = index.coerceAtMost(session.tokens.size)
+        var end = (index + 1).coerceAtMost(session.tokens.size)
+        while (start > maxOf(0, index - radius) && session.structure.headingAt(start - 1) == null) start--
+        while (end < minOf(session.tokens.size, index + radius + 1) && session.structure.headingAt(end) == null) end++
+        val tokens = session.tokens.subList(start, end)
         val current = session.current?.word?.text ?: "Ready?"
         val measurer = rememberTextMeasurer()
         val focusRange = remember(current, focusLetter) { if (focusLetter) ReadingFocus.range(current) else null }

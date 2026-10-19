@@ -79,7 +79,8 @@ Ported the contents feature onto main `77e2970` (published 0.1.10) in
 `codex/contents-current-reader`. The old branch and its release artifacts remain
 untouched. No release versions or publishing metadata change in this integration.
 The current plain passage layout, separate single-line options, and bounded
-nearby-text layout are preserved; no chapter/title playback cues are implemented.
+nearby-text layout were preserved at this integration step. Book typography and
+chapter/title playback cues were implemented afterward; see [reading](reading.md).
 
 - Android: 33 JVM tests and four focused emulator scenarios pass, covering real
   outline parsing, contents selection/trim/resume, empty contents, and plain
@@ -89,3 +90,32 @@ nearby-text layout are preserved; no chapter/title playback cues are implemented
 - The Mac target builds without developer signing. Verification used this chat's
   isolated app, simulator/emulator, and build outputs. Physical devices and the
   wide-screen sidebar were not rerun for this integration.
+
+## Book typography — 19 October 2026
+
+The reader now reuses Contents for chapter navigation and derives exact heading
+cues from current text. See [reading](reading.md#book-typography-and-contents) for
+matching, timing, and fallback behavior. No release metadata or backup schema
+changed.
+
+- Android: 39 JVM tests pass. The phone reader suite has 21 passing scenarios and
+  one tablet-width scenario skipped. The final typography, header geometry, and
+  private-book performance scenarios also pass. Debug lint has zero errors and
+  the same 21 existing warnings.
+- Apple: 62 unit/layout tests pass. The 11 existing iPhone scenarios pass. The new
+  typography/Contents scenario initially exposed a PDFKit accessibility crash
+  behind the presented reader. The hidden preview now remains still and outside
+  the reader's accessibility tree; the new scenario and dismissal/resume pass,
+  followed by three consecutive passes of the typography/navigation scenario.
+- iPhone screenshots were inspected in portrait and landscape, together with
+  Android single-line and multiline screenshots. They use the public sample book
+  and are saved in [book-typography](screenshots/book-typography/).
+- The Mac target builds without developer signing. Physical devices, iPad UI,
+  the tablet sidebar, and Apple distribution signing were not rerun for this step.
+- The private 1984 PDF (104,789 words) passes six mode-switch combinations on the
+  isolated Android emulator, including 125% active-word size with Focus letter
+  and Natural pauses enabled. Measured switches take 145–204 ms; combined
+  token/session preparation takes 599 ms. No exact heading matches were found
+  in this file, so it exercises the plain-text fallback and the prior crash path.
+  Matching/layout/timing cases with headings are covered separately by unit and
+  native UI tests. The private PDF and its text are not included in the repository.

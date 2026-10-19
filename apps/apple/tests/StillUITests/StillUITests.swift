@@ -2,6 +2,55 @@ import XCTest
 
 final class StillUITests: XCTestCase {
     @MainActor
+    func testBookTypographyAndReaderContentsPreservePositionAndTrim() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library", "--with-headings"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        let heading = app.staticTexts["currentHeading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        XCTAssertEqual(heading.label, "A place to begin")
+        XCTAssertFalse(app.staticTexts["currentWord"].exists)
+        corner(in: app).press(forDuration: 0.4)
+        XCTAssertEqual(heading.label, "A place to begin")
+        let ordinal = wordOrdinal(in: app)
+        app.buttons["toggleContext"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), ordinal)
+        XCTAssertTrue(app.staticTexts["currentPassageRow"].label.contains("place"))
+        attachScreenshot("Book typography multiline")
+        app.buttons["readerPage"].tap()
+        let next = app.buttons["contentsEntry-1"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5)); next.tap()
+        XCTAssertTrue(app.staticTexts["currentPassageRow"].label.contains("Keep the meaning"))
+        XCTAssertTrue((corner(in: app).value as? String ?? "").contains("paused"))
+        app.buttons["toggleContext"].tap()
+        XCTAssertEqual(heading.label, "Keep the meaning")
+        attachScreenshot("Book typography single line")
+        let selected = wordOrdinal(in: app)
+        app.buttons["Close reader"].tap(); app.buttons["startReading"].tap()
+        XCTAssertTrue(heading.waitForExistence(timeout: 5)); XCTAssertEqual(wordOrdinal(in: app), selected)
+        // Reader contents seeks; it must not replace the book's starting trim.
+        app.buttons["readerPage"].tap()
+        let earlier = app.buttons["contentsEntry-0"]
+        XCTAssertTrue(earlier.waitForExistence(timeout: 5)); XCTAssertTrue(earlier.isEnabled); earlier.tap()
+        XCTAssertEqual(heading.label, "A place to begin")
+        corner(in: app).press(forDuration: 1.4)
+        XCTAssertTrue(app.staticTexts["currentWord"].exists)
+        XCTAssertFalse(heading.exists)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitForRotation(in: app, landscape: true, controlID: "holdToRead")
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5)); app.buttons["contentsEntry-1"].tap()
+        XCTAssertEqual(heading.label, "Keep the meaning")
+        XCTAssertTrue(app.otherElements["readingSurface"].frame.contains(heading.frame))
+        attachScreenshot("Book typography landscape")
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor
     func testChooseStartingPageReadAndResume() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]
@@ -502,6 +551,8 @@ final class StillUITests: XCTestCase {
             stepForward(in: app)
         }
         app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["readerGoToPage"].waitForExistence(timeout: 5))
+        app.buttons["readerGoToPage"].tap()
         XCTAssertTrue(app.buttons["Page 3"].waitForExistence(timeout: 5))
         app.buttons["Page 3"].tap()
         XCTAssertTrue(app.staticTexts["currentPassageRow"].label.hasPrefix("Press"))
@@ -515,7 +566,7 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor private func wordOrdinal(in app: XCUIApplication) -> Int {
-        let element = app.staticTexts["currentPassageRow"].exists ? app.staticTexts["currentPassageRow"] : app.staticTexts["currentWord"]
+        let element = app.staticTexts["currentPassageRow"].exists ? app.staticTexts["currentPassageRow"] : (app.staticTexts["currentHeading"].exists ? app.staticTexts["currentHeading"] : app.staticTexts["currentWord"])
         let value = element.value as? String ?? ""
         return value.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? -1
     }

@@ -39,7 +39,9 @@ class PassagePerformanceTests {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         lateinit var session: ReadingSession
         compose.runOnUiThread {
+            val preparedAt = System.nanoTime()
             session = ReadingSession(book, scope) { }
+            Log.i("StillPassageProbe", "reader_prepare_ms=${(System.nanoTime()-preparedAt)/1e6} mapped_headings=${session.structure.headings.size}")
             session.seek(session.tokens.size / 2)
             session.passageMode = true
         }

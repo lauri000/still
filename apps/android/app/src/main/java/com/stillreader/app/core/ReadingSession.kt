@@ -20,6 +20,8 @@ data class ReadingState(
 /** One owner, on the UI thread. The coroutine scope supplies native scheduling; tests supply virtual time. */
 class ReadingSession(val book: Book, private val scope: CoroutineScope, private val save: (ReadingPosition) -> Unit) {
     val tokens = Tokenizer.tokens(book)
+    val structure = ReadingStructure(book, tokens)
+    private val keepsProgress get() = passageMode || structure.headingAt(state.value.index) != null || state.value.index in structure.chapterEnds
     private var startPage = maxOf(book.readingStartPageIndex, book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(0))
     private val mutable = MutableStateFlow(ReadingState(
         index = if (book.position != null && tokens.none { it.pageID == book.position.pageID }) {
@@ -44,6 +46,8 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     var clockNanos: () -> Long = System::nanoTime
     private var wordStartedAt: Long? = null
     private var wordDuration = 0.0
+    private var motionDuration = 0.0
+    val motionProgress get() = if (motionDuration > 0) (wordProgress * wordDuration / motionDuration).coerceIn(0.0, 1.0) else wordProgress
     private var heldWordProgress = 0.0
     val wordProgress: Double get() = wordStartedAt?.let {
         (heldWordProgress + (clockNanos() - it) / 1_000_000_000.0 / wordDuration).coerceIn(0.0, 1.0)
@@ -69,13 +73,15 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
 
     private fun schedule() {
-        val progress = if (passageMode) wordProgress else 0.0
+        val progress = if (keepsProgress) wordProgress else 0.0
         playback?.cancel()
         heldWordProgress = progress; wordStartedAt = null
         playback = scope.launch {
             while (isActive && state.value.playing) {
                 val token = current ?: break
-                wordDuration = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses && !passageMode)
+                val base = Tokenizer.duration(token.word, wordsPerMinute, naturalPauses && !passageMode && structure.headingAt(token.id) == null)
+                wordDuration = structure.duration(token.id, base, passageMode)
+                motionDuration = if (token.id in structure.chapterEnds) base else wordDuration
                 wordStartedAt = clockNanos()
                 delay((wordDuration * (1 - heldWordProgress) * 1000).roundToLong())
                 if (!isActive || !state.value.playing) break
@@ -102,7 +108,7 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
 
     private fun stop() {
-        heldWordProgress = if (passageMode) wordProgress else 0.0
+        heldWordProgress = if (keepsProgress) wordProgress else 0.0
         wordStartedAt = null
         playback?.cancel(); playback = null; mutable.value = state.value.copy(playing = false)
     }

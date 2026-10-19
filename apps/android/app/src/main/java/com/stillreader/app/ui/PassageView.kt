@@ -38,12 +38,13 @@ fun PassageView(session: ReadingSession, state: ReadingState) {
         val width = with(density) { maxWidth.toPx().toDouble() }
         val height = with(density) { maxHeight.toPx() }
         val rowHeight = with(density) { maxOf((if (maxHeight < 240.dp) 44.dp else 56.dp).toPx(), fontSize.sp.toPx() * 1.4f + 12.dp.toPx()) }
+        val headingIDs = remember(session, nearby) { nearby.mapNotNull { token -> session.structure.headingAt(token.id)?.let { token.id to it.words.first } }.toMap() }
         val layout = remember(nearby, measurer, style, width) {
             val cache = mutableMapOf<String, Double>()
-            fun measure(text: String) = cache.getOrPut(text) {
-                measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toDouble()
+            fun measure(text: String, heading: Boolean = false) = cache.getOrPut("$heading:$text") {
+                measurer.measure(AnnotatedString(text), if (heading) style.copy(fontSize = (fontSize * 1.2f).sp) else style, softWrap = false, maxLines = 1).size.width.toDouble()
             }
-            PassageLayout(nearby, nearby.map { measure(it.word.text) }, width, measure(" "))
+            PassageLayout(nearby, nearby.map { measure(it.word.text, it.id in headingIDs) }, width, measure(" "), headingIDs)
         }
         var frame by remember { mutableLongStateOf(0) }
         var durationScale by remember { mutableStateOf<MotionDurationScale?>(null) }
@@ -53,22 +54,24 @@ fun PassageView(session: ReadingSession, state: ReadingState) {
             if (state.playing && !reduceMotion) while (true) withInfiniteAnimationFrameNanos { frame = it }
         }
         val index = state.index - window.first
-        val progress = remember(frame, state) { session.wordProgress }
-        val position = if (reduceMotion) layout.rowContaining(index) + .5 else layout.position(index, progress)
+        val progress = remember(frame, state) { session.motionProgress }
+        val currentRow = layout.rowContaining(index)
+        val position = if (reduceMotion) layout.rows.getOrNull(currentRow)?.let { it.top + it.height / 2 } ?: 0.0 else layout.position(index, progress)
         val radius = ceil(height / rowHeight / 2).toInt() + 1
-        val first = (position.toInt() - radius).coerceAtLeast(0)
-        val end = (position.toInt() + radius + 1).coerceAtMost(layout.rows.size)
+        val first = (currentRow - radius).coerceAtLeast(0)
+        val end = (currentRow + radius + 1).coerceAtMost(layout.rows.size)
         if (nearby.isEmpty()) Text("Ready?", Modifier.align(Alignment.Center), style = style)
         for (rowIndex in first until end) {
             val row = layout.rows[rowIndex]
             key(window.first + row.words.first) {
                 Text(row.text, color = Ink, maxLines = 1, softWrap = false,
-                    style = style.copy(fontSize = (fontSize * (width / row.width).coerceAtMost(1.0)).sp),
+                    style = style.copy(fontSize = (fontSize * (if (row.isHeading) 1.2 else 1.0) * (width / row.width).coerceAtMost(1.0)).sp),
                     modifier = Modifier.fillMaxWidth().offset {
-                        IntOffset(0, (height / 2 + (rowIndex - position) * rowHeight).roundToInt())
-                    }.height(with(density) { rowHeight.toDp() }).wrapContentHeight()
+                        IntOffset(0, (height / 2 + (row.top - position) * rowHeight).roundToInt())
+                    }.height(with(density) { (rowHeight * row.height.toFloat()).toDp() }).wrapContentHeight()
                         .testTag(if (index in row.words) "currentPassageRow" else "passageRow-${window.first + row.words.first}")
                         .semantics {
+                            if (row.isHeading) heading()
                             if (index in row.words) {
                                 stateDescription = "Word ${state.index + 1} of ${session.tokens.size}"
                                 customActions = listOf(

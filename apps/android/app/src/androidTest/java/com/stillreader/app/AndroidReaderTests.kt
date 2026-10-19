@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
@@ -91,6 +92,52 @@ class AndroidReaderTests {
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
     }
+    @Test fun bookTypographyAndReaderContentsKeepTheSourcePositionAndTrim() {
+        launch(seed = false)
+        val file = File(root, "sample.pdf")
+        fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.onNodeWithTag("startReading").performClick()
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-0").isDisplayed() }
+        compose.onNodeWithTag("contentsEntry-0").performClick()
+        compose.onNodeWithTag("currentHeading").assertTextEquals("A place to begin").assertIsDisplayed()
+        compose.onNodeWithTag("currentWord").assertDoesNotExist()
+        fun snapshot(name: String) {
+            File(application.getExternalFilesDir(null), "$name.png").outputStream().use {
+                compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
+        snapshot("structure-single")
+        val session = model.state.value.reader!!
+        compose.onNodeWithTag("holdToRead").performTouchInput { down(center); advanceEventTime(400); up() }
+        compose.onNodeWithTag("currentHeading").assertTextEquals("A place to begin")
+        val selected = session.state.value.index
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.runOnIdle { assertEquals(selected, session.state.value.index) }
+        compose.onNodeWithTag("currentPassageRow").assertTextContains("place", substring = true)
+        compose.onNodeWithTag("currentHeading").assertDoesNotExist()
+        compose.onNodeWithTag("readingOptions").assertDoesNotExist()
+        snapshot("structure-multiline")
+        val trim = session.book.readingStart
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-1").isDisplayed() }
+        compose.onNodeWithTag("contentsEntry-1").performClick()
+        compose.onNodeWithTag("currentPassageRow").assertTextContains("Keep the meaning", substring = true)
+        compose.runOnIdle { assertFalse(session.state.value.playing); assertEquals(trim, model.selectedBook()!!.readingStart) }
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
+        val savedIndex = session.state.value.index
+        compose.onNodeWithContentDescription("Back").performClick(); compose.onNodeWithTag("startReading").performClick()
+        compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
+        compose.runOnIdle { assertEquals(savedIndex, model.state.value.reader!!.state.value.index) }
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-0").isDisplayed() }
+        compose.onNodeWithTag("contentsEntry-0").assertIsEnabled().performClick()
+        compose.onNodeWithTag("currentHeading").assertTextEquals("A place to begin")
+    }
+
     @Test fun androidUnicodeMatchesSwiftFixtures() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json").bufferedReader().use { it.readText() })
         cases.forEach { case ->
@@ -541,7 +588,7 @@ class AndroidReaderTests {
         compose.onNodeWithTag("speedOverlay").assertDoesNotExist()
         compose.onNodeWithTag("readerPage", useUnmergedTree = true).performTouchInput { click() }
         compose.onNodeWithText("Go to page").assertIsDisplayed()
-        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Done").performClick()
     }
 
     @Test fun gestureKeepsStartingRoleAcrossZonesAndIgnoresSecondFinger() {

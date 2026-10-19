@@ -17,14 +17,17 @@ struct ReaderView: View {
     @AppStorage("animatedScrolling") private var animatedScrolling = false
     @State private var showContext = false
     @State private var showingSettings = false
+    @State private var showingContents = false
+    private let pdfURL: URL?
     @GestureState private var dragInProgress = false
     @State private var speedFeedbackID = 0
     @State private var showSpeed = false
     var onReviewPage: (Int) -> Void
     var onCheckpoint: (ReadingPosition) -> Void
 
-    init(book: Book, onReviewPage: @escaping (Int) -> Void, onCheckpoint: @escaping (ReadingPosition) -> Void) {
+    init(book: Book, pdfURL: URL? = nil, onReviewPage: @escaping (Int) -> Void, onCheckpoint: @escaping (ReadingPosition) -> Void) {
         _engine = StateObject(wrappedValue: ReaderEngine(book: book))
+        self.pdfURL = pdfURL
         self.onReviewPage = onReviewPage
         self.onCheckpoint = onCheckpoint
     }
@@ -54,6 +57,7 @@ struct ReaderView: View {
         .onChange(of: dragInProgress) { _, dragging in if !dragging { engine.endScrubbing() } }
         .onChange(of: scenePhase) { _, phase in if phase != .active { engine.pause(); showSpeed = false } }
         .sheet(isPresented: $showingSettings) { optionsSheet }
+        .sheet(isPresented: $showingContents) { ReaderContentsSheet(engine: engine, url: pdfURL) }
         .preferredColorScheme(.light)
     }
 
@@ -62,14 +66,7 @@ struct ReaderView: View {
             HStack(spacing: 6) {
                 Button { engine.pause(); dismiss() } label: { Image(systemName: "chevron.left").frame(width: 40, height: 44) }
                     .buttonStyle(.plain).accessibilityLabel("Close reader").keyboardShortcut(.escape, modifiers: [])
-                #if os(macOS)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(engine.book.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                    pageMenu
-                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                #else
                 pageMenu
-                #endif
                 #if os(macOS)
                 controls
                 #endif
@@ -91,23 +88,18 @@ struct ReaderView: View {
         "\(engine.isFinished ? "Finished · " : "")Page \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
     }
     private var pageMenu: some View {
-        Menu {
-            ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
-                if engine.book.includesPage(at: index) { Button("Page \(page.label)") { engine.seekPage(index) } }
-            }
-        } label: {
-            #if os(macOS)
-            Text(pageDescription).font(.system(size: 11)).foregroundStyle(Palette.muted)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            #else
+        Button { engine.pause(); showingContents = true } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(engine.book.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.ink)
-                Text(pageDescription).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                Text(engine.book.title)
+                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.ink)
+                HStack(spacing: 8) {
+                    if let section = engine.structure.section(at: engine.index) {
+                        Text(section.title).lineLimit(1).truncationMode(.tail).accessibilityIdentifier("readerChapter")
+                    }
+                    Text(pageDescription).fixedSize(horizontal: true, vertical: false)
+                }.font(.system(size: 11)).foregroundStyle(Palette.muted)
             }.lineLimit(1).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-            #endif
-        }.menuStyle(.borderlessButton).menuIndicator(.hidden)
-            .accessibilityIdentifier("readerPage")
-            .simultaneousGesture(TapGesture().onEnded { engine.pause() })
+        }.buttonStyle(.plain).accessibilityIdentifier("readerPage").accessibilityHint("Contents and pages")
     }
     private var focusStage: some View {
         GeometryReader { geometry in
@@ -115,6 +107,20 @@ struct ReaderView: View {
                 if showContext {
                     PassageView(engine: engine)
                         .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let heading = engine.structure.heading(at: engine.index) {
+                    Text(heading.title).font(.custom("Georgia", size: 28)).foregroundStyle(Palette.ink)
+                        .lineLimit(8).minimumScaleFactor(0.5)
+                        .multilineTextAlignment(.center).padding(32).frame(maxWidth: 700)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityAddTraits(.isHeader).accessibilityIdentifier("currentHeading")
+                        .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment: engine.seek(engine.index + 1)
+                            case .decrement: engine.seek(engine.index - 1)
+                            @unknown default: break
+                            }
+                        }
                 } else {
                     TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
                         wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
@@ -122,7 +128,7 @@ struct ReaderView: View {
                     }
                 }
                 #if os(iOS)
-                ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings,
+                ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings && !showingContents,
                     onBegin: { reading in if reading { engine.play() } else { engine.pause() } },
                     onMove: { reading, movement in
                         if reading { changeSpeed(by: Double(movement) * 2) }
@@ -171,8 +177,10 @@ struct ReaderView: View {
         let passageRowHeight: CGFloat = compact ? 36 : 48
         let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
         let radius = showContext ? 80 : 6
-        let start = max(0, engine.index - radius)
-        let tokens = Array(engine.tokens[start..<min(engine.tokens.count, engine.index + radius + 1)])
+        var start = min(engine.index, engine.tokens.count), end = min(engine.tokens.count, engine.index + 1)
+        while start > max(0, engine.index - radius), engine.structure.heading(at: start - 1) == nil { start -= 1 }
+        while end < min(engine.tokens.count, engine.index + radius + 1), engine.structure.heading(at: end) == nil { end += 1 }
+        let tokens = Array(engine.tokens[start..<end])
         let breaks = Set(tokens.indices.dropLast().filter {
             tokens[$0].word.endsParagraph || tokens[$0].pageIndex != tokens[$0 + 1].pageIndex
         })

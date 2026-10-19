@@ -39,7 +39,7 @@ final class LibraryStore: ObservableObject {
                 sample.book.isSample = true
                 for index in sample.book.pages.indices {
                     // The introductory PDF has running furniture; the supplied reviewed text omits it.
-                    sample.book.pages[index].text = SampleBook.sections[index].1
+                    sample.book.pages[index].text = (ProcessInfo.processInfo.arguments.contains("--with-headings") ? SampleBook.sections[index].0 + "\n\n" : "") + SampleBook.sections[index].1
                     sample.book.pages[index].isReviewed = true
                 }
                 try repository.insert(sample.book, pdfData: sample.pdfData)

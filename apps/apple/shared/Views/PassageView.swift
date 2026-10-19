@@ -18,19 +18,22 @@ struct PassageView: View {
             let rowHeight = max(geometry.size.height < 240 ? 44 : 56, fontSize * 1.4 + 12)
             TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !engine.isPlaying || reduceMotion)) { _ in
                 let index = engine.index - windowStart
-                let position = reduceMotion ? Double(layout?.row(containing: index) ?? 0) + 0.5
-                    : layout?.position(index: index, wordProgress: engine.wordProgress) ?? 0
+                let currentRow = layout?.row(containing: index) ?? 0
+                let row = layout.flatMap { $0.rows.indices.contains(currentRow) ? $0.rows[currentRow] : nil }
+                let position = reduceMotion ? row.map { $0.top + $0.height / 2 } ?? 0
+                    : layout?.position(index: index, wordProgress: engine.motionProgress) ?? 0
                 let radius = Int(ceil(geometry.size.height / rowHeight / 2)) + 1
-                let first = max(0, Int(position) - radius)
-                let end = min(layout?.rows.count ?? 0, Int(position) + radius + 1)
+                let first = max(0, currentRow - radius)
+                let end = min(layout?.rows.count ?? 0, currentRow + radius + 1)
                 ZStack(alignment: .topLeading) {
                     if let layout, first < end {
                         ForEach(first..<end, id: \.self) { rowIndex in
                             let row = layout.rows[rowIndex]
-                            Text(row.text).font(.custom("Georgia", fixedSize: fontSize)).foregroundStyle(Palette.ink)
+                            Text(row.text).font(.custom("Georgia", fixedSize: fontSize * (row.isHeading ? 1.2 : 1))).foregroundStyle(Palette.ink)
                                 .lineLimit(1).minimumScaleFactor(0.01)
-                                .frame(width: geometry.size.width, height: rowHeight, alignment: .leading)
-                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2 + (Double(rowIndex) + 0.5 - position) * rowHeight)
+                                .frame(width: geometry.size.width, height: rowHeight * row.height, alignment: .leading)
+                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2 + (row.top + row.height / 2 - position) * rowHeight)
+                                .accessibilityAddTraits(row.isHeading ? .isHeader : [])
                                 .accessibilityIdentifier(row.words.contains(index) ? "currentPassageRow" : "passageRow-\(windowStart + row.words.lowerBound)")
                                 .accessibilityValue(row.words.contains(index) ? "Word \(engine.index + 1) of \(engine.tokens.count)" : "")
                                 .accessibilityAdjustableAction { direction in
@@ -70,14 +73,22 @@ struct PassageView: View {
         let window = PassageLayout.window(tokens: engine.tokens, index: engine.index)
         let nearby = Array(engine.tokens[window])
         let spacing = (" " as NSString).size(withAttributes: [.font: font]).width
+        let headingIDs = Dictionary(uniqueKeysWithValues: nearby.compactMap { token in engine.structure.heading(at: token.id).map { (token.id, $0.words.lowerBound) } })
         var measured: [String: Double] = [:]
         let widths = nearby.map { token in
-            if let cached = measured[token.word.text] { return cached }
-            let value = ceil((token.word.text as NSString).size(withAttributes: [.font: font]).width)
-            measured[token.word.text] = value
+            let isHeading = headingIDs[token.id] != nil
+            let key = "\(isHeading):\(token.word.text)"
+            if let cached = measured[key] { return cached }
+            #if os(iOS)
+            let face = isHeading ? font.withSize(size * 1.2) : font
+            #else
+            let face = isHeading ? NSFont(name: font.fontName, size: size * 1.2) ?? font : font
+            #endif
+            let value = ceil((token.word.text as NSString).size(withAttributes: [.font: face]).width)
+            measured[key] = value
             return value
         }
         windowStart = window.lowerBound
-        layout = PassageLayout(tokens: nearby, widths: widths, availableWidth: width, spacing: spacing)
+        layout = PassageLayout(tokens: nearby, widths: widths, availableWidth: width, spacing: spacing, headingIDs: headingIDs)
     }
 }

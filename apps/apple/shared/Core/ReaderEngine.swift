@@ -4,6 +4,8 @@ import SwiftUI
 final class ReaderEngine: ObservableObject {
     let book: Book
     let tokens: [ReadingToken]
+    let structure: ReadingStructure
+    private var keepsProgress: Bool { passageMode || structure.heading(at: index) != nil || structure.chapterEnds.contains(index) }
     @Published private(set) var index: Int
     @Published private(set) var isPlaying = false
     @Published private(set) var isFinished = false
@@ -19,6 +21,8 @@ final class ReaderEngine: ObservableObject {
     }
     @Published private(set) var wordStartedAt: TimeInterval?
     private var wordDuration = 0.0
+    private var motionDuration = 0.0
+    var motionProgress: Double { motionDuration > 0 ? min(1, wordProgress * wordDuration / motionDuration) : wordProgress }
     private var heldWordProgress = 0.0
     var wordProgress: Double {
         guard let wordStartedAt, wordDuration > 0 else { return heldWordProgress }
@@ -32,6 +36,7 @@ final class ReaderEngine: ObservableObject {
     init(book: Book) {
         self.book = book
         tokens = Tokenizer.tokens(for: book)
+        structure = ReadingStructure(book: book, tokens: tokens)
         index = Tokenizer.index(for: book.position, in: tokens)
         startPage = max(book.readingStartPageIndex, book.position.flatMap { position in book.pages.firstIndex { $0.id == position.pageID } } ?? book.readingStartPageIndex)
         if let position = book.position, !tokens.contains(where: { $0.pageID == position.pageID }) {
@@ -66,13 +71,15 @@ final class ReaderEngine: ObservableObject {
         return true
     }
     private func schedulePlayback() {
-        let progress = passageMode ? wordProgress : 0
+        let progress = keepsProgress ? wordProgress : 0
         playback?.cancel()
         heldWordProgress = progress
         wordStartedAt = nil
         playback = Task { [weak self] in
             while let self, self.isPlaying, let token = self.current {
-                let duration = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses && !self.passageMode)
+                let base = Tokenizer.duration(for: token.word, wordsPerMinute: self.wordsPerMinute, naturalPauses: self.naturalPauses && !self.passageMode && self.structure.heading(at: token.id) == nil)
+                let duration = self.structure.duration(index: token.id, base: base, passage: self.passageMode)
+                self.motionDuration = self.structure.chapterEnds.contains(token.id) ? base : duration
                 self.wordDuration = duration
                 self.wordStartedAt = ProcessInfo.processInfo.systemUptime
                 do { try await Task.sleep(for: .seconds(duration * (1 - self.heldWordProgress))) } catch { return }
@@ -100,7 +107,7 @@ final class ReaderEngine: ObservableObject {
         checkpoint()
     }
     private func stopPlayback() {
-        heldWordProgress = passageMode ? wordProgress : 0
+        heldWordProgress = keepsProgress ? wordProgress : 0
         wordStartedAt = nil
         isPlaying = false
         playback?.cancel()
