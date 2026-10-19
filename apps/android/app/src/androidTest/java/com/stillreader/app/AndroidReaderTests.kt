@@ -725,6 +725,44 @@ class AndroidReaderTests {
         assertEquals(model.state.value.books[0].position, model.state.value.books[1].position)
     }
 
+    @Test fun cancellingImportOrRepairBeforeCommitKeepsTheSavedBook() {
+        launch()
+        val original = model.state.value.books.single()
+        val file = File(root, "backup.json")
+        fixture("apple-backup.json").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread {
+            model.importFile(Uri.fromFile(file))
+            model.cancelImport()
+        }
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        assertNull(model.state.value.error)
+        assertEquals(listOf(original), model.state.value.books)
+        compose.runOnUiThread {
+            model.improveText(original.id)
+            model.cancelImport()
+        }
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        runBlocking { withContext(Dispatchers.Main) { model.flush() } }
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.undoImprovementID)
+        assertEquals(listOf(original), model.state.value.books)
+        assertEquals(listOf(original), BookRepository(File(root, "books")).load().books)
+    }
+
+    @Test fun failedImportClearsProgressAndAllowsAnotherImport() {
+        launch(seed = false)
+        val file = File(root, "broken.pdf").apply { writeText("not a PDF") }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        assertNotNull(model.state.value.error)
+        assertTrue(model.state.value.books.isEmpty())
+        fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.dismissError(); model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        assertNull(model.state.value.error)
+        assertEquals(1, model.state.value.books.size)
+    }
+
     @Test fun improveExistingBookPreservesCorrectionsAndCanBeUndone() {
         launch()
         val original = model.state.value.books.single()

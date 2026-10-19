@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		010200331087D3F897ECAC28 /* PDFContentsPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6B8811C4AD1FAD6A61CB74 /* PDFContentsPreview.swift */; };
+		01B7800F2406444484734978 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A0B5CABD58A15FE12E8F0619 /* sample.pdf */; };
 		0220B001EA07F0AFAEDBB557 /* PDFImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5181295A831D4AF34C8BCEA9 /* PDFImporter.swift */; };
 		083065E3ACF12347B6D11989 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 848C4D408A0722D93878CAB3 /* Assets.xcassets */; };
 		0BE187247FEC589CCC262759 /* ReadingStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */; };
@@ -20,8 +21,10 @@
 		2AAC7AFFBB20BBDA61D8BD24 /* WordMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */; };
 		2F0B105015BECF9BC6AB8E60 /* PDFTextRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B1024E36E57E02537C928E /* PDFTextRepair.swift */; };
 		306B8A6E3BC41CE5D50DEDA6 /* PDFVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A9FF1E207D5E18A2C332DF2 /* PDFVocabulary.swift */; };
+		306E5D1F727F561C49EC8E69 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A0B5CABD58A15FE12E8F0619 /* sample.pdf */; };
 		37DC5EC00BF06813EDFE316C /* PDFContents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5248E0BE7DBEDE8A1AAA60FA /* PDFContents.swift */; };
 		38E72F153ECABDD4C0C4BF21 /* StillApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC3C3F00D1698B2637FDD8B0 /* StillApp.swift */; };
+		3D9BB3BF1537CE2EFA4FAFF4 /* SingleLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCE709587A3274AF9C3F759 /* SingleLineView.swift */; };
 		40981CA0F4A6180ACE60470B /* ReaderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBAB60B143D3B4A32B9E9BB /* ReaderEngine.swift */; };
 		466488F8D5C9FCC0A55853B9 /* PDFTextGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADBABC67DD88C4860C927C4E /* PDFTextGeometry.swift */; };
 		4C2CC5334A4D2E210CA8F892 /* WordMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAC736A962F9499EB8B0236 /* WordMotionTests.swift */; };
@@ -63,6 +66,7 @@
 		C6D42E648E64A9352F3B4DB8 /* ReadingFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02208860076FB527CD710D5 /* ReadingFocus.swift */; };
 		C7D3941C581CD5ED59BFE01F /* ReadingStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */; };
 		CD03A1E62A75DE021644081C /* PDFTextRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F699A2EC99CBF235D54461A /* PDFTextRepairTests.swift */; };
+		CDFD91D5381F2E63E4311825 /* SingleLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCE709587A3274AF9C3F759 /* SingleLineView.swift */; };
 		CE3C8FF58F0E265D7583382E /* pdf-english-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = E3F2964EB7BABE0C8D6F94B0 /* pdf-english-words.txt */; };
 		CF87545D507FE5AD9B8F2B35 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 848C4D408A0722D93878CAB3 /* Assets.xcassets */; };
 		D21067C354D4644D01892056 /* WordMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */; };
@@ -115,6 +119,7 @@
 		4A9FF1E207D5E18A2C332DF2 /* PDFVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFVocabulary.swift; sourceTree = "<group>"; };
 		4B54E49EDAC91E6444624A7B /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		4B6E0A746E05AD57432786D4 /* PDF-Vocabulary-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PDF-Vocabulary-NOTICE.txt"; sourceTree = "<group>"; };
+		4DCE709587A3274AF9C3F759 /* SingleLineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleLineView.swift; sourceTree = "<group>"; };
 		50037580BCA3FFC598E15040 /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		5181295A831D4AF34C8BCEA9 /* PDFImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImporter.swift; sourceTree = "<group>"; };
 		5248E0BE7DBEDE8A1AAA60FA /* PDFContents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFContents.swift; sourceTree = "<group>"; };
@@ -132,6 +137,7 @@
 		97EE9709AEE3895D9E29E798 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
 		9CBAB60B143D3B4A32B9E9BB /* ReaderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderEngine.swift; sourceTree = "<group>"; };
 		A02208860076FB527CD710D5 /* ReadingFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingFocus.swift; sourceTree = "<group>"; };
+		A0B5CABD58A15FE12E8F0619 /* sample.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = sample.pdf; sourceTree = "<group>"; };
 		A346C94B33D200D797CD9117 /* StillMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StillMac.entitlements; sourceTree = "<group>"; };
 		A9B92CCFCCC9851B8B2938EE /* BookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRepository.swift; sourceTree = "<group>"; };
 		ADBABC67DD88C4860C927C4E /* PDFTextGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFTextGeometry.swift; sourceTree = "<group>"; };
@@ -198,6 +204,7 @@
 				57784C5D8E8853A1F8453092 /* PDFCoordinator.swift */,
 				E8E35A40284158E90E1A8E90 /* ReaderView.swift */,
 				75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */,
+				4DCE709587A3274AF9C3F759 /* SingleLineView.swift */,
 				45904E4715FD200DAA0DC573 /* Theme.swift */,
 				C743B08F3E6D8D2F45A9CB3D /* WordMotion.swift */,
 			);
@@ -319,6 +326,7 @@
 			children = (
 				BF8E555C82260D4DE163591F /* no-outline.pdf */,
 				79B37777224B41F49DAFE628 /* outline.pdf */,
+				A0B5CABD58A15FE12E8F0619 /* sample.pdf */,
 			);
 			path = fixtures;
 			sourceTree = "<group>";
@@ -454,6 +462,7 @@
 				92BD03EA79EBAF525A6F2C38 /* PDF-Vocabulary-NOTICE.txt in Resources */,
 				E5F2ED8A7C6CB1C532F70509 /* SCOWL-Copyright.txt in Resources */,
 				CE3C8FF58F0E265D7583382E /* pdf-english-words.txt in Resources */,
+				306E5D1F727F561C49EC8E69 /* sample.pdf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -465,6 +474,7 @@
 				D9DC8900DD6CB046EF7A84FC /* PDF-Vocabulary-NOTICE.txt in Resources */,
 				F0DCD78BD684DC52695CF31D /* SCOWL-Copyright.txt in Resources */,
 				58C78BB54A5098C9D144AA62 /* pdf-english-words.txt in Resources */,
+				01B7800F2406444484734978 /* sample.pdf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -507,6 +517,7 @@
 				0BE187247FEC589CCC262759 /* ReadingStartView.swift in Sources */,
 				5527D3CA1CCE11E48BEDE51D /* ReadingStructure.swift in Sources */,
 				0CCAEBFC204A0B229A6C4266 /* SampleBook.swift in Sources */,
+				CDFD91D5381F2E63E4311825 /* SingleLineView.swift in Sources */,
 				73D328BCD4BC8B8463BE2B36 /* StillApp.swift in Sources */,
 				AF7B518E0F527A2621715B5D /* Theme.swift in Sources */,
 				D21067C354D4644D01892056 /* WordMotion.swift in Sources */,
@@ -540,6 +551,7 @@
 				C7D3941C581CD5ED59BFE01F /* ReadingStartView.swift in Sources */,
 				82EAB77DC72A9CB73B7A1AF8 /* ReadingStructure.swift in Sources */,
 				8C5D9586466B02428CD99C32 /* SampleBook.swift in Sources */,
+				3D9BB3BF1537CE2EFA4FAFF4 /* SingleLineView.swift in Sources */,
 				38E72F153ECABDD4C0C4BF21 /* StillApp.swift in Sources */,
 				C6A544FF1EA9E87133C47D30 /* Theme.swift in Sources */,
 				2AAC7AFFBB20BBDA61D8BD24 /* WordMotion.swift in Sources */,

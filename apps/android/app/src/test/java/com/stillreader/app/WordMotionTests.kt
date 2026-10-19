@@ -1,6 +1,5 @@
 package com.stillreader.app
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import com.stillreader.app.ui.WordMotion
 import org.junit.Assert.*
@@ -8,8 +7,8 @@ import org.junit.Test
 
 class WordMotionTests {
     private val viewport = IntSize(600, 400)
-    private val before = mapOf(0 to Offset(300f, 200f), 1 to Offset(380f, 200f), 2 to Offset(450f, 256f))
-    private val after = mapOf(0 to Offset(220f, 200f), 1 to Offset(300f, 200f), 2 to Offset(370f, 200f))
+    private val before = mapOf(0 to 300f, 1 to 380f, 2 to 450f)
+    private val after = mapOf(0 to 220f, 1 to 300f, 2 to 370f)
 
     @Test fun neighborsMoveButActiveWordRemainsFixed() {
         val motion = WordMotion()
@@ -18,23 +17,22 @@ class WordMotionTests {
         assertEquals(before[0], first[0])
         assertEquals(after[1], first[1])
         val middle = motion.positions(1, after, viewport, true, .5f)
-        assertTrue(middle.getValue(2).x > after.getValue(2).x)
-        assertTrue(middle.getValue(2).x < before.getValue(2).x)
-        assertTrue(middle.getValue(2).y > after.getValue(2).y)
-        assertTrue(middle.getValue(2).y < before.getValue(2).y)
+        assertTrue(middle.getValue(2) > after.getValue(2))
+        assertTrue(middle.getValue(2) < before.getValue(2))
         assertEquals(after[1], middle[1])
         assertEquals(after, motion.positions(1, after, viewport, true, 1f))
     }
 
-    @Test fun wrappingWordUsesClippedEdgesInsteadOfCrossingTheRow() {
+    @Test fun interruptedTransitionContinuesFromItsDisplayedPosition() {
         val motion = WordMotion()
-        val source = mapOf(2 to Offset(24f, 256f))
-        val destination = mapOf(2 to Offset(500f, 200f))
-        motion.positions(0, source, viewport, true, 1f, mapOf(2 to 80))
-        for (step in 0..10) {
-            val point = motion.positions(1, destination, viewport, true, step / 10f, mapOf(2 to 80)).getValue(2)
-            assertTrue((point.y == 256f && point.x <= 24f) || (point.y == 200f && point.x >= 500f))
-        }
+        motion.positions(0, before, viewport, true, 1f)
+        val middle = motion.positions(1, after, viewport, true, .5f)
+        val next = mapOf(0 to 140f, 1 to 220f, 2 to 300f)
+        val resumed = motion.positions(2, next, viewport, true, 0f)
+        assertEquals(middle[0], resumed[0])
+        assertEquals(middle[1], resumed[1])
+        assertEquals(next[2], resumed[2])
+        assertEquals(next, motion.positions(2, next, viewport, true, 1f))
     }
 
     @Test fun pauseOrReducedMotionSettlesAndResumeDoesNotReviveMotion() {

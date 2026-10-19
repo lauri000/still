@@ -112,3 +112,28 @@ struct ReadingStartView: View {
         selectedOffset = 0
     }
 }
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(subviews, width: proposal.width ?? 600).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let layout = arrange(subviews, width: bounds.width)
+        for (index, point) in layout.positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
+        }
+    }
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (size: CGSize, positions: [CGPoint]) {
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        var positions: [CGPoint] = []
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            positions.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: width, height: y + rowHeight), positions)
+    }
+}

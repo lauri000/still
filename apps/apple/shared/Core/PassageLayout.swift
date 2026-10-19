@@ -4,24 +4,21 @@ import Foundation
 struct PassageLayout {
     struct Row {
         let words: Range<Int>
-        let text: String
-        let width: Double
         let top: Double
         let height: Double
         let headingID: Int?
         var isHeading: Bool { headingID != nil }
     }
     let rows: [Row]
-    private let wordRows: [Int]
 
     init(tokens: [ReadingToken], widths: [Double], availableWidth: Double, spacing: Double = 8, headingIDs: [Int: Int] = [:]) {
-        var rows: [Row] = [], wordRows: [Int] = []
+        var rows: [Row] = []
         var start = 0, used = 0.0
         func append(_ end: Int) {
             let heading = headingIDs[tokens[start].id]
             let previous = rows.last
             let gap = heading != previous?.headingID && (heading != nil || previous?.isHeading == true) ? 0.45 : 0
-            rows.append(Row(words: start..<end, text: tokens[start..<end].map { $0.word.text }.joined(separator: " "), width: used,
+            rows.append(Row(words: start..<end,
                             top: (previous.map { $0.top + $0.height } ?? 0) + gap, height: heading != nil ? 1.2 : 1, headingID: heading))
         }
         for index in tokens.indices {
@@ -30,13 +27,11 @@ struct PassageLayout {
             if index > start && (newParagraph || used + gap + widths[index] > max(1, availableWidth)) {
                 append(index); start = index; used = 0
             }
-            wordRows.append(rows.count)
             used += (index == start ? 0 : gap) + max(1, widths[index])
         }
         if start < tokens.count { append(tokens.count) }
-        self.rows = rows; self.wordRows = wordRows
+        self.rows = rows
     }
-    func row(containing index: Int) -> Int { wordRows.indices.contains(index) ? wordRows[index] : 0 }
 }
 
 /// Index only paragraph/page/heading boundaries; measure text when its block appears.

@@ -21,7 +21,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.MotionDurationScale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -144,10 +143,10 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 }
             }
         } else ReadingSurface(session, wpm, state.playing, !options && !pagePicker && !contents,
-            false, changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
+            changeSpeed, Modifier.weight(1f).fillMaxWidth()) {
             if (session.structure.headingAt(state.index) != null) {
                 HeadingCue(session, state.index)
-            } else WordRibbon(session, state.index, focusLetter, false, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
+            } else WordRibbon(session, state.index, focusLetter, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
             androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                 enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
                 Text("${wpm.toInt()} wpm", modifier = Modifier.testTag("speedOverlay")
@@ -235,7 +234,7 @@ private fun HeadingCue(session: ReadingSession, index: Int) {
 
 @Composable
 private fun ReadingSurface(
-    session: ReadingSession, wpm: Double, playing: Boolean, enabled: Boolean, passage: Boolean,
+    session: ReadingSession, wpm: Double, playing: Boolean, enabled: Boolean,
     change: (Double) -> Unit, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit,
 ) {
     val changeSpeed by rememberUpdatedState(change)
@@ -244,7 +243,7 @@ private fun ReadingSurface(
     var size by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(focused, enabled) { if (!focused || !enabled) session.pause() }
     Box(modifier.onSizeChanged { size = it }.testTag("readingSurface")
-        .pointerInput(session, density, focused, enabled, size, passage) {
+        .pointerInput(session, density, focused, enabled, size) {
             if (!focused || !enabled) return@pointerInput
             awaitEachGesture {
                 val down = awaitFirstDown()
@@ -304,17 +303,15 @@ fun OptionToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
 }
 
 @Composable
-internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, expanded: Boolean, scrolling: Boolean, activeWordSizePercent: Int) {
-    BoxWithConstraints(Modifier.then(if (expanded) Modifier.widthIn(max = 850.dp) else Modifier).fillMaxWidth()
-        .then(if (expanded) Modifier.fillMaxHeight() else Modifier.height(110.dp))
-        .clipToBounds().testTag(if (expanded) "nearbyPassage" else "wordRibbon")) {
-        val motion = remember(session, expanded, focusLetter, activeWordSizePercent) { WordMotion() }
+internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolean, scrolling: Boolean, activeWordSizePercent: Int) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(110.dp).clipToBounds().testTag("wordRibbon")) {
+        val motion = remember(session, focusLetter, activeWordSizePercent) { WordMotion() }
         val progress = remember { Animatable(1f) }
         var animationIndex by remember { mutableIntStateOf(index) }
         var durationScale by remember { mutableStateOf<MotionDurationScale?>(null) }
         val focused = LocalWindowInfo.current.isWindowFocused
         val moving = scrolling && focused && (durationScale?.scaleFactor ?: 1f) > 0f
-        LaunchedEffect(index, scrolling, focused, expanded, focusLetter, activeWordSizePercent, maxWidth, maxHeight) {
+        LaunchedEffect(index, scrolling, focused, focusLetter, activeWordSizePercent, maxWidth, maxHeight) {
             durationScale = currentCoroutineContext()[MotionDurationScale]
             if (scrolling && focused) {
                 progress.snapTo(0f)
@@ -326,12 +323,10 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
                 animationIndex = index
             }
         }
-        val compact = expanded && maxHeight < 240.dp
-        val passageSize = if (compact) 20f else 24f
-        val neighborSize = if (expanded) passageSize else 22f
+        val neighborSize = 22f
         val fontSize = neighborSize * activeWordSizePercent / 100f
-        val neighborHeight = if (compact) 36.dp else 48.dp
-        val radius = if (expanded) 80 else 6
+        val neighborHeight = 48.dp
+        val radius = 6
         var start = index.coerceAtMost(session.tokens.size)
         var end = (index + 1).coerceAtMost(session.tokens.size)
         while (start > maxOf(0, index - radius) && session.structure.headingAt(start - 1) == null) start--
@@ -368,7 +363,7 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
                     color = if (selected) Ink else Muted,
                     modifier = Modifier.then(if (selected) Modifier.background(Paper) else Modifier)
                         .heightIn(min = neighborHeight).wrapContentHeight()
-                        .testTag(if (selected) "currentWord" else if (expanded) "passageWord-${token.id}" else "nearbyWord-${token.id}")
+                        .testTag(if (selected) "currentWord" else "nearbyWord-${token.id}")
                         .semantics {
                             if (selected) {
                                 stateDescription = "Word ${index + 1} of ${session.tokens.size}"
@@ -379,84 +374,31 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
                         })
             } }
         }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
-            val inset = if (expanded) 24.dp.roundToPx().coerceAtMost(constraints.maxWidth / 8) else 0
-            val placeables = measurables.map { it.measure(Constraints(maxWidth = if (expanded) constraints.maxWidth - inset * 2 else Constraints.Infinity, maxHeight = constraints.maxHeight)) }
+            val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
             val selected = tokens.indexOfFirst { it.id == index }
-            val gap = (if (expanded) 10.dp else 18.dp).roundToPx()
+            val gap = 18.dp.roundToPx()
             layout(constraints.maxWidth, constraints.maxHeight) {
                 if (selected !in placeables.indices) return@layout
                 val focus = placeables[selected]
                 val centerLeft = (constraints.maxWidth / 2f - (anchor ?: (focus.width / 2f))).roundToInt()
                 val centerY = constraints.maxHeight / 2
                 focus.place(centerLeft, centerY - focus.height / 2, zIndex = 1f)
-                val rowHeight = maxOf(neighborHeight.roundToPx(), placeables.maxOfOrNull { it.height } ?: 0)
-                val rowStep = rowHeight + (if (compact) 4.dp else 8.dp).roundToPx()
-                fun rowY(row: Int) = centerY + row * rowStep
-                fun breakAfter(i: Int) = tokens[i].word.endsParagraph || tokens[i].pageIndex != tokens[i + 1].pageIndex
-                val positions = mutableMapOf<Int, Pair<Float, Int>>()
+                val targets = mutableMapOf(index to centerLeft.toFloat())
                 var left = centerLeft - gap
-                var row = 0
-                // Fill the middle row around the fixed word, then wrap overflow
-                // into earlier rows above and later rows below in reading order.
                 for (i in selected - 1 downTo 0) {
-                    val item = placeables[i]
-                    if (expanded && (left - item.width < inset || breakAfter(i))) {
-                        row--; left = constraints.maxWidth - inset
-                    }
-                    left -= item.width
-                    positions[i] = left.toFloat() to row
+                    left -= placeables[i].width
+                    targets[tokens[i].id] = left.toFloat()
                     left -= gap
                 }
                 var right = centerLeft + focus.width + gap
-                row = 0
                 for (i in selected + 1 until placeables.size) {
-                    val item = placeables[i]
-                    if (expanded && (right + item.width > constraints.maxWidth - inset || breakAfter(i - 1))) {
-                        row++; right = inset
-                    }
-                    positions[i] = right.toFloat() to row
-                    right += item.width + gap
+                    targets[tokens[i].id] = right.toFloat()
+                    right += placeables[i].width + gap
                 }
-                fun spread(indices: List<Int>, line: Int, left: Float, right: Float) {
-                    if (indices.size < 2) return
-                    val width = indices.sumOf { placeables[it].width }
-                    val spacing = maxOf(gap.toFloat(), (right - left - width) / (indices.size - 1))
-                    var x = left
-                    indices.forEach { i ->
-                        if (i != selected) positions[i] = x to line
-                        x += placeables[i].width + spacing
-                    }
-                }
-                if (expanded) {
-                    positions.keys.groupBy { positions.getValue(it).second }.forEach { (line, entries) ->
-                        val indices = entries.sorted()
-                        if (line == 0) {
-                            // Include the fixed word as an endpoint on each side.
-                            val before = indices.filter { it < selected }
-                            if (before.isNotEmpty() && before.first() > 0 && !breakAfter(before.first() - 1)) {
-                                spread(before + selected, line, inset.toFloat(), (centerLeft + focus.width).toFloat())
-                            }
-                            val after = indices.filter { it > selected }
-                            if (after.isNotEmpty() && after.last() < tokens.lastIndex && !breakAfter(after.last())) {
-                                spread(listOf(selected) + after, line, centerLeft.toFloat(), (constraints.maxWidth - inset).toFloat())
-                            }
-                        } else if (indices.first() > 0 && indices.last() < tokens.lastIndex && !breakAfter(indices.last())) {
-                            // Do not stretch paragraph endings or incomplete window edges.
-                            spread(indices, line, inset.toFloat(), (constraints.maxWidth - inset).toFloat())
-                        }
-                    }
-                }
-                val targets = positions.mapKeys { tokens[it.key].id }.mapValues { (_, position) ->
-                    Offset(position.first, rowY(position.second).toFloat())
-                } + (index to Offset(centerLeft.toFloat(), centerY.toFloat()))
                 val displayed = motion.positions(index, targets, IntSize(constraints.maxWidth, constraints.maxHeight),
-                    moving, if (animationIndex == index) progress.value else 0f,
-                    tokens.indices.associate { tokens[it].id to placeables[it].width })
-                positions.keys.forEach { i ->
-                    val item = placeables[i]
-                    val point = displayed.getValue(tokens[i].id)
-                    // Real offscreen coordinates let rows enter naturally through the clip.
-                    item.place(point.x.roundToInt(), point.y.roundToInt() - item.height / 2)
+                    moving, if (animationIndex == index) progress.value else 0f)
+                placeables.forEachIndexed { i, item ->
+                    if (i != selected) item.place(displayed.getValue(tokens[i].id).roundToInt(), centerY - item.height / 2)
                 }
             }
         }

@@ -10,13 +10,13 @@ final class ReaderEngine: ObservableObject {
     @Published private(set) var index: Int
     @Published private(set) var isPlaying = false
     @Published private(set) var isFinished = false
-    @Published private(set) var isScrubbing = false
+    var isScrubbing: Bool { scrubOrigin != nil }
     @Published var blockedPage: Int?
     // Speed changes take effect on the next word, so dragging never restarts its timer.
     @Published var wordsPerMinute: Double = 250
     @Published var naturalPauses = true
     @Published var allowUnreviewed = true
-    var passageMode = false {
+    @Published var passageMode = false {
         didSet {
             guard passageMode != oldValue else { return }
             pause()
@@ -32,7 +32,7 @@ final class ReaderEngine: ObservableObject {
     }
     private var playback: Task<Void, Never>?
     private var startPage: Int
-    private var scrubOrigin: Int?
+    @Published private var scrubOrigin: Int?
     var onCheckpoint: ((ReadingPosition) -> Void)?
 
     init(book: Book) {
@@ -49,7 +49,6 @@ final class ReaderEngine: ObservableObject {
     var current: ReadingToken? { tokens.indices.contains(index) ? tokens[index] : nil }
     var progress: Double { tokens.isEmpty ? 0 : (isFinished ? 1 : Double(index) / Double(tokens.count)) }
     var remainingMinutes: Int { Int(ceil(Double(max(0, tokens.count - index)) / wordsPerMinute)) }
-    var context: ArraySlice<ReadingToken> { tokens[max(0, index - 12)..<min(tokens.count, index + 25)] }
 
     func toggle() { isPlaying ? pause() : play() }
     func play() {
@@ -105,7 +104,6 @@ final class ReaderEngine: ObservableObject {
     func pause() {
         stopPlayback()
         scrubOrigin = nil
-        isScrubbing = false
         checkpoint()
     }
     private func stopPlayback() {
@@ -120,7 +118,6 @@ final class ReaderEngine: ObservableObject {
     func seek(_ newIndex: Int) {
         stopPlayback()
         scrubOrigin = nil
-        isScrubbing = false
         move(to: newIndex)
         checkpoint()
     }
@@ -129,7 +126,6 @@ final class ReaderEngine: ObservableObject {
         guard !tokens.isEmpty, !isScrubbing else { return }
         stopPlayback()
         scrubOrigin = index
-        isScrubbing = true
     }
     func scrub(by wordOffset: Int) {
         guard let scrubOrigin else { return }
@@ -138,7 +134,6 @@ final class ReaderEngine: ObservableObject {
     func endScrubbing() {
         guard isScrubbing else { return }
         scrubOrigin = nil
-        isScrubbing = false
         checkpoint()
     }
     private func move(to newIndex: Int) {

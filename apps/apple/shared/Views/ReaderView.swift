@@ -6,7 +6,6 @@ import UIKit
 struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var engine: ReaderEngine
     @AppStorage("readingWPM") private var savedWPM = 250.0
     @AppStorage("naturalPauses") private var savedNaturalPauses = true
@@ -15,7 +14,6 @@ struct ReaderView: View {
     @AppStorage("activeWordSizePercent") private var savedActiveWordSizePercent = 100
     private var activeWordSizePercent: Int { min(300, max(100, savedActiveWordSizePercent)) }
     @AppStorage("animatedScrolling") private var animatedScrolling = false
-    @State private var showContext = false
     @State private var showingSettings = false
     @State private var showingContents = false
     private let pdfURL: URL?
@@ -51,7 +49,6 @@ struct ReaderView: View {
             withAnimation(.easeOut(duration: 0.18)) { showSpeed = false }
         }
         .onDisappear { engine.pause(); setAwake(false) }
-        .onChange(of: showContext) { _, passage in engine.passageMode = passage }
         .onChange(of: engine.isPlaying) { _, playing in setAwake(playing) }
         .onChange(of: engine.wordsPerMinute) { _, value in savedWPM = value }
         .onChange(of: dragInProgress) { _, dragging in if !dragging { engine.endScrubbing() } }
@@ -68,11 +65,11 @@ struct ReaderView: View {
                     .buttonStyle(.plain).accessibilityLabel("Close reader").keyboardShortcut(.escape, modifiers: [])
                 pageMenu
                 #if os(macOS)
-                if !showContext { controls }
+                if !engine.passageMode { controls }
                 #endif
-                Button { engine.pause(); showContext.toggle(); engine.passageMode = showContext } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
-                    .buttonStyle(.plain).accessibilityLabel(showContext ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
-                if !showContext {
+                Button { engine.passageMode.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
+                    .buttonStyle(.plain).accessibilityLabel(engine.passageMode ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
+                if !engine.passageMode {
                     Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
                 }
@@ -104,35 +101,18 @@ struct ReaderView: View {
     private var focusStage: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
-                if showContext {
+                if engine.passageMode {
                     PassageView(engine: engine) { index in
                         engine.seek(index)
                         engine.passageMode = false
-                        showContext = false
                     }
                         .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let heading = engine.structure.heading(at: engine.index) {
-                    Text(heading.title).font(.custom("Georgia", size: 28)).foregroundStyle(Palette.ink)
-                        .lineLimit(8).minimumScaleFactor(0.5)
-                        .multilineTextAlignment(.center).padding(32).frame(maxWidth: 700)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityAddTraits(.isHeader).accessibilityIdentifier("currentHeading")
-                        .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment: engine.seek(engine.index + 1)
-                            case .decrement: engine.seek(engine.index - 1)
-                            @unknown default: break
-                            }
-                        }
                 } else {
-                    TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
-                        wordRibbon(height: geometry.size.height, time: timeline.date.timeIntervalSinceReferenceDate)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                    SingleLineView(engine: engine, focusLetter: focusLetter,
+                        activeWordSizePercent: activeWordSizePercent, animatedScrolling: animatedScrolling)
                 }
                 #if os(iOS)
-                if !showContext {
+                if !engine.passageMode {
                     ReadingTouchSurface(enabled: scenePhase == .active && !showingSettings && !showingContents,
                         onBegin: { reading in if reading { engine.play() } else { engine.pause() } },
                         onMove: { reading, movement in
@@ -150,10 +130,10 @@ struct ReaderView: View {
             }
             .contentShape(Rectangle())
             #if os(macOS)
-            .gesture(scrubGesture, including: showContext ? .subviews : .all)
+            .gesture(scrubGesture, including: engine.passageMode ? .subviews : .all)
             #endif
             .overlay(alignment: .topTrailing) {
-                if showSpeed && !showContext {
+                if showSpeed && !engine.passageMode {
                     Text("\(Int(engine.wordsPerMinute)) wpm").font(.system(size: 14)).monospacedDigit()
                         .foregroundStyle(Palette.forest).padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Palette.paper.opacity(0.94), in: RoundedRectangle(cornerRadius: 8))
@@ -166,74 +146,12 @@ struct ReaderView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("readingSurface")
-        .accessibilityValue(showContext ? "Passage view" : "Single-line view")
+        .accessibilityValue(engine.passageMode ? "Passage view" : "Single-line view")
     }
     private func changeSpeed(by amount: Double) {
         let next = min(900, max(60, engine.wordsPerMinute + amount))
         if Int(next) != Int(engine.wordsPerMinute) { speedFeedbackID += 1 }
         engine.wordsPerMinute = next
-    }
-    private var scrolling: Bool { animatedScrolling && !reduceMotion && engine.isPlaying && scenePhase == .active }
-
-    private func wordRibbon(height: CGFloat, time: Double) -> some View {
-        let compact = showContext && height < 240
-        let passageSize: CGFloat = compact ? 20 : 24
-        let neighborSize: CGFloat = showContext ? passageSize : 22
-        let fontSize = neighborSize * CGFloat(activeWordSizePercent) / 100
-        let passageRowHeight: CGFloat = compact ? 36 : 48
-        let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
-        let radius = showContext ? 80 : 6
-        var start = min(engine.index, engine.tokens.count), end = min(engine.tokens.count, engine.index + 1)
-        while start > max(0, engine.index - radius), engine.structure.heading(at: start - 1) == nil { start -= 1 }
-        while end < min(engine.tokens.count, engine.index + radius + 1), engine.structure.heading(at: end) == nil { end += 1 }
-        let tokens = Array(engine.tokens[start..<end])
-        let breaks = Set(tokens.indices.dropLast().filter {
-            tokens[$0].word.endsParagraph || tokens[$0].pageIndex != tokens[$0 + 1].pageIndex
-        })
-        return CenteredWordLayout(selected: engine.index - start, focusAnchor: focused.anchor,
-                                  expanded: showContext, breaks: breaks, firstTokenID: start,
-                                  scrolling: scrolling, time: time,
-                                  duration: WordMotion.duration(wordsPerMinute: engine.wordsPerMinute)) {
-            if engine.tokens.isEmpty {
-                Text("Ready?").font(.custom("Georgia", size: fontSize)).accessibilityIdentifier("currentWord")
-            } else {
-                ForEach(tokens) { token in
-                    if token.id == engine.index {
-                        Text(focused.text)
-                            .font(focused.anchor == nil ? .custom("Georgia", size: fontSize) : .custom("Georgia", fixedSize: fontSize))
-                            .lineLimit(1).minimumScaleFactor(focused.anchor == nil ? 0.12 : 0.01)
-                            .frame(minHeight: showContext ? passageRowHeight : 0)
-                            .foregroundStyle(Palette.ink)
-                            .background(Palette.paper).zIndex(1)
-                            .accessibilityIdentifier("currentWord")
-                            .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
-                            .accessibilityHint("Swipe left for later words or right for earlier words.")
-                            .accessibilityAdjustableAction { direction in
-                                switch direction {
-                                case .increment: engine.seek(engine.index + 1)
-                                case .decrement: engine.seek(engine.index - 1)
-                                @unknown default: break
-                                }
-                            }
-                    } else {
-                        Text(token.word.text)
-                            .font(showContext && focusLetter ? .custom("Georgia", fixedSize: passageSize) : .custom("Georgia", size: neighborSize))
-                            .foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.1)
-                            .frame(minHeight: showContext ? passageRowHeight : 44)
-                            .accessibilityIdentifier(showContext ? "passageWord-\(token.id)" : "nearbyWord-\(token.id)")
-                    }
-                }
-            }
-        }
-        .id("\(showContext)-\(focusLetter)-\(activeWordSizePercent)")
-        .frame(height: showContext ? nil : 102).frame(maxWidth: .infinity, maxHeight: showContext ? .infinity : nil)
-        .contentShape(Rectangle())
-        .clipped()
-        .mask {
-            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
-                                   .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
-                           startPoint: showContext ? .top : .leading, endPoint: showContext ? .bottom : .trailing)
-        }
     }
     private var scrubGesture: some Gesture {
         DragGesture(minimumDistance: 12)
@@ -418,139 +336,3 @@ private struct ReadingTouchSurface: UIViewRepresentable {
     }
 }
 #endif
-
-/// Anchors the selected word (or its focus letter) as its neighbors change length.
-struct CenteredWordLayout: Layout {
-    var selected: Int
-    var focusAnchor: CGFloat?
-    var expanded: Bool
-    var breaks: Set<Int>
-    var firstTokenID: Int
-    var scrolling: Bool
-    var time: Double
-    var duration: Double
-    private var spacing: CGFloat { expanded ? 10 : 18 }
-
-    struct Cache { var motion = WordMotion() }
-    func makeCache(subviews: Subviews) -> Cache { Cache() }
-    // Token-window changes retain the positions of words with the same source ID.
-    func updateCache(_ cache: inout Cache, subviews: Subviews) {}
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
-        CGSize(width: proposal.width ?? 600, height: expanded ? (proposal.height ?? 360) : 102)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
-        guard subviews.indices.contains(selected) else {
-            subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: proposal)
-            return
-        }
-        let current = subviews[selected]
-        let anchor = focusAnchor ?? 0.5
-        let availableWidth = focusAnchor == nil ? bounds.width * 0.68
-            : min(bounds.width * 0.68, bounds.width * 0.44 / max(anchor, 1 - anchor))
-        let currentWidth = min(current.sizeThatFits(.unspecified).width, availableWidth)
-        let currentSize = current.sizeThatFits(ProposedViewSize(width: currentWidth, height: nil))
-        let leading = bounds.midX - currentWidth * anchor
-        current.place(at: CGPoint(x: leading, y: bounds.midY), anchor: .leading,
-                      proposal: ProposedViewSize(width: currentWidth, height: currentSize.height))
-        let inset = expanded ? min(24, bounds.width / 8) : 0
-        let neighborProposal = ProposedViewSize(width: expanded ? bounds.width - inset * 2 : nil, height: nil)
-        let sizes = subviews.map { $0.sizeThatFits(neighborProposal) }
-        let compact = expanded && bounds.height < 240
-        let rowHeight = max(currentSize.height, sizes.map(\.height).max() ?? 0)
-        let rowStep = rowHeight + (compact ? 4 : 8)
-        func rowY(_ row: Int) -> CGFloat { bounds.midY + CGFloat(row) * rowStep }
-        var positions = [Int: (x: CGFloat, row: Int)]()
-        // Wrap outward from the fixed middle word while keeping source order.
-        var leadingEdge = leading - spacing
-        var row = 0
-        for index in (0..<selected).reversed() {
-            if expanded && (leadingEdge - sizes[index].width < bounds.minX + inset || breaks.contains(index)) {
-                row -= 1; leadingEdge = bounds.maxX - inset
-            }
-            leadingEdge -= sizes[index].width
-            positions[index] = (leadingEdge, row)
-            leadingEdge -= spacing
-        }
-        var trailingEdge = leading + currentWidth + spacing
-        row = 0
-        for index in (selected + 1)..<subviews.count {
-            if expanded && (trailingEdge + sizes[index].width > bounds.maxX - inset || breaks.contains(index - 1)) {
-                row += 1; trailingEdge = bounds.minX + inset
-            }
-            positions[index] = (trailingEdge, row)
-            trailingEdge += sizes[index].width + spacing
-        }
-        func spread(_ indices: [Int], row: Int, from left: CGFloat, to right: CGFloat) {
-            guard indices.count > 1 else { return }
-            let widths = indices.map { $0 == selected ? currentWidth : sizes[$0].width }
-            let gap = max(spacing, (right - left - widths.reduce(0, +)) / CGFloat(indices.count - 1))
-            var x = left
-            for (index, width) in zip(indices, widths) {
-                if index != selected { positions[index] = (x, row) }
-                x += width + gap
-            }
-        }
-        if expanded {
-            let rows = Dictionary(grouping: positions.keys, by: { positions[$0]!.row })
-            for (row, entries) in rows {
-                let indices = entries.sorted()
-                if row == 0 {
-                    // Include the fixed word as an endpoint on each side.
-                    let before = indices.filter { $0 < selected }
-                    if let first = before.first, first > 0, !breaks.contains(first - 1) {
-                        spread(before + [selected], row: row, from: bounds.minX + inset, to: leading + currentWidth)
-                    }
-                    let after = indices.filter { $0 > selected }
-                    if let last = after.last, last + 1 < subviews.count, !breaks.contains(last) {
-                        spread([selected] + after, row: row, from: leading, to: bounds.maxX - inset)
-                    }
-                } else if let first = indices.first, let last = indices.last,
-                          first > 0, last + 1 < subviews.count, !breaks.contains(last) {
-                    // Do not stretch paragraph endings or incomplete window edges.
-                    spread(indices, row: row, from: bounds.minX + inset, to: bounds.maxX - inset)
-                }
-            }
-        }
-        var targets = Dictionary(uniqueKeysWithValues: positions.map { index, position in
-            (firstTokenID + index, CGPoint(x: position.x - bounds.minX, y: rowY(position.row) - bounds.minY))
-        })
-        // Layout may probe placement at multiple origins; cache only local coordinates.
-        targets[firstTokenID + selected] = CGPoint(x: leading - bounds.minX, y: bounds.height / 2)
-        let displayed = cache.motion.positions(index: firstTokenID + selected, targets: targets,
-            viewport: bounds.size, enabled: scrolling, time: time, duration: duration,
-            widths: Dictionary(uniqueKeysWithValues: sizes.indices.map { (firstTokenID + $0, sizes[$0].width) }))
-        for index in positions.keys {
-            guard let point = displayed[firstTokenID + index] else { continue }
-            // Keep offscreen rows at their real coordinates so they enter through the clip.
-            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y),
-                                  anchor: .leading, proposal: ProposedViewSize(sizes[index]))
-        }
-    }
-}
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrange(subviews, width: proposal.width ?? 600).size
-    }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let layout = arrange(subviews, width: bounds.width)
-        for (index, point) in layout.positions.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
-        }
-    }
-    private func arrange(_ subviews: Subviews, width: CGFloat) -> (size: CGSize, positions: [CGPoint]) {
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        var positions: [CGPoint] = []
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
-            positions.append(CGPoint(x: x, y: y))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return (CGSize(width: width, height: y + rowHeight), positions)
-    }
-}

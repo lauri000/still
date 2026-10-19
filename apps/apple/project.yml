@@ -15,7 +15,12 @@ targets:
   Still:
     type: application
     platform: iOS
-    sources: [shared, ios, ../../shared/resources]
+    sources:
+      - shared
+      - ios
+      - ../../shared/resources
+      - path: ../../shared/fixtures/sample.pdf
+        buildPhase: resources
     configFiles:
       Debug: ios/Config.xcconfig
       Release: ios/Config.xcconfig
@@ -23,7 +28,12 @@ targets:
     type: application
     platform: macOS
     deploymentTarget: '14.0'
-    sources: [shared, macos, ../../shared/resources]
+    sources:
+      - shared
+      - macos
+      - ../../shared/resources
+      - path: ../../shared/fixtures/sample.pdf
+        buildPhase: resources
     configFiles:
       Debug: macos/Config.xcconfig
       Release: macos/Config.xcconfig

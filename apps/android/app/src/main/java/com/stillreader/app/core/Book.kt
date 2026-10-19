@@ -48,9 +48,6 @@ data class Book(
             readingStart = start, position = position?.copy(finished = false),
         )
     }
-
-    fun chapterAt(index: Int): BookChapter? = chapters.filter { it.pageIndex <= index }
-        .sortedWith(compareBy<BookChapter> { it.pageIndex }.thenBy { it.level }).lastOrNull()
 }
 
 @Serializable

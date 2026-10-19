@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.stillreader.app.core.*
+import io.legere.pdfiumandroid.PdfDocument
 import io.legere.pdfiumandroid.PdfiumCore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -72,70 +73,72 @@ class PdfImporter(private val context: Context) {
 
     suspend fun extract(file: File, filename: String, progress: (ImportProgress) -> Unit = {}): Book = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            core.newDocument(descriptor).use { document ->
-                val count = document.getPageCount()
-                require(count > 0) { "This PDF has no readable pages." }
-                val pages = ArrayList<BookPage>(count)
-                val inputs = ArrayList<PdfTextRepair.Input>(count)
-                for (index in 0 until count) {
-                    currentCoroutineContext().ensureActive()
-                    val page = document.openPage(index) ?: error("PDF page ${index + 1} could not be opened.")
-                    val input = page.use { it.openTextPage().use { textPage ->
-                        val text = textPage.textPageGetText(0, textPage.textPageCountChars()) ?: ""
-                        PdfTextGeometry(textPage, text).input(it.getPageHeightPoint().toDouble())
-                    } }
-                    val text = input.text
-                    inputs.add(input)
-                    pages.add(BookPage(number = index + 1, extractedText = text))
-                    progress(ImportProgress("Extracting page ${index + 1} of $count…", .7f * (index + 1f) / count))
-                }
-                progress(ImportProgress("Improving word spacing and line breaks…", .7f))
-                val repaired = repair(document, inputs)
+        withDocument(file) { document ->
+            val count = document.getPageCount()
+            require(count > 0) { "This PDF has no readable pages." }
+            val pages = ArrayList<BookPage>(count)
+            val inputs = ArrayList<PdfTextRepair.Input>(count)
+            for (index in 0 until count) {
                 currentCoroutineContext().ensureActive()
-                for (index in pages.indices) pages[index] = pages[index].copy(text = repaired.pages[index].text,
-                    processedText = repaired.pages[index].text, textProcessingVersion = PdfTextRepair.VERSION)
-                progress(ImportProgress("Saving book…", 1f))
-                val chapters = try {
-                    contents(file).mapNotNull { entry -> entry.pageIndex?.let {
-                        BookChapter(title = entry.title, pageIndex = it, level = entry.level, source = "PDF bookmark")
-                    } }
-                } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-                catch (_: Exception) { emptyList() } // Outline failure must not prevent text import.
-                val metadata = document.getDocumentMeta()
-                Book(title = metadata.title?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.').replace('_', ' '),
-                    author = metadata.author.orEmpty(), originalFilename = filename, pages = pages,
-                    chapters = chapters.sortedBy { it.pageIndex })
+                val page = document.openPage(index) ?: error("PDF page ${index + 1} could not be opened.")
+                val input = page.use { it.openTextPage().use { textPage ->
+                    val text = textPage.textPageGetText(0, textPage.textPageCountChars()) ?: ""
+                    PdfTextGeometry(textPage, text).input(it.getPageHeightPoint().toDouble())
+                } }
+                val text = input.text
+                inputs.add(input)
+                pages.add(BookPage(number = index + 1, extractedText = text))
+                progress(ImportProgress("Extracting page ${index + 1} of $count…", .7f * (index + 1f) / count))
             }
+            progress(ImportProgress("Improving word spacing and line breaks…", .7f))
+            val repaired = repair(document, inputs)
+            currentCoroutineContext().ensureActive()
+            for (index in pages.indices) pages[index] = pages[index].copy(text = repaired.pages[index].text,
+                processedText = repaired.pages[index].text, textProcessingVersion = PdfTextRepair.VERSION)
+            progress(ImportProgress("Saving book…", 1f))
+            val chapters = try {
+                contents(file).mapNotNull { entry -> entry.pageIndex?.let {
+                    BookChapter(title = entry.title, pageIndex = it, level = entry.level, source = "PDF bookmark")
+                } }
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { emptyList() } // Outline failure must not prevent text import.
+            val metadata = document.getDocumentMeta()
+            Book(title = metadata.title?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.').replace('_', ' '),
+                author = metadata.author.orEmpty(), originalFilename = filename, pages = pages,
+                chapters = chapters.sortedBy { it.pageIndex })
         }
     }
 
     suspend fun improve(file: File, book: Book, progress: (ImportProgress) -> Unit): Book = withContext(Dispatchers.IO) {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            core.newDocument(descriptor).use { document ->
-                require(document.getPageCount() == book.pages.size) { "The original PDF does not match this book." }
-                val enabled = book.pages.map { PdfTextRepair.eligible(it) && it.isIncluded }
-                val inputs = book.pages.mapIndexed { index, source ->
-                    currentCoroutineContext().ensureActive()
-                    progress(ImportProgress("Checking page ${index + 1} of ${book.pages.size}…", .7f * (index + 1f) / book.pages.size))
-                    if (!enabled[index]) PdfTextRepair.Input(source.text, enabled = false)
-                    else document.openPage(index)!!.use { page -> page.openTextPage().use { textPage ->
-                        val native = textPage.textPageGetText(0, textPage.textPageCountChars()).orEmpty()
-                        // Backups can originate in another engine. Keep their immutable source and
-                        // use text-only repair if its offsets no longer match this engine's text.
-                        if (native == source.extractedText) PdfTextGeometry(textPage, native).input(page.getPageHeightPoint().toDouble())
-                        else PdfTextRepair.Input(source.extractedText)
-                    } }
-                }
-                progress(ImportProgress("Improving word spacing and line breaks…", .7f))
-                val result = repair(document, inputs)
+        withDocument(file) { document ->
+            require(document.getPageCount() == book.pages.size) { "The original PDF does not match this book." }
+            val enabled = book.pages.map { PdfTextRepair.eligible(it) && it.isIncluded }
+            val inputs = book.pages.mapIndexed { index, source ->
                 currentCoroutineContext().ensureActive()
-                PdfTextRepair.applyTo(book, result, enabled)
+                progress(ImportProgress("Checking page ${index + 1} of ${book.pages.size}…", .7f * (index + 1f) / book.pages.size))
+                if (!enabled[index]) PdfTextRepair.Input(source.text, enabled = false)
+                else document.openPage(index)!!.use { page -> page.openTextPage().use { textPage ->
+                    val native = textPage.textPageGetText(0, textPage.textPageCountChars()).orEmpty()
+                    // Backups can originate in another engine. Keep their immutable source and
+                    // use text-only repair if its offsets no longer match this engine's text.
+                    if (native == source.extractedText) PdfTextGeometry(textPage, native).input(page.getPageHeightPoint().toDouble())
+                    else PdfTextRepair.Input(source.extractedText)
+                } }
             }
+            progress(ImportProgress("Improving word spacing and line breaks…", .7f))
+            val result = repair(document, inputs)
+            currentCoroutineContext().ensureActive()
+            PdfTextRepair.applyTo(book, result, enabled)
         }
     }
 
-    private suspend fun repair(document: io.legere.pdfiumandroid.PdfDocument, inputs: List<PdfTextRepair.Input>): PdfTextRepair.Result {
+    /** Keep PDFium documents and their backing descriptors under one lexical owner. */
+    private inline fun <T> withDocument(file: File, read: (PdfDocument) -> T): T =
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+            core.newDocument(descriptor).use(read)
+        }
+
+    private suspend fun repair(document: PdfDocument, inputs: List<PdfTextRepair.Input>): PdfTextRepair.Result {
         val job = currentCoroutineContext()
         var nativePage: io.legere.pdfiumandroid.PdfPage? = null
         var nativeText: io.legere.pdfiumandroid.PdfTextPage? = null
@@ -167,19 +170,17 @@ class PdfImporter(private val context: Context) {
 
     suspend fun preview(file: File, index: Int, width: Int): Bitmap = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            core.newDocument(descriptor).use { document ->
-                val page = document.openPage(index) ?: error("This PDF page could not be displayed.")
-                page.use {
-                    val w = width.coerceIn(1, 1600)
-                    val h = (w.toDouble() * page.getPageHeightPoint() / page.getPageWidthPoint().coerceAtLeast(1)).roundToInt().coerceIn(1, 2400)
-                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                    try {
-                        page.renderPageBitmap(bitmap, 0, 0, w, h, true)
-                        currentCoroutineContext().ensureActive()
-                        bitmap
-                    } catch (error: Throwable) { bitmap.recycle(); throw error }
-                }
+        withDocument(file) { document ->
+            val page = document.openPage(index) ?: error("This PDF page could not be displayed.")
+            page.use {
+                val w = width.coerceIn(1, 1600)
+                val h = (w.toDouble() * page.getPageHeightPoint() / page.getPageWidthPoint().coerceAtLeast(1)).roundToInt().coerceIn(1, 2400)
+                val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                try {
+                    page.renderPageBitmap(bitmap, 0, 0, w, h, true)
+                    currentCoroutineContext().ensureActive()
+                    bitmap
+                } catch (error: Throwable) { bitmap.recycle(); throw error }
             }
         }
     }

@@ -30,6 +30,12 @@ The reading-options button appears only in single-line mode. **Active word size*
 
 The book's ellipsis menu contains corrections, page inclusion/review, chapters, a starting-word selector with **Restore beginning**, title/author editing, portable backup export, and deletion. Original PDFs and extracted text remain intact.
 
+## Code ownership
+
+`ReaderScreen` owns controls and saved view selection. Its `WordRibbon` and `WordMotion` are single-line only: the ribbon lays out one horizontal neighborhood, and motion interpolates horizontal positions. `PassageView` owns native scrolling and exact-word hit testing; `PassageLayout` contains geometry and source-token ranges, without duplicate display text. Both views share `ReadingSession` for the reading position, while only single-line mode can start its clock.
+
+`LibraryViewModel` owns one cancellable preparation job for imports and text repair. Both use the same progress/error cleanup and await the existing serial repository queue for atomic commits. Cancellation stays outside a commit once it begins. `PdfImporter` owns PDFium document/descriptor lifetimes through one helper; per-page text and geometry resources remain scoped to their use. The backup schema and persisted preference keys are unchanged.
+
 ## Storage and compatibility
 
 Books live in app-private `files/Still/<UUID>/`. Writes use a serial queue and atomic file replacement. Text/metadata edits are debounced for 500 ms and flushed on navigation/backgrounding. Reader positions checkpoint every 20 words and on pause, closing, or ending a swipe. Imports commit only after extraction succeeds; duplicate backup imports become separate library copies.
@@ -98,3 +104,5 @@ Scroll profiling on 19 October 2026 used the same 12 wall-clock swipes through a
 The opt-in `PassagePerformanceTests#scrollFrameTimings` probe reads a local `Book` JSON from `files/passage-evaluation/scroll-book.json` in the isolated `-PpdfEvaluationBuild` app. Run it with instrumentation argument `scrollEvaluation=true`. It reports frame percentiles from `Window` frame metrics, including a CPU-path sum of unknown delay, input, animation, layout, draw, sync, and command issue durations. Install test APKs directly when using this fixture so Gradle's connected-test cleanup does not remove it.
 
 Scroll-renderer verification: 39 JVM tests and all 26 Android reader/scroll UI scenarios pass, including live-drag momentum, paragraph crossings, exact word taps, ignored whitespace, accessibility word actions, mode switches, rotation, and reopening. Release compilation succeeds; debug lint reports zero errors and the existing 21 warnings.
+
+Architecture-cleanup verification (19 October 2026): 39 JVM tests and 29 Android device scenarios pass, including import/repair cancellation, failed-import recovery, single-line animation, focus alignment, native fling, and exact word selection. Debug builds succeed; lint reports zero errors and the existing 21 warnings. Shared backup/Unicode/PDF-repair contracts also pass.

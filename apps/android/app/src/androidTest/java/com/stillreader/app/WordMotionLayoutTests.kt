@@ -25,26 +25,24 @@ class WordMotionLayoutTests {
     }
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>(effectContext = scale)
 
-    @Test fun actualWordsMoveInBothLayoutsAndPauseOrReducedMotionSettles() {
+    @Test fun singleLineWordsMoveAtEachSizeAndPauseOrReducedMotionSettles() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val book = Book(title = "Motion", originalFilename = "motion.pdf",
             pages = listOf(BookPage(number = 1, label = "1", extractedText = (0..100).joinToString(" ") { "word$it" })))
         val session = ReadingSession(book, scope) {}
         val index = mutableIntStateOf(20)
-        val expanded = mutableStateOf(false)
         val scrolling = mutableStateOf(true)
         val sizePercent = mutableIntStateOf(100)
         session.seek(index.intValue)
         session.wordsPerMinute = 60.0
-        compose.setContent { StillTheme { WordRibbon(session, index.intValue, false, expanded.value, scrolling.value, activeWordSizePercent = sizePercent.intValue) } }
+        compose.setContent { StillTheme { WordRibbon(session, index.intValue, false, scrolling.value, activeWordSizePercent = sizePercent.intValue) } }
         try {
-            for ((passage, percent) in listOf(false to 100, true to 100, false to 300, true to 300)) {
-                compose.runOnIdle { expanded.value = passage; sizePercent.intValue = percent; scrolling.value = true; scale.value.value = 1f }
+            for (percent in listOf(100, 200, 300)) {
+                compose.runOnIdle { sizePercent.intValue = percent; scrolling.value = true; scale.value.value = 1f }
                 compose.waitForIdle()
                 compose.mainClock.autoAdvance = false
-                val prefix = if (passage) "passageWord" else "nearbyWord"
                 val neighbor = index.intValue - 1
-                fun point() = compose.onNodeWithTag("$prefix-$neighbor").fetchSemanticsNode().boundsInRoot.center
+                fun point() = compose.onNodeWithTag("nearbyWord-$neighbor").fetchSemanticsNode().boundsInRoot.center
                 val before = point()
                 val center = compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center
                 compose.runOnUiThread { session.seek(index.intValue + 1); index.intValue++ }
@@ -54,7 +52,7 @@ class WordMotionLayoutTests {
                 assertEquals(center, compose.onNodeWithTag("currentWord").fetchSemanticsNode().boundsInRoot.center)
                 compose.mainClock.advanceTimeBy(240)
                 val end = point()
-                assertTrue("A real neighboring word must move across multiple frames ($passage): $before, $middle, $end",
+                assertTrue("A real neighboring word must move across multiple frames ($percent%): $before, $middle, $end",
                     (middle - before).getDistance() > 1f && (middle - end).getDistance() > 1f)
                 compose.runOnUiThread { session.seek(index.intValue + 1); index.intValue++ }
                 compose.mainClock.advanceTimeBy(48)

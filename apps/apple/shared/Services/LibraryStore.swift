@@ -4,16 +4,16 @@ import UniformTypeIdentifiers
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var books: [Book] = []
-    @Published var isImporting = false
+    var isImporting: Bool { importTask != nil }
     @Published var importProgress = 0.0
     @Published var importMessage = "Opening PDF…"
     @Published var errorMessage: String?
     @Published var savedMessage = "Saved on this device"
-    @Published var undoImprovementID: UUID?
-    private var beforeImprovement: Book?
+    var undoImprovementID: UUID? { beforeImprovement?.id }
+    @Published private var beforeImprovement: Book?
     let repository: BookRepository
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
-    private var importTask: Task<Void, Never>?
+    @Published private var importTask: Task<Void, Never>?
     private var hasLoaded = false
     private let includeSample: Bool
 
@@ -56,7 +56,7 @@ final class LibraryStore: ObservableObject {
         var updated = books[index]
         change(&updated)
         guard updated != books[index] else { return }
-        if beforeImprovement?.id == id { beforeImprovement = nil; undoImprovementID = nil }
+        if beforeImprovement?.id == id { beforeImprovement = nil }
         books[index] = updated
         pendingSaves[id]?.cancel()
         savedMessage = "Saving…"
@@ -68,7 +68,7 @@ final class LibraryStore: ObservableObject {
         }
     }
 
-    func save(_ id: UUID) {
+    private func save(_ id: UUID) {
         guard let book = book(id) else { return }
         do { try repository.save(book); savedMessage = "Saved on this device" }
         catch { savedMessage = "Not saved"; errorMessage = "Your latest changes could not be saved: \(error.localizedDescription)" }
@@ -87,32 +87,19 @@ final class LibraryStore: ObservableObject {
     }
 
     func importFile(_ url: URL, completion: @escaping (UUID) -> Void) {
-        guard !isImporting else { return }
-        isImporting = true
-        importProgress = 0
-        importMessage = "Opening file…"
-        importTask = Task {
-            do {
-                let imported: ImportedBook
-                if url.pathExtension.lowercased() == "json" || url.pathExtension.lowercased() == "stillbook" {
-                    imported = try await Task.detached { try BookBackup.read(url: url) }.value
-                } else {
-                    let task = Task.detached {
-                        try await PDFImporter.extract(url: url) { current, total in
-                            await self.reportProgress(current, total)
-                        }
-                    }
-                    imported = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-                }
-                try Task.checkCancellation()
-                var book = imported.book
-                if books.contains(where: { $0.id == book.id }) { book.id = UUID(); book.importedAt = Date() }
-                try repository.insert(book, pdfData: imported.pdfData)
-                books.insert(book, at: 0)
-                isImporting = false
-                completion(book.id)
-            } catch is CancellationError { isImporting = false }
-            catch { isImporting = false; errorMessage = error.localizedDescription }
+        performImport(message: "Opening file…") {
+            if ["json", "stillbook"].contains(url.pathExtension.lowercased()) {
+                return try BookBackup.read(url: url)
+            }
+            return try await PDFImporter.extract(url: url) { current, total in
+                await self.reportProgress(current, total)
+            }
+        } completion: { imported in
+            var book = imported.book
+            if self.books.contains(where: { $0.id == book.id }) { book.id = UUID(); book.importedAt = Date() }
+            try self.repository.insert(book, pdfData: imported.pdfData)
+            self.books.insert(book, at: 0)
+            completion(book.id)
         }
     }
 
@@ -120,31 +107,41 @@ final class LibraryStore: ObservableObject {
     func improveText(_ id: UUID) {
         guard !isImporting, let original = book(id) else { return }
         flush()
-        isImporting = true; importProgress = 0; importMessage = "Preparing text improvements…"
         let url = repository.pdfURL(for: id)
+        performImport(message: "Preparing text improvements…") {
+            try await PDFImporter.improve(url: url, book: original) { current, total in
+                await self.reportProgress(current, total)
+            }
+        } completion: { updated in
+            guard let index = self.books.firstIndex(where: { $0.id == id }) else { return }
+            guard self.books[index] == original else {
+                self.errorMessage = "The book changed while its text was being improved. Please try again."
+                return
+            }
+            // Save atomically before publishing the new text and its mapped positions.
+            try self.repository.save(updated)
+            self.books[index] = updated
+            self.beforeImprovement = original
+            self.savedMessage = "Text improved"
+        }
+    }
+    private func performImport<Value: Sendable>(message: String,
+        operation: @escaping @Sendable () async throws -> Value,
+        completion: @escaping (Value) throws -> Void) {
+        guard !isImporting else { return }
+        importProgress = 0
+        importMessage = message
         importTask = Task {
+            let worker = Task.detached(operation: operation)
             do {
-                let worker = Task.detached {
-                    try await PDFImporter.improve(url: url, book: original) { current, total in
-                        await self.reportProgress(current, total)
-                    }
-                }
-                let updated = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 try Task.checkCancellation()
-                guard let index = books.firstIndex(where: { $0.id == id }) else { isImporting = false; return }
-                guard books[index] == original else {
-                    errorMessage = "The book changed while its text was being improved. Please try again."
-                    isImporting = false
-                    return
-                }
-                // Save atomically before publishing the new text and its mapped positions.
-                try repository.save(updated)
-                books[index] = updated
-                beforeImprovement = original; undoImprovementID = id
-                savedMessage = "Text improved"
-            } catch is CancellationError { }
-            catch { errorMessage = error.localizedDescription }
-            isImporting = false
+                importTask = nil
+                try completion(result)
+            } catch {
+                importTask = nil
+                if !(error is CancellationError) { errorMessage = error.localizedDescription }
+            }
         }
     }
     func undoTextImprovement(_ id: UUID) {
@@ -152,7 +149,7 @@ final class LibraryStore: ObservableObject {
               let index = books.firstIndex(where: { $0.id == id }) else { return }
         do {
             try repository.save(previous)
-            books[index] = previous; beforeImprovement = nil; undoImprovementID = nil
+            books[index] = previous; beforeImprovement = nil
             savedMessage = "Text improvement undone"
         } catch { errorMessage = error.localizedDescription }
     }
@@ -186,9 +183,7 @@ struct BookBackup: Codable, FileDocument {
         FileWrapper(regularFileWithContents: try JSONEncoder().encode(self))
     }
     func validate() throws {
-        guard format == "still-book", version == 1, book.schemaVersion == 1, !book.pages.isEmpty,
-              Set(book.pages.map(\.id)).count == book.pages.count,
-              book.chapters.allSatisfy({ book.pages.indices.contains($0.pageIndex) }),
+        guard format == "still-book", version == 1, book.hasValidStructure,
               pdfData.starts(with: Array("%PDF-".utf8)) else { throw RepositoryError.invalidBook }
     }
     static func read(url: URL) throws -> ImportedBook {

@@ -44,9 +44,11 @@ final class PDFTextRepairTests: XCTestCase {
         library.improveText(old.id)
         while library.isImporting { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(library.errorMessage)
+        XCTAssertEqual(library.undoImprovementID, old.id)
         XCTAssertEqual(library.book(old.id)?.pages[1].text, "My manual correction")
         XCTAssertEqual(library.book(old.id)?.pages[0].textProcessingVersion, PDFTextRepair.version)
         library.undoTextImprovement(old.id)
+        XCTAssertNil(library.undoImprovementID)
         XCTAssertEqual(library.book(old.id)?.pages.map(\.text), old.pages.map(\.text))
         XCTAssertEqual(try repository.load().books.first?.pages.map(\.text), old.pages.map(\.text))
     }

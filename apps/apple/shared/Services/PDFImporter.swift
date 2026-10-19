@@ -50,11 +50,6 @@ enum PDFImporter {
             return PDFTextGeometry(page: page, raw: inputs[index].text).boundary(offset: offset, split: split)
         }
         try Task.checkCancellation()
-        for index in pages.indices {
-            pages[index].text = repaired.pages[index].text
-            pages[index].processedText = repaired.pages[index].text
-            pages[index].textProcessingVersion = PDFTextRepair.version
-        }
         var chapters: [BookChapter] = []
         func collect(_ outline: PDFOutline, level: Int) {
             for index in 0..<outline.numberOfChildren {
@@ -77,7 +72,7 @@ enum PDFImporter {
         let book = Book(id: UUID(), title: (title?.isEmpty == false ? title! : fallback), author: author,
                         originalFilename: filename, importedAt: Date(), pages: pages,
                         chapters: chapters.sorted { $0.pageIndex < $1.pageIndex })
-        return ImportedBook(book: book, pdfData: data)
+        return ImportedBook(book: PDFTextRepair.apply(to: book, result: repaired, enabled: Array(repeating: true, count: pages.count)), pdfData: data)
     }
 
     static func improve(url: URL, book: Book, progress: @Sendable (Int, Int) async -> Void) async throws -> Book {

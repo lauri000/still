@@ -25,11 +25,13 @@ xcodegen generate --spec apps/apple/project.yml
 - `ios/`: iOS build settings and the UIKit PDF view wrapper.
 - `macos/`: macOS build settings, entitlements, and the AppKit PDF view wrapper.
 - `shared/Core/`: book model, tokenizer, and playback engine.
-- `shared/Services/`: PDF import, persistence, library state, and generated sample PDF.
-- `shared/Views/`: library, page selection, reader, editing tools, and PDF coordination.
+- `shared/Services/`: PDF import, persistence, library state, and the bundled sample loader.
+- `shared/Views/`: library, page selection, reader, editing tools, and PDF coordination. `ReaderView` owns controls and uses the engine’s reading mode; `SingleLineView` owns focused words/headings and horizontal animation, while `PassageView` owns native manual scrolling. The starting-word picker keeps its own flow layout.
 - `shared/Resources/`: shared Apple assets.
 - `shared/StillApp.swift`: common application entry point and library initialization.
 - `tests/`: `StillTests` and `StillUITests`.
+
+`LibraryStore` owns one cancellable background job for imports and text improvement. Import, undo, and scrub indicators derive from their owning task/book/gesture state. Disk loading and backup validation share the book model’s structural checks. The sample PDF is bundled from `shared/fixtures/sample.pdf`; `scripts/contract-fixtures.swift --write` owns its generation.
 
 The compact header holds page navigation and progress; text fills the remaining space. On iPhone and iPad, hold the invisible bottom-right quarter to read and drag horizontally to adjust speed. Start elsewhere to scrub; each gesture keeps its starting role until release. Tapping words no longer jumps. On Mac, header buttons handle playback, stepping, and speed (±10 WPM), with Space and arrow keys retained. WPM appears only after a speed adjustment and fades when adjustments stop.
 
@@ -54,7 +56,7 @@ xcodebuild -project apps/apple/Still.xcodeproj -scheme Still \
 
 Use an available iPad simulator name if `Still iPad` is not installed locally. `StillTests` covers real PDF extraction, bookmarks, Unicode positions, trims, corrections, persistence, backups, and playback/scrubbing. `StillUITests` covers the import picker, starting-page selection, exact resume, surrounding words, swipe navigation and fixed gesture zones, and optional corrections. UI tests use an isolated temporary library.
 
-The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-implementations) also compile the production Swift model and sample PDF generator directly.
+The [Swift/Kotlin compatibility checks](../../shared/FORMAT.md#verify-both-implementations) compile the production Swift model and tokenizer; fixture generation stays in the checker tool.
 
 ## Current verification
 
@@ -75,3 +77,5 @@ Contents. Exact matches seek the heading; other entries navigate by page. See
 [reading](../../docs/reading.md#book-typography-and-contents) for details.
 
 Manual-passage verification (19 October 2026): 62 unit/layout tests pass. All 12 iPhone UI scenarios pass, including a targeted rerun after replacing an obsolete multiline hold-control assertion. Manual scrolling, exact word taps, rotation before and after selection, repeated mode switches, saved options, and reopening are covered. The macOS target builds; its isolated sample preview verifies accessible page navigation and the same word position after switching modes. Physical Apple devices were not exercised.
+
+Architecture-cleanup verification (19 October 2026): 65 unit/layout tests and all 12 UI scenarios pass on iPhone; the same 12 UI scenarios pass on iPad. The macOS target builds, and an isolated sample app verifies PDF preview, headings, exact passage-word selection, repeated mode switches, keyboard stepping/playback, WPM adjustment, and reopening at the saved word. Shared backup/Unicode/PDF-repair contracts pass. Sample PDF text, geometry, metadata, and outline destinations match the previous generated sample. Physical Apple devices were not exercised.

@@ -103,69 +103,61 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
 
     suspend fun flush() {
         flushEdits()
-        val done = CompletableDeferred<Unit>()
-        operations.send { done.complete(Unit) }
-        done.await()
+        repositoryOperation { }
     }
 
-    fun importFile(uri: Uri) {
-        if (state.value.importing != null) return
-        mutable.update { it.copy(importing = ImportProgress("Opening file…", 0f)) }
-        importJob = viewModelScope.launch {
-            var imported: ImportedBook? = null
-            try {
-                imported = importer.import(uri) { progress -> mutable.update { it.copy(importing = progress) } }
-                ensureActive()
-                // Once the commit begins, complete it and publish the saved book even if Cancel was tapped.
-                withContext(NonCancellable) {
-                    val result = CompletableDeferred<Book>()
-                    val source = imported
-                    operations.send {
-                        try { result.complete(repository.insert(source.book, source.pdf)) }
-                        catch (error: Throwable) { result.completeExceptionally(error) }
-                    }
-                    val book = result.await()
-                    saved["selectedID"] = book.id
-                    mutable.update { it.copy(books = listOf(book) + it.books, selectedID = book.id) }
-                }
-            } catch (_: CancellationException) { }
-            catch (error: Exception) { report(error) }
-            catch (error: OutOfMemoryError) { report(error) }
-            finally {
-                imported?.pdf?.delete()
-                mutable.update { it.copy(importing = null) }
-            }
+    /** Await the same serial queue used by autosaves, without owning the caller's cancellation policy. */
+    private suspend fun <T> repositoryOperation(operation: () -> T): T {
+        val result = CompletableDeferred<T>()
+        operations.send {
+            try { result.complete(operation()) }
+            catch (error: Throwable) { result.completeExceptionally(error) }
         }
+        return result.await()
     }
-    fun cancelImport() { importJob?.cancel() }
 
-    fun improveText(bookID: String) {
+    /** Import and repair share one job, progress indicator, cancellation path, and error policy. */
+    private fun prepareBook(message: String, prepare: suspend CoroutineScope.() -> Unit) {
         if (state.value.importing != null) return
-        closeReader()
-        mutable.update { it.copy(importing = ImportProgress("Preparing text improvements…", 0f)) }
+        mutable.update { it.copy(importing = ImportProgress(message, 0f)) }
         importJob = viewModelScope.launch {
-            try {
-                flush()
-                val original = state.value.books.firstOrNull { it.id == bookID } ?: return@launch
-                val updated = importer.improve(repository.pdfFile(bookID), original) { progress ->
-                    mutable.update { it.copy(importing = progress) }
-                }
-                ensureActive()
-                check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while its text was being improved. Please try again." }
-                withContext(NonCancellable) {
-                    val done = CompletableDeferred<Unit>()
-                    operations.send {
-                        try { repository.save(updated); done.complete(Unit) }
-                        catch (error: Throwable) { done.completeExceptionally(error) }
-                    }
-                    done.await()
-                    beforeImprovement = original
-                    mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoImprovementID = bookID) }
-                }
-            } catch (_: CancellationException) { }
+            try { prepare() }
+            catch (_: CancellationException) { }
             catch (error: Exception) { report(error) }
             catch (error: OutOfMemoryError) { report(error) }
             finally { mutable.update { it.copy(importing = null) } }
+        }
+    }
+
+    fun importFile(uri: Uri) = prepareBook("Opening file…") {
+        var imported: ImportedBook? = null
+        try {
+            imported = importer.import(uri) { progress -> mutable.update { it.copy(importing = progress) } }
+            ensureActive()
+            // Once the commit begins, complete it and publish the saved book even if Cancel was tapped.
+            withContext(NonCancellable) {
+                val source = imported
+                val book = repositoryOperation { repository.insert(source.book, source.pdf) }
+                saved["selectedID"] = book.id
+                mutable.update { it.copy(books = listOf(book) + it.books, selectedID = book.id) }
+            }
+        } finally { imported?.pdf?.delete() }
+    }
+    fun cancelImport() { importJob?.cancel() }
+
+    fun improveText(bookID: String) = prepareBook("Preparing text improvements…") {
+        closeReader()
+        flush()
+        val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
+        val updated = importer.improve(repository.pdfFile(bookID), original) { progress ->
+            mutable.update { it.copy(importing = progress) }
+        }
+        ensureActive()
+        check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while its text was being improved. Please try again." }
+        withContext(NonCancellable) {
+            repositoryOperation { repository.save(updated) }
+            beforeImprovement = original
+            mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoImprovementID = bookID) }
         }
     }
 

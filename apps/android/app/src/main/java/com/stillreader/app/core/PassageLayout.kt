@@ -3,7 +3,7 @@ package com.stillreader.app.core
 /** Rows for one lazily displayed block of manually scrollable text. */
 class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, availableWidth: Double,
                     spacing: Double = 8.0, headingIDs: Map<Int, Int> = emptyMap()) {
-    data class Row(val words: IntRange, val text: String, val width: Double,
+    data class Row(val words: IntRange, val width: Double,
                    val top: Double, val height: Double, val headingID: Int?) {
         val isHeading get() = headingID != null
     }
@@ -16,7 +16,7 @@ class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, av
             val heading = headingIDs[tokens[start].id]
             val previous = result.lastOrNull()
             val gap = if (heading != previous?.headingID && (heading != null || previous?.isHeading == true)) .45 else 0.0
-            result += Row(start until end, tokens.subList(start, end).joinToString(" ") { it.word.text }, used,
+            result += Row(start until end, used,
                 (previous?.let { it.top + it.height } ?: 0.0) + gap, if (heading != null) 1.2 else 1.0, heading)
         }
         tokens.indices.forEach { index ->

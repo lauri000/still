@@ -1,9 +1,6 @@
 import Foundation
-import CoreGraphics
-import CoreText
-import PDFKit
 
-// Original sample prose. The PDF goes through the same extraction pipeline as imported books.
+// Original sample prose; scripts/contract-fixtures.swift generates the bundled PDF.
 enum SampleBook {
     static let sections: [(String, String)] = [
         ("A place to begin", """
@@ -31,43 +28,10 @@ enum SampleBook {
         """)
     ]
 
-    static func pdfData() -> Data {
-        let data = NSMutableData()
-        let consumer = CGDataConsumer(data: data)!
-        var bounds = CGRect(x: 0, y: 0, width: 612, height: 792)
-        let context = CGContext(consumer: consumer, mediaBox: &bounds, nil)!
-        for (index, section) in sections.enumerated() {
-            context.beginPDFPage(nil)
-            context.setFillColor(CGColor(red: 0.985, green: 0.978, blue: 0.956, alpha: 1))
-            context.fill(bounds)
-            draw("S T I L L   /   A   S H O R T   I N T R O D U C T I O N", font: "Helvetica", size: 10, rect: CGRect(x: 64, y: 693, width: 484, height: 25), in: context)
-            draw(section.0, font: "Georgia", size: 29, rect: CGRect(x: 64, y: 605, width: 484, height: 60), in: context)
-            draw(section.1, font: "Georgia", size: 16, rect: CGRect(x: 64, y: 150, width: 484, height: 440), in: context)
-            draw("\(index + 1)", font: "Helvetica", size: 11, rect: CGRect(x: 294, y: 46, width: 40, height: 24), in: context)
-            context.endPDFPage()
+    static func pdfData() throws -> Data {
+        guard let url = Bundle.main.url(forResource: "sample", withExtension: "pdf") else {
+            throw CocoaError(.fileNoSuchFile)
         }
-        context.closePDF()
-        let document = PDFDocument(data: data as Data)!
-        document.documentAttributes = [PDFDocumentAttribute.titleAttribute: "The art of attention", PDFDocumentAttribute.authorAttribute: "A Still introduction"]
-        let outline = PDFOutline()
-        for (index, section) in sections.enumerated() {
-            let child = PDFOutline()
-            child.label = section.0
-            child.destination = PDFDestination(page: document.page(at: index)!, at: CGPoint(x: 0, y: 792))
-            outline.insertChild(child, at: index)
-        }
-        document.outlineRoot = outline
-        return document.dataRepresentation()!
-    }
-
-    private static func draw(_ string: String, font: String, size: CGFloat, rect: CGRect, in context: CGContext) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(font as CFString, size, nil),
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0.14, alpha: 1)
-        ]
-        let text = NSAttributedString(string: string, attributes: attributes)
-        let setter = CTFramesetterCreateWithAttributedString(text)
-        let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: text.length), CGPath(rect: rect, transform: nil), nil)
-        CTFrameDraw(frame, context)
+        return try Data(contentsOf: url)
     }
 }

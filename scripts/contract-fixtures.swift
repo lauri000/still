@@ -1,4 +1,7 @@
 import Foundation
+import CoreGraphics
+import CoreText
+import PDFKit
 
 // Compile with apps/apple/shared/Core/Book.swift and apps/apple/shared/Services/SampleBook.swift.
 // These fixtures are consumed by Android JVM/device tests and this Swift checker.
@@ -26,6 +29,46 @@ enum ContractFixtures {
         Tokenizer.words(in: text).map { Word(text: $0.text, offset: $0.offset, length: $0.length,
             endsParagraph: $0.endsParagraph, duration: Tokenizer.duration(for: $0, wordsPerMinute: 300, naturalPauses: true)) }
     }
+    private static func samplePDF() -> Data {
+        let data = NSMutableData()
+        let consumer = CGDataConsumer(data: data)!
+        var bounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = CGContext(consumer: consumer, mediaBox: &bounds, nil)!
+        for (index, section) in SampleBook.sections.enumerated() {
+            context.beginPDFPage(nil)
+            context.setFillColor(CGColor(red: 0.985, green: 0.978, blue: 0.956, alpha: 1))
+            context.fill(bounds)
+            draw("S T I L L   /   A   S H O R T   I N T R O D U C T I O N", font: "Helvetica", size: 10, rect: CGRect(x: 64, y: 693, width: 484, height: 25), in: context)
+            draw(section.0, font: "Georgia", size: 29, rect: CGRect(x: 64, y: 605, width: 484, height: 60), in: context)
+            draw(section.1, font: "Georgia", size: 16, rect: CGRect(x: 64, y: 150, width: 484, height: 440), in: context)
+            draw("\(index + 1)", font: "Helvetica", size: 11, rect: CGRect(x: 294, y: 46, width: 40, height: 24), in: context)
+            context.endPDFPage()
+        }
+        context.closePDF()
+        let document = PDFDocument(data: data as Data)!
+        document.documentAttributes = [PDFDocumentAttribute.titleAttribute: "The art of attention", PDFDocumentAttribute.authorAttribute: "A Still introduction"]
+        let outline = PDFOutline()
+        for (index, section) in SampleBook.sections.enumerated() {
+            let child = PDFOutline()
+            child.label = section.0
+            child.destination = PDFDestination(page: document.page(at: index)!, at: CGPoint(x: 0, y: 792))
+            outline.insertChild(child, at: index)
+        }
+        document.outlineRoot = outline
+        return document.dataRepresentation()!
+    }
+
+    private static func draw(_ string: String, font: String, size: CGFloat, rect: CGRect, in context: CGContext) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(font as CFString, size, nil),
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0.14, alpha: 1)
+        ]
+        let text = NSAttributedString(string: string, attributes: attributes)
+        let setter = CTFramesetterCreateWithAttributedString(text)
+        let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: text.length), CGPath(rect: rect, transform: nil), nil)
+        CTFrameDraw(frame, context)
+    }
+
     static func main() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("shared/fixtures")
         let encoder = JSONEncoder()
@@ -54,7 +97,7 @@ enum ContractFixtures {
                 chapters: [BookChapter(id: UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB")!, title: "Begin", pageIndex: 1, level: 0, source: "Manual")])
             book.setReadingStart(ReadingPosition(pageID: pages[1].id, utf16Offset: 11))
             book.position = ReadingPosition(pageID: pages[1].id, utf16Offset: 17)
-            let pdf = SampleBook.pdfData()
+            let pdf = samplePDF()
             try pdf.write(to: root.appendingPathComponent("sample.pdf"))
             try encoder.encode(Backup(book: book, pdfData: pdf)).write(to: root.appendingPathComponent("apple-backup.json"))
         }

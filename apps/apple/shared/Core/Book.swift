@@ -17,12 +17,9 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
     var readingStartPageIndex: Int { readingStart.flatMap { start in pages.firstIndex { $0.id == start.pageID } } ?? 0 }
     func includesPage(at index: Int) -> Bool { pages.indices.contains(index) && index >= readingStartPageIndex && pages[index].isIncluded }
     var includedPages: [BookPage] { pages.enumerated().filter { includesPage(at: $0.offset) }.map(\.element) }
-    var reviewedCount: Int { includedPages.filter { $0.isReviewed }.count }
     var wordCount: Int { pages.indices.reduce(0) { $0 + readingWords(on: $1).count } }
     var canRead: Bool { pages.indices.contains { !readingWords(on: $0).isEmpty } }
     var emptyReadingPageCount: Int { includedPages.filter(\.hasNoText).count }
-    var needsReview: Bool { includedPages.contains { !$0.isReviewed || $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
-    var reviewProgress: Double { includedPages.isEmpty ? 0 : Double(reviewedCount) / Double(includedPages.count) }
 
     func readingWords(on index: Int) -> [TextWord] {
         guard includesPage(at: index) else { return [] }
@@ -51,10 +48,9 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
         position?.finished = false
     }
 
-    func chapter(at pageIndex: Int) -> BookChapter? {
-        chapters.filter { $0.pageIndex <= pageIndex }.sorted {
-            $0.pageIndex == $1.pageIndex ? $0.level < $1.level : $0.pageIndex < $1.pageIndex
-        }.last
+    var hasValidStructure: Bool {
+        schemaVersion == 1 && !pages.isEmpty && Set(pages.map(\.id)).count == pages.count &&
+            chapters.allSatisfy { pages.indices.contains($0.pageIndex) }
     }
 }
 

@@ -58,10 +58,11 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(Tokenizer.duration(for: plain, wordsPerMinute: 0, naturalPauses: false), 1)
     }
 
-    func testChapterAtPageUsesDeepestMatchingBookmark() {
+    func testCurrentSectionUsesDeepestMatchingBookmark() {
         var book = makeBook(["one", "two", "three"])
         book.chapters = [BookChapter(id: UUID(), title: "Chapter", pageIndex: 0, level: 0, source: "PDF bookmark"), BookChapter(id: UUID(), title: "Section", pageIndex: 1, level: 1, source: "PDF bookmark")]
-        XCTAssertEqual(book.chapter(at: 2)?.title, "Section")
+        let tokens = Tokenizer.tokens(for: book)
+        XCTAssertEqual(ReadingStructure(book: book, tokens: tokens).section(at: 2)?.title, "Section")
     }
 }
 
@@ -82,8 +83,8 @@ final class ImportAndPersistenceTests: XCTestCase {
         } catch { XCTAssertTrue(error is PDFImportError) }
     }
 
-    func testCancelledImportDoesNotProducePartialBook() async {
-        let data = SampleBook.pdfData()
+    func testCancelledImportDoesNotProducePartialBook() async throws {
+        let data = try SampleBook.pdfData()
         let task = Task { try await PDFImporter.extract(data: data, filename: "test.pdf") { _, _ in } }
         task.cancel()
         do { _ = try await task.value; XCTFail("Expected cancellation") }
@@ -97,7 +98,7 @@ final class ImportAndPersistenceTests: XCTestCase {
         var book = makeBook(["Original words"])
         book.pages[0].text = "Corrected words"
         book.position = ReadingPosition(pageID: book.pages[0].id, utf16Offset: 10)
-        let pdf = SampleBook.pdfData()
+        let pdf = try SampleBook.pdfData()
         try repository.insert(book, pdfData: pdf)
         let loaded = try XCTUnwrap(repository.load().books.first)
         XCTAssertEqual(loaded.pages[0].extractedText, "Original words")
@@ -121,7 +122,7 @@ final class ImportAndPersistenceTests: XCTestCase {
     }
 
     func testBackupRoundTripAndInvalidChapterRejection() throws {
-        var backup = BookBackup(book: makeBook(["one"]), pdfData: SampleBook.pdfData())
+        var backup = try BookBackup(book: makeBook(["one"]), pdfData: SampleBook.pdfData())
         let decoded = try JSONDecoder().decode(BookBackup.self, from: JSONEncoder().encode(backup))
         try decoded.validate()
         XCTAssertEqual(decoded.book.pages.first?.text, "one")
@@ -409,7 +410,7 @@ final class ScrubbingTests: XCTestCase {
         engine.endScrubbing()
         XCTAssertFalse(engine.isScrubbing)
         XCTAssertNil(engine.current)
-        XCTAssertTrue(engine.context.isEmpty)
+        XCTAssertTrue(engine.tokens.isEmpty)
     }
 }
 
@@ -447,5 +448,98 @@ final class ImmediateReadingTests: XCTestCase {
         XCTAssertEqual(engine.current?.word.text, "Start")
         XCTAssertNil(engine.blockedPage)
         engine.pause()
+    }
+}
+
+@MainActor
+final class LibraryOperationTests: XCTestCase {
+    private func waitForImport(_ store: LibraryStore) async throws {
+        for _ in 0..<500 {
+            if !store.isImporting { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("The library operation did not finish")
+    }
+
+    func testImportRejectsConcurrentWorkAndPreservesDuplicateBookPositions() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var book = makeBook(["A café 🌿 beginning", "Continue here"])
+        book.setReadingStart(ReadingPosition(pageID: book.pages[0].id, utf16Offset: 7))
+        book.position = ReadingPosition(pageID: book.pages[1].id, utf16Offset: 9)
+        let file = root.appendingPathComponent("book.STILLBOOK")
+        try JSONEncoder().encode(BookBackup(book: book, pdfData: SampleBook.pdfData())).write(to: file)
+        let store = LibraryStore(repository: BookRepository(root: root.appendingPathComponent("library")))
+        var completed: [UUID] = []
+        let completion: (UUID) -> Void = { id in
+            XCTAssertFalse(store.isImporting)
+            completed.append(id)
+        }
+        store.importFile(file, completion: completion)
+        XCTAssertTrue(store.isImporting)
+        store.importFile(file) { _ in XCTFail("Concurrent import must be ignored") }
+        try await waitForImport(store)
+        XCTAssertEqual(completed, [book.id])
+        XCTAssertEqual(store.book(book.id), book)
+        store.importFile(file, completion: completion)
+        try await waitForImport(store)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(store.books.count, 2)
+        XCTAssertNotEqual(completed.first, completed.last)
+        let duplicate = try XCTUnwrap(store.books.first)
+        XCTAssertEqual(duplicate.pages, book.pages)
+        XCTAssertEqual(duplicate.position, book.position)
+        XCTAssertEqual(duplicate.readingStart, book.readingStart)
+        XCTAssertEqual(try store.repository.load().books.count, 2)
+    }
+
+    func testCancellationAndFailureLeaveTheLibraryReadyForAnotherImport() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let file = root.appendingPathComponent("sample.pdf")
+        try SampleBook.pdfData().write(to: file)
+        let store = LibraryStore(repository: BookRepository(root: root.appendingPathComponent("library")))
+        store.importFile(file) { _ in XCTFail("Cancelled import must not complete") }
+        store.cancelImport()
+        try await waitForImport(store)
+        XCTAssertTrue(store.books.isEmpty)
+        XCTAssertNil(store.errorMessage)
+        try Data("not a PDF".utf8).write(to: file)
+        store.importFile(file) { _ in XCTFail("Invalid PDF must not complete") }
+        try await waitForImport(store)
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertTrue(store.books.isEmpty)
+        try SampleBook.pdfData().write(to: file)
+        store.importFile(file) { _ in }
+        try await waitForImport(store)
+        XCTAssertEqual(store.books.count, 1)
+    }
+
+    func testDiskAndBackupRejectTheSameMalformedBookStructures() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pdf = try SampleBook.pdfData()
+        let repository = BookRepository(root: root)
+        let valid = makeBook(["one", "two"])
+        let mutations: [(inout Book) -> Void] = [
+            { $0.schemaVersion = 2 },
+            { $0.pages = [] },
+            { $0.pages[1].id = $0.pages[0].id },
+            { $0.chapters = [BookChapter(id: UUID(), title: "Outside", pageIndex: 2, level: 0, source: "Manual")] },
+            { $0.chapters = [BookChapter(id: UUID(), title: "Before", pageIndex: -1, level: 0, source: "Manual")] }
+        ]
+        for mutate in mutations {
+            var malformed = valid
+            malformed.id = UUID()
+            mutate(&malformed)
+            XCTAssertThrowsError(try BookBackup(book: malformed, pdfData: pdf).validate())
+            try repository.insert(malformed, pdfData: pdf)
+        }
+        let loaded = try repository.load()
+        XCTAssertTrue(loaded.books.isEmpty)
+        XCTAssertEqual(loaded.unreadableCount, mutations.count)
+        XCTAssertNoThrow(try BookBackup(book: valid, pdfData: pdf).validate())
     }
 }

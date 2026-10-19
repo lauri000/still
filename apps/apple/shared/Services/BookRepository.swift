@@ -18,10 +18,8 @@ struct BookRepository: Sendable {
         for folder in folders where UUID(uuidString: folder.lastPathComponent) != nil {
             do {
                 let book = try JSONDecoder().decode(Book.self, from: Data(contentsOf: folder.appendingPathComponent("book.json")))
-                guard book.schemaVersion == 1, !book.pages.isEmpty,
+                guard book.hasValidStructure,
                       book.id.uuidString == folder.lastPathComponent,
-                      Set(book.pages.map(\.id)).count == book.pages.count,
-                      book.chapters.allSatisfy({ book.pages.indices.contains($0.pageIndex) }),
                       FileManager.default.fileExists(atPath: pdfURL(for: book.id).path)
                 else { throw RepositoryError.invalidBook }
                 books.append(book)
