@@ -4,7 +4,9 @@ struct PDFContentsPreview: View {
     let book: Book
     let url: URL
     let page: Int
+    var startOffset: Int = 0
     let choosePage: (Int) -> Void
+    var chooseOffset: (Int?) -> Void = { _ in }
     @State private var entries: [PDFContentsEntry] = []
     @State private var loading = true
     @State private var failed = false
@@ -13,7 +15,7 @@ struct PDFContentsPreview: View {
     @State private var collapsed: Set<String> = []
     @State private var selectedID: String?
 
-    private var current: PDFContentsEntry? { PDFContents.current(in: entries, page: page, selectedID: selectedID) }
+    private var current: PDFContentsEntry? { PDFContents.current(in: entries, page: page, selectedID: selectedID, utf16Offset: book.isEpub ? startOffset : nil) }
 
     var body: some View {
         // Observe loading state here even when the compact layout has no inline list.
@@ -32,10 +34,10 @@ struct PDFContentsPreview: View {
                     .accessibilityValue(isLoading ? "Loading" : (visible ? "Shown" : "Hidden"))
                 HStack(spacing: 16) {
                     if visible { contents.frame(width: 280).accessibilityIdentifier("contentsSidebar") }
-                    PDFPageView(url: url, pageIndex: page)
+                    BookPreview(book: book, url: url, page: page, startOffset: startOffset)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line))
-                        .accessibilityLabel("PDF page \(page + 1) preview")
+                        .accessibilityLabel("\(book.unitName) \(page + 1) preview")
                 }
             }
         }
@@ -54,7 +56,7 @@ struct PDFContentsPreview: View {
             loading = true; failed = false; entries = []; collapsed = []; selectedID = nil
             let source = url
             do {
-                let result = try await Task.detached(priority: .userInitiated) { try PDFContents.read(url: source) }.value
+                let result = try await Task.detached(priority: .userInitiated) { book.isEpub ? PDFContents.fromChapters(book) : try PDFContents.read(url: source) }.value
                 guard !Task.isCancelled else { return }
                 entries = result
             } catch { failed = true }
@@ -73,6 +75,7 @@ struct PDFContentsPreview: View {
             guard let destination = entry.pageIndex, book.pages.indices.contains(destination) else { return }
             selectedID = entry.id
             choosePage(destination)
+            chooseOffset(entry.utf16Offset)
             sheetOpen = false
         }
     }
@@ -97,8 +100,8 @@ struct PDFContentsList: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     if loading { ProgressView("Loading contents…").padding() }
-                    else if failed { message("Contents unavailable", "You can still choose a page using the page controls.") }
-                    else if entries.isEmpty { message("No PDF contents", "This PDF has no embedded outline. Use the page controls to choose where to read.") }
+                    else if failed { message("Contents unavailable", "You can still choose a \(book.unitName.lowercased()) using the controls.") }
+                    else if entries.isEmpty { message("No contents", "This book has no contents. Use the \(book.unitName.lowercased()) controls to choose where to read.") }
                     else {
                         ForEach(PDFContents.visible(entries, collapsed: collapsed)) { entry in
                             row(entry).id(entry.id)
@@ -123,7 +126,7 @@ struct PDFContentsList: View {
 
     private func row(_ entry: PDFContentsEntry) -> some View {
         let selected = selectedID == entry.id
-        let available = entry.pageIndex.map { book.pages.indices.contains($0) && (!readingOnly || book.includesPage(at: $0) && !book.pages[$0].hasNoText) } ?? false
+        let available = entry.pageIndex.map { book.pages.indices.contains($0) && (!readingOnly || book.includesPage(at: $0) && !book.pages[$0].hasNoText && !(entry.utf16Offset.map { offset in book.readingStart.map { $0.pageID == book.pages[entry.pageIndex!].id && offset < $0.utf16Offset } ?? false } ?? false)) } ?? false
         return HStack(spacing: 0) {
             if entry.hasChildren {
                 Button {
@@ -141,7 +144,7 @@ struct PDFContentsList: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.title).font(.system(size: 14, weight: selected ? .semibold : .regular))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(entry.pageIndex != nil && !available ? "Outside reading selection" : entry.pageIndex.flatMap { book.pages.indices.contains($0) ? "Page \(book.pages[$0].label)" : nil } ?? "No local page")
+                    Text(entry.pageIndex != nil && !available ? "Outside reading selection" : entry.pageIndex.flatMap { book.pages.indices.contains($0) ? "\(book.unitName) \(book.pages[$0].label)" : nil } ?? "No local destination")
                         .font(.caption).foregroundStyle(Palette.muted)
                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 6).padding(.trailing, 8)
                     .contentShape(Rectangle())
@@ -170,7 +173,7 @@ struct ReaderContentsSheet: View {
 
     private var selectedID: String? {
         let current = engine.structure.section(at: engine.index)
-        return entries.first { $0.pageIndex == current?.pageIndex && ReadingStructure.normalize($0.title) == current.map { ReadingStructure.normalize($0.title) } }?.id
+        return entries.first { entry in engine.book.isEpub ? current.map { entry.id == "chapter-" + $0.chapterID.uuidString } == true : entry.pageIndex == current?.pageIndex && ReadingStructure.normalize(entry.title) == current.map { ReadingStructure.normalize($0.title) } }?.id
             ?? PDFContents.current(in: entries, page: engine.current?.pageIndex ?? 0, selectedID: nil)?.id
     }
     var body: some View {
@@ -180,24 +183,26 @@ struct ReaderContentsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }
             }
-            Menu("Go to page") {
+            Menu("Go to \(engine.book.unitName.lowercased())") {
                 ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
                     if engine.book.includesPage(at: index) {
-                        Button("Page \(page.label)") { engine.seekPage(index); dismiss() }
+                        Button("\(engine.book.unitName) \(page.label)") { engine.seekPage(index); dismiss() }
                     }
                 }
             }.accessibilityIdentifier("readerGoToPage")
             PDFContentsList(book: engine.book, entries: entries, loading: loading, failed: failed,
                             selectedID: selectedID, collapsed: $collapsed, readingOnly: true) { entry in
                 guard let page = entry.pageIndex else { return }
-                if let index = engine.structure.destination(title: entry.title, page: page) { engine.seek(index) }
+                if let offset = entry.utf16Offset { engine.seekPosition(ReadingPosition(pageID: engine.book.pages[page].id, utf16Offset: offset)) }
+                else if let index = engine.structure.destination(title: entry.title, page: page) { engine.seek(index) }
                 else { engine.seekPage(page) }
                 dismiss()
             }
         }.padding(20).background(Palette.paper)
             .presentationDetents([.large]).frame(idealWidth: 400, idealHeight: 600)
             .task {
-                if let url {
+                if engine.book.isEpub { entries = PDFContents.fromChapters(engine.book) }
+                else if let url {
                     do { entries = try await Task.detached(priority: .userInitiated) { try PDFContents.read(url: url) }.value }
                     catch { failed = true }
                 }
@@ -209,5 +214,23 @@ struct ReaderContentsSheet: View {
                 if !entries.isEmpty { failed = false }
                 loading = false
             }
+    }
+}
+
+struct BookPreview: View {
+    let book: Book
+    let url: URL
+    let page: Int
+    var startOffset: Int = 0
+    var body: some View {
+        if book.isEpub {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    ForEach(Array(String((book.pages[page].text as NSString).substring(from: min(max(0, startOffset), book.pages[page].text.utf16.count)).prefix(6000)).components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
+                        Text(paragraph).font(.custom("Georgia", size: 18)).lineSpacing(6).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }.padding(20)
+            }.background(Palette.surface).accessibilityIdentifier("epubPreview")
+        } else { PDFPageView(url: url, pageIndex: page) }
     }
 }

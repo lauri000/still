@@ -59,31 +59,59 @@ final class ReaderCache: @unchecked Sendable, Equatable {
 enum ReaderPipeline {
     // Bump for extraction, repair, tokenization, or heading-recognition changes.
     static let version = 1
+    static func version(for book: Book) -> Int { book.isEpub ? 2 : version }
     static func prepare(_ book: Book, reuseIndexes: Bool = false) -> Book {
         var updated = book
         for index in updated.pages.indices {
             let page = updated.pages[index]
             updated.pages[index].edited = page.isEdited
-            updated.pages[index].wordIndex = (reuseIndexes ? page.wordIndex : nil) ?? Tokenizer.words(in: page.text).flatMap { [$0.offset, $0.length, $0.endsParagraph ? 1 : 0] }
+            updated.pages[index].wordIndex = (reuseIndexes ? page.wordIndex : nil) ?? Tokenizer.words(in: page.text, preserveLineBreaks: book.isEpub).flatMap { [$0.offset, $0.length, $0.endsParagraph ? 1 : ($0.endsLine ? 2 : 0)] }
         }
         var full = updated
         for index in full.pages.indices { full.pages[index].isIncluded = true }
         full.readingStart = nil; full.headingMatches = nil
-        updated.headingMatches = ReadingStructure(book: full, tokens: Tokenizer.tokens(for: full)).matches
-        updated.schemaVersion = 2
-        updated.pipelineVersion = version
+        updated.headingMatches = book.isEpub ? updated.pages.enumerated().flatMap { index, page in (page.headings ?? []).map { h in
+            HeadingMatch(title: ReadingStructure.normalize((page.text as NSString).substring(with: NSRange(location: h.start, length: h.end - h.start))), pageIndex: index, level: h.level, start: h.start, end: h.end)
+        } } : ReadingStructure(book: full, tokens: Tokenizer.tokens(for: full)).matches
+        updated.schemaVersion = book.isEpub ? 3 : 2
+        updated.pipelineVersion = version(for: book)
         updated.readerCache = ReaderCache()
         _ = updated.readerCache.get(updated)
         return updated
     }
 
     static func update(from old: Book, to book: Book) -> Book {
-        guard !old.needsReprocessing, book.pipelineVersion == version else { return book }
-        let changed = old.pages.indices.filter { old.pages[$0].text != book.pages[$0].text }
+        guard !old.needsReprocessing, book.pipelineVersion == version(for: book) else { return book }
+        let changed = old.pages.indices.filter { old.pages[$0].text != book.pages[$0].text || book.pages[$0].wordIndex == nil }
         guard !changed.isEmpty || old.title != book.title || old.chapters != book.chapters else { return book }
         var updated = book
         for index in changed { updated.pages[index].wordIndex = nil; updated.pages[index].edited = true }
-        updated.chaptersCustomized = old.chaptersCustomized == true || old.chapters != book.chapters
+        return prepare(updated, reuseIndexes: true)
+    }
+
+    /// Restore derived section data together. Customized chapter lists retain removals and manual entries.
+    static func restoreSection(_ original: Book, converted: Book, index: Int, sourceIndex: Int) -> Book {
+        var updated = original
+        let source = converted.pages[sourceIndex]
+        updated.editText(on: index, to: source.text)
+        updated.pages[index].headings = source.headings
+        updated.pages[index].wordIndex = source.wordIndex
+        updated.pages[index].edited = false
+        let chapters = converted.chapters.filter { $0.pageIndex == sourceIndex }.map { chapter in
+            var chapter = chapter; chapter.pageIndex = index; return chapter
+        }
+        if original.chaptersCustomized == true {
+            for i in updated.chapters.indices where updated.chapters[i].pageIndex == index {
+                if let anchor = updated.chapters[i].sourceAnchor,
+                   let restored = chapters.first(where: { $0.sourceAnchor == anchor }) {
+                    updated.chapters[i].utf16Offset = restored.utf16Offset
+                }
+            }
+        } else {
+            updated.chapters = (updated.chapters.filter { $0.pageIndex != index } + chapters).sorted {
+                $0.pageIndex == $1.pageIndex ? ($0.utf16Offset ?? 0) < ($1.utf16Offset ?? 0) : $0.pageIndex < $1.pageIndex
+            }
+        }
         return prepare(updated, reuseIndexes: true)
     }
 
@@ -112,7 +140,7 @@ enum ReaderPipeline {
             let old = original.pages[index]
             var page = converted.pages[index]
             page.id = old.id; page.label = old.label
-            if old.isEdited { page.text = old.text }
+            if old.isEdited { page.text = old.text; page.headings = old.headings }
             page.wordIndex = nil; page.edited = old.isEdited
             page.isIncluded = old.isIncluded
             page.isReviewed = old.isReviewed && old.text == page.text
@@ -124,8 +152,15 @@ enum ReaderPipeline {
             return position
         }
         updated.position = relocate(original.position); updated.readingStart = relocate(original.readingStart)
-        let keepChapters = original.chaptersCustomized == true || original.pipelineVersion == nil || original.chapters.contains { $0.source != "PDF bookmark" }
+        let keepChapters = original.chaptersCustomized == true || original.pipelineVersion == nil || original.chapters.contains { !["PDF bookmark", "EPUB navigation", "EPUB heading"].contains($0.source) }
         updated.chapters = keepChapters ? original.chapters : converted.chapters
+        for index in updated.chapters.indices {
+            let chapter = updated.chapters[index]
+            if let offset = chapter.utf16Offset {
+                let before = keepChapters ? original.pages[chapter.pageIndex].text : converted.pages[chapter.pageIndex].text
+                updated.chapters[index].utf16Offset = relocateOffset(offset, old: before, new: updated.pages[chapter.pageIndex].text)
+            }
+        }
         updated.chaptersCustomized = keepChapters
         return prepare(updated)
     }
@@ -139,7 +174,7 @@ enum ReaderPipeline {
             return stride(from: 0, to: words.count, by: 3).allSatisfy { index in
                 let offset = words[index], length = words[index + 1]
                 guard offset >= end, length > 0, length <= textLength,
-                      offset <= textLength - length, (0...1).contains(words[index + 2]) else { return false }
+                      offset <= textLength - length, (0...(book.isEpub ? 2 : 1)).contains(words[index + 2]) else { return false }
                 end = offset + length
                 return true
             }

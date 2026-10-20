@@ -92,6 +92,110 @@ class AndroidReaderTests {
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
     }
+    @Test fun epubLongSectionStartingWordPickerKeepsExactPosition() {
+        val source = runCatching { fixture("epub/hume-enquiry-epub3.epub") }.getOrNull()
+        org.junit.Assume.assumeTrue("Download the optional EPUB corpus first", source != null)
+        launch(seed = false)
+        val file = File(root, "hume.epub")
+        source!!.use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(30_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        val book = model.selectedBook()!!
+        val page = book.pages.indices.maxBy { book.pages[it].text.length }
+        val word = book.pages[page].words[10_000]
+        compose.runOnUiThread { model.updateBook(book.id) { it.withReadingStart(ReadingPosition(book.pages[page].id, word.offset)) } }
+        compose.onNodeWithTag("bookOptions").performClick()
+        compose.onNodeWithText("Choose starting word").performClick()
+        compose.onNodeWithTag("startingWords").assertIsDisplayed()
+        compose.onNodeWithText("Start at “${word.text}”").assertIsDisplayed()
+        compose.onNodeWithText("Start here").performClick()
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.runOnIdle { assertEquals(word.offset, model.state.value.reader!!.current!!.word.offset) }
+    }
+
+    @Test fun epubRapidEditsOpenAndRestoreUseLatestPreparedSnapshot() {
+        launch(seed = false)
+        val file = File(root, "structured.epub")
+        fixture("epub/structured.epub").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        val original = model.selectedBook()!!
+        compose.runOnUiThread {
+            model.updateBook(original.id, debounce = true) { it.editText(0, "First draft") }
+            model.pause() // Queue an earlier snapshot before the final edit.
+            model.updateBook(original.id, debounce = true) { it.editText(0, "Final draft\nwith a line break") }
+            model.updateBook(original.id) { it.copy(pages = it.pages.mapIndexed { i, p -> if (i == 0) p.copy(isReviewed = true) else p }) }
+            model.openReader()
+        }
+        compose.waitUntil(20_000) { model.state.value.reader != null || model.state.value.error != null }
+        compose.runOnIdle {
+            assertNull(model.state.value.error)
+            assertEquals("Final", model.state.value.reader!!.current!!.word.text)
+            assertFalse(model.selectedBook()!!.needsReprocessing)
+            assertFalse(model.selectedBook()!!.chaptersCustomized)
+        }
+        runBlocking { withContext(Dispatchers.Main) { model.flush() } }
+        val saved = model.repository.load().books.single()
+        assertEquals("Final draft\nwith a line break", saved.pages[0].text)
+        assertTrue(saved.pages[0].words.any { it.endsLine })
+        assertTrue(saved.pages[0].isReviewed)
+        compose.runOnUiThread { model.closeReader(); model.restoreExtractedText(original.id, 0) }
+        compose.waitUntil(20_000) { model.state.value.importing == null }
+        runBlocking { withContext(Dispatchers.Main) { model.flush() } }
+        assertNull(model.state.value.error)
+        assertEquals(original.pages[0].headings, model.selectedBook()!!.pages[0].headings)
+        assertEquals(original.chapters.map { it.utf16Offset }, model.selectedBook()!!.chapters.map { it.utf16Offset })
+    }
+
+    @Test fun epubImportChaptersModesResumeAndBackup() {
+        launch(seed = false)
+        val file = File(root, "structured.epub")
+        fixture("epub/structured.epub").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        assertNull(model.state.value.error)
+        val book = model.selectedBook()!!
+        assertTrue(book.isEpub)
+        compose.onNodeWithTag("epubPreview").assertIsDisplayed()
+        // Two same-title chapters are in one source section; the second must retain its exact anchor.
+        val chapter = book.chapters[2]
+        compose.onNodeWithTag("pdfContents").performClick()
+        val destination = "contentsEntry-chapter-${chapter.id}"
+        compose.waitUntil(5_000) { compose.onNodeWithTag(destination).isDisplayed() }
+        compose.onNodeWithTag(destination).performClick()
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        val session = model.state.value.reader!!
+        compose.onNodeWithTag("currentHeading").assertTextEquals("Repeat")
+        compose.runOnIdle { assertEquals(chapter.utf16Offset, session.current!!.word.offset) }
+        val index = session.state.value.index
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("currentPassageRow").assertTextContains("Repeat", substring = true)
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.runOnIdle { assertEquals(index, session.state.value.index) }
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag(destination).isDisplayed() }
+        compose.onNodeWithTag(destination).assertIsSelected()
+        compose.onNodeWithTag("contentsEntry-chapter-${book.chapters[0].id}").assertIsNotEnabled()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.runOnIdle { assertEquals(chapter.utf16Offset, model.state.value.reader!!.current!!.word.offset) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        val saved = model.selectedBook()!!
+        val backup = File(root, "epub-backup.json")
+        backup.outputStream().use { model.repository.export(saved, it) }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(backup)) }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.books.size == 2 }
+        assertNull(model.state.value.error)
+        val copy = model.selectedBook()!!
+        assertNotEquals(saved.id, copy.id)
+        assertEquals(saved.position, copy.position)
+        assertArrayEquals(file.readBytes(), model.repository.sourceFile(copy).readBytes())
+    }
+
     @Test fun bookTypographyAndReaderContentsKeepTheSourcePositionAndTrim() {
         launch(seed = false)
         val file = File(root, "sample.pdf")
@@ -276,7 +380,7 @@ class AndroidReaderTests {
 
     @Test fun emptyLibraryAndPdfImportOpenStartingPage() {
         launch(seed = false)
-        compose.onNodeWithText("No PDFs yet").assertIsDisplayed()
+        compose.onNodeWithText("No books yet").assertIsDisplayed()
         compose.onNodeWithTag("importPDF").assertIsDisplayed()
         val file = File(root, "sample.pdf")
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }

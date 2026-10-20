@@ -13,8 +13,8 @@ android {
             "com.stillreader.app.pdfevaluation" else "com.stillreader.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.1.15"
+        versionCode = 17
+        versionName = "0.1.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -36,6 +36,19 @@ android {
         getByName("androidTest").assets.srcDir("../../../shared/fixtures")
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+// Only small synthetic EPUBs are generated. Downloaded books are optional and never fetched by a build.
+val generateEpubFixtures by tasks.registering(Exec::class) {
+    val script = rootProject.file("../../scripts/epub-fixtures.py")
+    inputs.file(script)
+    outputs.files(listOf("structured", "legacy", "fixed-layout", "encrypted", "unsafe-entity", "missing-spine", "path-escape", "image-only").map {
+        rootProject.file("../../shared/fixtures/epub/$it.epub")
+    })
+    commandLine("python3", script.absolutePath)
+}
+tasks.matching { it.name.contains("Test") }.configureEach {
+    dependsOn(generateEpubFixtures)
 }
 
 val copyProjectLicense by tasks.registering(Copy::class) {

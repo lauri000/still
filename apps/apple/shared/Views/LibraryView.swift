@@ -23,7 +23,7 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.paper).foregroundStyle(Palette.ink)
         .preferredColorScheme(.light)
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf, .json], allowsMultipleSelection: false) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf, UTType(filenameExtension: "epub") ?? .data, .json], allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls): if let url = urls.first { library.importFile(url) { selectedID = $0 } }
             case .failure(let error): library.errorMessage = error.localizedDescription
@@ -41,7 +41,7 @@ struct LibraryView: View {
             HStack {
                 Text("Books").font(.system(size: 28, weight: .semibold))
                 Spacer()
-                Button { importing = true } label: { Label("Import PDF", systemImage: "plus") }
+                Button { importing = true } label: { Label("Import book", systemImage: "plus") }
                     .buttonStyle(PrimaryButton()).accessibilityIdentifier("importPDF")
             }
             if library.books.count > 5 {
@@ -49,7 +49,7 @@ struct LibraryView: View {
                     .accessibilityLabel("Search books")
             }
             if filteredBooks.isEmpty {
-                ContentUnavailableView(search.isEmpty ? "No PDFs yet" : "No matching books", systemImage: "doc", description: Text(search.isEmpty ? "Import a PDF to start reading." : "Try another title."))
+                ContentUnavailableView(search.isEmpty ? "No books yet" : "No matching books", systemImage: "doc", description: Text(search.isEmpty ? "Import a PDF or EPUB to start reading." : "Try another title."))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -76,9 +76,9 @@ struct LibraryView: View {
 
     private func bookStatus(_ book: Book) -> String {
         if let position = book.position, let page = book.pages.firstIndex(where: { $0.id == position.pageID }) {
-            return position.finished ? "Finished · \(book.pages.count) pages" : "Page \(page + 1) of \(book.pages.count)"
+            return position.finished ? "Finished · \(book.pages.count) \(book.unitPlural)" : "\(book.unitName) \(page + 1) of \(book.pages.count)"
         }
-        return "\(book.pages.count) pages"
+        return "\(book.pages.count) \(book.unitPlural)"
     }
 
     private var importOverlay: some View {

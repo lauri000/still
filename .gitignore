@@ -21,3 +21,7 @@ __pycache__/
 *.pfx
 *.key
 keystore.properties
+
+# EPUB fixtures are generated or downloaded locally; track source pointers only.
+*.epub
+*.epub.download

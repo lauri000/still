@@ -22,14 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stillreader.app.core.*
-import com.stillreader.app.data.PdfImporter
+import com.stillreader.app.data.BookImporter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PdfContentsPreview(book: Book, importer: PdfImporter, file: File, page: Int, modifier: Modifier = Modifier, choosePage: (Int) -> Unit) {
+fun PdfContentsPreview(book: Book, importer: BookImporter, file: File, page: Int, modifier: Modifier = Modifier, startOffset: Int = 0, chooseOffset: (Int?) -> Unit = {}, choosePage: (Int) -> Unit) {
     var entries by remember(file) { mutableStateOf<List<PdfContentsEntry>>(emptyList()) }
     var loading by remember(file) { mutableStateOf(true) }
     var failed by remember(file) { mutableStateOf(false) }
@@ -37,9 +37,9 @@ fun PdfContentsPreview(book: Book, importer: PdfImporter, file: File, page: Int,
     var sheetOpen by rememberSaveable(file.path) { mutableStateOf(false) }
     var collapsed by remember(file) { mutableStateOf(emptySet<String>()) }
     var selectedID by rememberSaveable(file.path) { mutableStateOf<String?>(null) }
-    val current = PdfContents.current(entries, page, selectedID)
+    val current = PdfContents.current(entries, page, selectedID, if (book.isEpub) startOffset else null)
     LaunchedEffect(file) {
-        try { entries = importer.contents(file) }
+        try { entries = importer.contents(file, book) }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { failed = true }
         finally { loading = false }
@@ -52,6 +52,7 @@ fun PdfContentsPreview(book: Book, importer: PdfImporter, file: File, page: Int,
         entry.pageIndex?.takeIf { it in book.pages.indices }?.let {
             selectedID = entry.id
             choosePage(it)
+            chooseOffset(entry.utf16Offset)
             sheetOpen = false
         }
     }
@@ -67,7 +68,7 @@ fun PdfContentsPreview(book: Book, importer: PdfImporter, file: File, page: Int,
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (visible) ContentsList(book, entries, loading, failed, current?.id, collapsed, toggle, select,
                     Modifier.width(280.dp).fillMaxHeight().testTag("contentsSidebar"))
-                PdfPreview(importer, file, page, Modifier.weight(1f).fillMaxHeight())
+                BookPreview(book, importer, file, page, Modifier.weight(1f).fillMaxHeight(), startOffset)
             }
         }
     }
@@ -95,14 +96,14 @@ internal fun ContentsList(book: Book, entries: List<PdfContentsEntry>, loading: 
     LazyColumn(modifier.background(Surface, RoundedCornerShape(8.dp)), state = listState, contentPadding = PaddingValues(4.dp)) {
         if (loading || failed || entries.isEmpty()) item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(when { loading -> "Loading contents…"; failed -> "Contents unavailable"; else -> "No PDF contents" }, fontWeight = FontWeight.SemiBold)
-                if (!loading) Text(if (failed) "You can still choose a page using the page controls."
-                    else "This PDF has no embedded outline. Use the page controls to choose where to read.", color = Muted, fontSize = 14.sp)
+                Text(when { loading -> "Loading contents…"; failed -> "Contents unavailable"; else -> if (book.isEpub) "No contents" else "No PDF contents" }, fontWeight = FontWeight.SemiBold)
+                if (!loading) Text(if (failed) "You can still choose a ${book.unitName.lowercase()} using the controls."
+                    else "This book has no contents. Use the ${book.unitName.lowercase()} controls to choose where to read.", color = Muted, fontSize = 14.sp)
             }
         }
         items(visible, key = { it.id }) { entry ->
             val selected = entry.id == selectedID
-            val available = entry.pageIndex?.let { !readingOnly || book.includesPage(it) && !book.pages[it].hasNoText } ?: false
+            val available = entry.pageIndex?.let { it in book.pages.indices && (!readingOnly || book.includesPage(it) && !book.pages[it].hasNoText && !(entry.utf16Offset != null && book.readingStart?.let { start -> start.pageID == book.pages[it].id && entry.utf16Offset < start.utf16Offset } == true)) } ?: false
             Row(Modifier.fillMaxWidth().background(if (selected) Forest.copy(alpha = .1f) else Surface, RoundedCornerShape(6.dp))
                 .padding(start = (entry.level.coerceAtMost(6) * 12).dp), verticalAlignment = Alignment.CenterVertically) {
                 if (entry.hasChildren) IconButton(onClick = { toggle(entry.id) }, modifier = Modifier.size(40.dp).testTag("contentsToggle-${entry.id}")) {
@@ -113,7 +114,7 @@ internal fun ContentsList(book: Book, entries: List<PdfContentsEntry>, loading: 
                     .testTag("contentsEntry-${entry.id}").heightIn(min = 48.dp).padding(vertical = 10.dp, horizontal = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(entry.title, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                    Text(if (entry.pageIndex != null && !available) "Outside reading selection" else entry.pageIndex?.let { book.pages.getOrNull(it)?.let { p -> "Page ${p.label}" } } ?: "No local page", fontSize = 12.sp, color = Muted)
+                    Text(if (entry.pageIndex != null && !available) "Outside reading selection" else entry.pageIndex?.let { book.pages.getOrNull(it)?.let { p -> "${book.unitName} ${p.label}" } } ?: "No local destination", fontSize = 12.sp, color = Muted)
                 }
             }
         }
@@ -129,7 +130,7 @@ internal fun ReaderContentsSheet(session: ReadingSession, model: com.stillreader
     var failed by remember(session) { mutableStateOf(false) }
     var collapsed by remember(session) { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(session) {
-        try { entries = model.importer.contents(model.repository.pdfFile(session.book.id)) }
+        try { entries = model.importer.contents(model.repository.sourceFile(session.book), session.book) }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { failed = true }
         val existing = entries.map { it.pageIndex to ReadingStructure.normalize(it.title) }.toSet()
@@ -140,18 +141,19 @@ internal fun ReaderContentsSheet(session: ReadingSession, model: com.stillreader
     }
     val state by session.state.collectAsState()
     val current = session.structure.sectionAt(state.index)
-    val selected = entries.firstOrNull { current != null && it.pageIndex == current.pageIndex && ReadingStructure.normalize(it.title) == ReadingStructure.normalize(current.title) }
+    val selected = entries.firstOrNull { current != null && (if (session.book.isEpub) it.id == "chapter-${current.chapterID}" else it.pageIndex == current.pageIndex && ReadingStructure.normalize(it.title) == ReadingStructure.normalize(current.title)) }
         ?: PdfContents.current(entries, session.current?.pageIndex ?: 0)
     ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Paper) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Contents", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("Done") }
         }
-        TextButton(onClick = onPage, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Go to page") }
+        TextButton(onClick = onPage, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Go to ${session.book.unitName.lowercase()}") }
         ContentsList(session.book, entries, loading, failed, selected?.id, collapsed,
             { collapsed = if (it in collapsed) collapsed - it else collapsed + it },
             { entry -> entry.pageIndex?.let { page ->
-                session.structure.destination(entry.title, page)?.let(session::seek) ?: session.seekPage(page)
+                if (entry.utf16Offset != null) session.seekPosition(ReadingPosition(session.book.pages[page].id, entry.utf16Offset))
+                else session.structure.destination(entry.title, page)?.let(session::seek) ?: session.seekPage(page)
                 onClose()
             } }, Modifier.fillMaxWidth().weight(1f).padding(16.dp), readingOnly = true)
     }

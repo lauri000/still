@@ -7,6 +7,7 @@ struct BookDetailView: View {
     @State private var pageIndex = 0
     @State private var section = "Read"
     @State private var startPage = 0
+    @State private var startOffset = 0
     @State private var startPageChanged = false
     @State private var initialized = false
     @State private var compactPanel = "Text"
@@ -47,7 +48,7 @@ struct BookDetailView: View {
                 }
                 .background(Palette.paper)
                 .readerPresentation(item: $readingBook) { snapshot in
-                    ReaderView(book: snapshot, pdfURL: library.repository.pdfURL(for: bookID), onReviewPage: { page in pageIndex = page; section = "Edit text" }) { position in
+                    ReaderView(book: snapshot, pdfURL: library.repository.sourceURL(for: book), onReviewPage: { page in pageIndex = page; section = "Edit text" }) { position in
                         library.update(bookID, saveImmediately: true) { $0.position = position }
                         startPageChanged = false
                     }
@@ -60,7 +61,7 @@ struct BookDetailView: View {
                 .sheet(isPresented: $editingMetadata) { metadataSheet(book) }
                 .sheet(isPresented: $addingChapter) { chapterSheet(book) }
                 .sheet(isPresented: $trimmingBeginning) {
-                    ReadingStartView(book: book, pdfURL: library.repository.pdfURL(for: bookID), initialPage: pageIndex) { start in
+                    ReadingStartView(book: book, pdfURL: library.repository.sourceURL(for: book), initialPage: pageIndex) { start in
                         library.update(bookID, saveImmediately: true) { $0.setReadingStart(start) }
                         pageIndex = library.book(bookID)?.readingStartPageIndex ?? 0
                         startPage = pageIndex
@@ -73,13 +74,13 @@ struct BookDetailView: View {
                 .confirmationDialog("Delete “\(book.title)” from this device?", isPresented: $confirmingDelete, titleVisibility: .visible) {
                     Button("Delete book and corrections", role: .destructive) { library.delete(bookID); onBack() }
                     Button("Cancel", role: .cancel) {}
-                } message: { Text("This removes the imported PDF, corrections, and reading progress. Export a backup first if you want to keep them.") }
-                .confirmationDialog("Restore the extracted text on this page?", isPresented: $confirmingReset, titleVisibility: .visible) {
+                } message: { Text("This removes the imported book, corrections, and reading progress. Export a backup first if you want to keep them.") }
+                .confirmationDialog("Restore the extracted text?", isPresented: $confirmingReset, titleVisibility: .visible) {
                     Button("Restore original text", role: .destructive) {
                         library.restoreExtractedText(bookID, pageIndex: pageIndex)
                     }
                     Button("Cancel", role: .cancel) {}
-                } message: { Text("Your corrections on this page will be replaced. The PDF stays unchanged.") }
+                } message: { Text("Your corrections here will be replaced. The original book stays unchanged.") }
             }
         }
         .task(id: bookID) {
@@ -114,11 +115,14 @@ struct BookDetailView: View {
                 Divider()
                 Button("Edit title and author", systemImage: "info.circle") { titleDraft = book.title; authorDraft = book.author; editingMetadata = true }
                 Button("Export book backup…", systemImage: "square.and.arrow.up") {
-                    do {
-                        library.flush()
-                        backup = BookBackup(book: book, pdfData: try Data(contentsOf: library.repository.pdfURL(for: book.id)))
-                        exporting = true
-                    } catch { library.errorMessage = error.localizedDescription }
+                    Task {
+                        await library.waitForSaves()
+                        guard let current = library.book(bookID) else { return }
+                        do {
+                            backup = BookBackup(book: current, pdfData: try Data(contentsOf: library.repository.sourceURL(for: current)))
+                            exporting = true
+                        } catch { library.errorMessage = error.localizedDescription }
+                    }
                 }
                 Divider()
                 Button("Delete book…", systemImage: "trash", role: .destructive) { confirmingDelete = true }
@@ -130,8 +134,8 @@ struct BookDetailView: View {
     private func readingSetup(_ book: Book) -> some View {
         VStack(spacing: 20) {
             HStack(spacing: 12) {
-                Text(book.position != nil && !startPageChanged ? "Page" : "Start page").font(.system(size: 14, weight: .medium))
-                TextField("Page number", value: Binding(get: { startPage + 1 }, set: { choosePage($0 - 1) }), format: .number.grouping(.never))
+                Text(book.position != nil && !startPageChanged ? book.unitName : "Start \(book.unitName.lowercased())").font(.system(size: 14, weight: .medium))
+                TextField("\(book.unitName) number", value: Binding(get: { startPage + 1 }, set: { choosePage($0 - 1) }), format: .number.grouping(.never))
                     .textFieldStyle(.roundedBorder).frame(width: 70).accessibilityIdentifier("readingPageNumber")
                 Text("of \(book.pages.count)").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 Spacer()
@@ -140,10 +144,10 @@ struct BookDetailView: View {
                 Button { choosePage(startPage + 1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
                     .disabled(startPage == book.pages.count - 1).accessibilityLabel("Next starting page")
             }.buttonStyle(.plain)
-            PDFContentsPreview(book: book, url: library.repository.pdfURL(for: bookID), page: startPage, choosePage: choosePage)
+            PDFContentsPreview(book: book, url: library.repository.sourceURL(for: book), page: startPage, startOffset: startOffset, choosePage: choosePage, chooseOffset: { startOffset = $0 ?? 0 })
                 .accessibilityHidden(readingBook != nil)
-            if book.needsReprocessing {
-                Text("This book needs reader preparation. Reprocess the saved PDF to read it. Your corrections and page choices are kept.")
+            if book.needsReprocessing && !library.isPreparing(bookID) {
+                Text("This book needs reader preparation. Reprocess the original file to read it. Your corrections and page choices are kept.")
                     .font(.caption).foregroundStyle(Palette.muted)
             }
             HStack {
@@ -155,7 +159,7 @@ struct BookDetailView: View {
                 Button {
                     openReader()
                 } label: {
-                    Label(openTask != nil ? "Opening…" : book.needsReprocessing ? "Reprocess book" : book.position != nil && !startPageChanged ? (book.position?.finished == true ? "Read again" : "Continue reading") : "Read", systemImage: "play.fill")
+                    Label(openTask != nil ? "Opening…" : library.isPreparing(bookID) ? "Read" : book.needsReprocessing ? "Reprocess book" : book.position != nil && !startPageChanged ? (book.position?.finished == true ? "Read again" : "Continue reading") : "Read", systemImage: "play.fill")
                 }
                 .buttonStyle(PrimaryButton()).accessibilityIdentifier("startReading")
                 .disabled(openTask != nil || (!book.needsReprocessing && book.pages[startPage].hasNoText && (startPageChanged || book.position == nil)))
@@ -167,21 +171,22 @@ struct BookDetailView: View {
         guard let book else { return }
         startPage = min(max(0, index), book.pages.count - 1)
         startPageChanged = true
+        startOffset = 0
     }
 
     private func openReader() {
-        guard let book else { return }
-        if book.needsReprocessing { library.reprocess(bookID); return }
-        if startPageChanged || book.position == nil {
-            library.update(bookID, saveImmediately: true) { book in
-                book.setReadingStart(ReadingPosition(pageID: book.pages[startPage].id, utf16Offset: 0))
-            }
-            startPageChanged = false
-        }
-        library.flush()
-        guard let snapshot = library.book(bookID) else { return }
         openTask?.cancel()
         openTask = Task {
+            await library.waitForSaves()
+            guard !Task.isCancelled, let book = library.book(bookID) else { openTask = nil; return }
+            if book.needsReprocessing { openTask = nil; library.reprocess(bookID); return }
+            if startPageChanged || book.position == nil {
+                library.update(bookID, saveImmediately: true) { book in
+                    book.setReadingStart(ReadingPosition(pageID: book.pages[startPage].id, utf16Offset: startOffset))
+                }
+                startPageChanged = false
+            }
+            guard let snapshot = library.book(bookID) else { openTask = nil; return }
             _ = await Task.detached { snapshot.readerCache.get(snapshot) }.value
             guard !Task.isCancelled, library.book(bookID) == snapshot else { openTask = nil; return }
             readingBook = snapshot
@@ -196,10 +201,10 @@ struct BookDetailView: View {
                 Button { movePage(-1) } label: { Image(systemName: "chevron.left").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == 0).accessibilityLabel("Previous page")
                 Menu {
                     ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, item in
-                        Button("\(item.isReviewed ? "✓ " : "")Page \(item.label)\(book.includesPage(at: index) ? "" : " · skipped")") { library.flush(); pageIndex = index }
+                        Button("\(item.isReviewed ? "✓ " : "")\(book.unitName) \(item.label)\(book.includesPage(at: index) ? "" : " · skipped")") { library.flush(); pageIndex = index }
                     }
                 } label: {
-                    HStack(spacing: 9) { Text("Page \(page.label)").font(.system(size: 13, weight: .semibold)); Image(systemName: "chevron.down").font(.system(size: 9)) }
+                    HStack(spacing: 9) { Text("\(book.unitName) \(page.label)").font(.system(size: 13, weight: .semibold)); Image(systemName: "chevron.down").font(.system(size: 9)) }
                 }.menuStyle(.borderlessButton).fixedSize()
                 Text("of \(book.pages.count)").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 Button { movePage(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == book.pages.count - 1).accessibilityLabel("Next page")
@@ -208,7 +213,8 @@ struct BookDetailView: View {
                 else { Label(page.hasNoText ? "No text" : "Unchecked", systemImage: "circle.dotted").font(.system(size: 11)).foregroundStyle(Palette.muted) }
             }.padding(.horizontal, 20).padding(.vertical, 8)
             GeometryReader { geometry in
-                if geometry.size.width > 720 {
+                if book.isEpub { textPanel(book, page: page) }
+                else if geometry.size.width > 720 {
                     HStack(spacing: 18) {
                         originalPanel(book).frame(maxWidth: .infinity)
                         textPanel(book, page: page).frame(maxWidth: .infinity)
@@ -227,7 +233,7 @@ struct BookDetailView: View {
     private func originalPanel(_ book: Book) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Eyebrow(text: "Original PDF"); Spacer(); Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(Palette.muted) }
-            PDFPageView(url: library.repository.pdfURL(for: bookID), pageIndex: pageIndex)
+            PDFPageView(url: library.repository.sourceURL(for: book), pageIndex: pageIndex)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line))
         }
@@ -293,13 +299,13 @@ struct BookDetailView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Chapters").font(.system(size: 22, weight: .semibold))
-                        Text("From PDF bookmarks or added manually.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                        Text(book.isEpub ? "From EPUB contents or added manually." : "From PDF bookmarks or added manually.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                     }
                     Spacer()
                     Button { chapterDraft = ""; addingChapter = true } label: { Label("Add chapter", systemImage: "plus") }.buttonStyle(SecondaryButton())
                 }.padding(.bottom, 12)
                 if book.chapters.isEmpty {
-                    ContentUnavailableView("No PDF bookmarks found", systemImage: "list.bullet.indent", description: Text("Add a chapter and its starting page."))
+                    ContentUnavailableView("No chapters found", systemImage: "list.bullet.indent", description: Text("Add a chapter and its starting \(book.unitName.lowercased())."))
                 }
                 ForEach(book.chapters.sorted { $0.pageIndex < $1.pageIndex }) { chapter in
                     HStack(spacing: 18) {
@@ -307,11 +313,11 @@ struct BookDetailView: View {
                         Button { pageIndex = chapter.pageIndex; section = "Edit text" } label: {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(chapter.title).font(.custom("Georgia", size: 18))
-                                Text("Page \(book.pages[chapter.pageIndex].label) · \(chapter.source)").font(.system(size: 10)).foregroundStyle(Palette.muted)
+                                Text("\(book.unitName) \(book.pages[chapter.pageIndex].label) · \(chapter.source)").font(.system(size: 10)).foregroundStyle(Palette.muted)
                             }.padding(.leading, CGFloat(min(chapter.level, 4)) * 12)
                         }.buttonStyle(.plain)
                         Spacer()
-                        Button(role: .destructive) { library.update(bookID, saveImmediately: true) { $0.chapters.removeAll { $0.id == chapter.id } } } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }.buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Remove chapter \(chapter.title)")
+                        Button(role: .destructive) { library.update(bookID, saveImmediately: true) { $0.chapters.removeAll { $0.id == chapter.id }; $0.chaptersCustomized = true } } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }.buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Remove chapter \(chapter.title)")
                     }.padding(15).background(Palette.surface, in: RoundedRectangle(cornerRadius: 12))
                 }
             }.padding(28)
@@ -338,13 +344,13 @@ struct BookDetailView: View {
             Text("A new chapter").font(.custom("Georgia", size: 27))
             TextField("Chapter title", text: $chapterDraft).textFieldStyle(.roundedBorder).accessibilityIdentifier("chapterTitle")
             Picker("Starting page", selection: $pageIndex) {
-                ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, page in Text("Page \(page.label)").tag(index) }
+                ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, page in Text("\(book.unitName) \(page.label)").tag(index) }
             }
             HStack {
                 Button("Cancel") { addingChapter = false }.buttonStyle(SecondaryButton())
                 Spacer()
                 Button("Add chapter") {
-                    library.update(bookID, saveImmediately: true) { $0.chapters.append(BookChapter(id: UUID(), title: chapterDraft.trimmingCharacters(in: .whitespacesAndNewlines), pageIndex: pageIndex, level: 0, source: "Added by you")) }
+                    library.update(bookID, saveImmediately: true) { $0.chapters.append(BookChapter(id: UUID(), title: chapterDraft.trimmingCharacters(in: .whitespacesAndNewlines), pageIndex: pageIndex, level: 0, source: "Added by you")); $0.chaptersCustomized = true }
                     addingChapter = false
                 }.buttonStyle(PrimaryButton()).disabled(chapterDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

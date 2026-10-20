@@ -5,23 +5,34 @@ import java.util.Locale
 /** Applies saved heading matches to the current trim and page selection. */
 class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
     data class Heading(val title: String, val words: IntRange, val level: Int, val pageIndex: Int)
-    data class Section(val title: String, val pageIndex: Int, val level: Int, val index: Int, val heading: Heading?)
+    data class Section(val chapterID: String, val title: String, val pageIndex: Int, val level: Int, val index: Int, val heading: Heading?)
     val matches = mutableListOf<HeadingMatch>()
     val sections: List<Section>
     val headings: List<Heading>
     val chapterEnds: Set<Int>
+    private val isEpub = book.isEpub
     private val headingWords: Map<Int, Heading>
 
     init {
         val starts = IntArray(book.pages.size) { -1 }
         val ends = IntArray(book.pages.size)
         tokens.forEach { if (starts[it.pageIndex] < 0) starts[it.pageIndex] = it.id; ends[it.pageIndex] = it.id + 1 }
+        // An EPUB section can contain an entire book: locate saved spans without rescanning its words.
+        fun lowerBound(page: Int, offset: Int, wordEnd: Boolean = false): Int {
+            var low = starts[page]; var high = ends[page]
+            while (low < high) {
+                val middle = (low + high) / 2
+                val word = tokens[middle].word
+                if (word.offset + (if (wordEnd) word.length else 0) < offset) low = middle + 1 else high = middle
+            }
+            return low
+        }
         val lines = mutableMapOf<Int, List<Line>>()
-        fun match(title: String, page: Int, level: Int): Heading? {
+        fun match(title: String, page: Int, level: Int, expectedStart: Int? = null): Heading? {
             val normalized = normalize(title)
-            if (normalized.length < 3 || normalized.length > 240 || starts[page] < 0) return null
+            if (normalized.length < (if (book.isEpub) 1 else 3) || normalized.length > 240 || starts[page] < 0) return null
             val span = if (book.headingMatches != null) {
-                book.headingMatches.firstOrNull { it.pageIndex == page && it.title == normalized && it.level == level }
+                book.headingMatches.firstOrNull { it.pageIndex == page && it.title == normalized && it.level == level && (expectedStart == null || it.start == expectedStart) }
                     ?.let { it.start until it.end }
             } else {
                 val source = book.pages[page].text
@@ -42,23 +53,27 @@ class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
                 matches.singleOrNull()
             } ?: return null
             matches += HeadingMatch(normalized, page, level, span.first, span.last + 1)
-            val pageTokens = tokens.subList(starts[page], ends[page])
-            val first = pageTokens.firstOrNull { it.word.offset >= span.first } ?: return null
-            val last = pageTokens.lastOrNull { it.word.offset + it.word.length <= span.last + 1 } ?: return null
-            if (last.id < first.id || book.readingStart?.let { it.pageID == first.pageID && it.utf16Offset > first.word.offset } == true) return null
+            val firstIndex = lowerBound(page, span.first)
+            val lastIndex = lowerBound(page, span.last + 2, wordEnd = true) - 1
+            if (firstIndex >= ends[page] || lastIndex < firstIndex) return null
+            val first = tokens[firstIndex]; val last = tokens[lastIndex]
+            if (book.readingStart?.let { it.pageID == first.pageID && it.utf16Offset > first.word.offset } == true) return null
             val actual = tokens.subList(first.id, last.id + 1).joinToString(" ") { it.word.text }
             // Partial trims never turn the rest of a heading into a new opening.
             if (normalize(actual) != normalized) return null
             return Heading(actual, first.id..last.id, level, page)
         }
-        val chapters = book.chapters.filter { it.pageIndex in book.pages.indices && starts[it.pageIndex] >= 0 }
+        val chapters = book.chapters.filter { it.pageIndex in book.pages.indices && starts[it.pageIndex] >= 0 && !(it.utf16Offset != null && book.readingStart?.let { start -> start.pageID == book.pages[it.pageIndex].id && it.utf16Offset < start.utf16Offset } == true) }
         val candidates = chapters.map { chapter ->
-            val heading = match(chapter.title, chapter.pageIndex, chapter.level)
-            Section(chapter.title, chapter.pageIndex, chapter.level, heading?.words?.first ?: starts[chapter.pageIndex], heading)
-        }.distinctBy { Triple(it.pageIndex, normalize(it.title), it.level) }
+            val explicit = chapter.utf16Offset?.let { offset -> book.headingMatches?.firstOrNull { it.pageIndex == chapter.pageIndex && offset in it.start until it.end } }
+            val heading = if (explicit != null) match(explicit.title, explicit.pageIndex, explicit.level, explicit.start) else match(chapter.title, chapter.pageIndex, chapter.level)
+            val destination = chapter.utf16Offset?.let { offset -> lowerBound(chapter.pageIndex, offset + 1, wordEnd = true).coerceAtMost(ends[chapter.pageIndex] - 1) }
+            Section(chapter.id, chapter.title, chapter.pageIndex, chapter.level, destination ?: heading?.words?.first ?: starts[chapter.pageIndex], heading)
+        }.distinctBy { listOf(it.pageIndex, normalize(it.title), it.level, it.index) }
             .sortedWith(compareBy<Section> { it.index }.thenBy { it.level })
         sections = candidates
         val mapped = candidates.mapNotNull { it.heading }.toMutableList()
+        if (book.isEpub) book.headingMatches.orEmpty().forEach { h -> match(h.title, h.pageIndex, h.level, h.start)?.let { mapped += it } }
         // A document title is typography only; it never creates a chapter ending.
         val title = (0 until minOf(3, book.pages.size)).mapNotNull { match(book.title, it, -1) }.singleOrNull()
         if (title != null && mapped.none { it.words.first <= title.words.last && title.words.first <= it.words.last }) mapped += title
@@ -98,7 +113,7 @@ class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
     }
     fun destination(title: String, page: Int): Int? = sections.firstOrNull {
         it.pageIndex == page && normalize(it.title) == normalize(title)
-    }?.heading?.words?.first
+    }?.let { if (isEpub) it.index else it.heading?.words?.first }
     fun duration(index: Int, base: Double): Double {
         val heading = headingAt(index)
         val reading = if (heading != null) maxOf(base, 1.2 / heading.words.count()) else base

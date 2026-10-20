@@ -1,0 +1,384 @@
+{
+  "retrieved_on": "2026-10-20",
+  "samples": [
+    {
+      "file": "alice-epub3.epub",
+      "download_url": "https://www.gutenberg.org/ebooks/11.epub3.images",
+      "source_url": "https://www.gutenberg.org/ebooks/11",
+      "rights_notice": "Project Gutenberg: public domain in the USA; retain included license and credits",
+      "bytes": 189249,
+      "sha256": "4f81245d31380ac1d6eafb9a321e3691369bc70985736ae4bccf849a4f784036",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "Alice's Adventures in Wonderland",
+        "languages": [
+          "en"
+        ],
+        "spine_items": 15,
+        "spine_direction": null,
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 1,
+        "body_text_characters": 165417,
+        "heading_elements": 19,
+        "paragraphs": 778,
+        "line_breaks": 172,
+        "epub_types": {
+          "frontmatter": 1,
+          "toc": 1
+        },
+        "directions": {},
+        "links": {
+          "other": 17,
+          "fragment": 28
+        },
+        "rights_metadata": [
+          "Public domain in the USA."
+        ],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "core",
+      "proposed_test_cases": [
+        "Short novel baseline",
+        "Chapters, dialogue, emphasis and verse line breaks",
+        "Cover image only in this edition; not a body-illustration fixture"
+      ]
+    },
+    {
+      "file": "childrens-literature.epub",
+      "download_url": "https://github.com/IDPF/epub3-samples/releases/download/20230704/childrens-literature.epub",
+      "source_url": "https://idpf.github.io/epub3-samples/30/samples.html",
+      "rights_notice": "Package metadata: public domain in the USA. Sample table default CC-BY-SA-3.0 applies to sample contributions. Retain all bundled notices; do not relabel as project MIT.",
+      "bytes": 161291,
+      "sha256": "191d14d07bcaefde647e494256f73d789f265c8edc46c404320641b23c86b76a",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "Children's Literature",
+        "languages": [
+          "en"
+        ],
+        "spine_items": 3,
+        "spine_direction": null,
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 1,
+        "body_text_characters": 323887,
+        "heading_elements": 46,
+        "paragraphs": 929,
+        "line_breaks": 9,
+        "epub_types": {
+          "pagebreak": 92,
+          "bibliography": 1,
+          "bridgehead": 5,
+          "z3998:author": 15,
+          "annoref": 3,
+          "annotation": 3,
+          "toc": 2,
+          "landmarks": 1,
+          "bodymatter": 1,
+          "page-list": 1
+        },
+        "directions": {},
+        "links": {
+          "fragment": 119
+        },
+        "rights_metadata": [
+          "Public domain in the USA."
+        ],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "core",
+      "proposed_test_cases": [
+        "Navigation labels containing spans",
+        "Contents document also present in the spine",
+        "92 explicit pagebreak markers and a hidden page list",
+        "Preserve navigation metadata without inserting duplicate contents into body reading"
+      ]
+    },
+    {
+      "file": "haruko-html-jpeg.epub",
+      "download_url": "https://github.com/IDPF/epub3-samples/releases/download/20230704/haruko-html-jpeg.epub",
+      "source_url": "https://idpf.github.io/epub3-samples/30/samples.html",
+      "rights_notice": "Sample table: CC-BY-SA-3.0; retain attribution and per-file notices",
+      "bytes": 2247393,
+      "sha256": "87b5eaff288e238864d817ea54b4600dc8c6f96789d0efb946b8545d7ad2f0c0",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "ハルコさんの彼氏",
+        "languages": [
+          "ja-jp"
+        ],
+        "spine_items": 13,
+        "spine_direction": "rtl",
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 12,
+        "body_text_characters": 1549,
+        "heading_elements": 5,
+        "paragraphs": 4,
+        "line_breaks": 0,
+        "epub_types": {
+          "backmatter": 1,
+          "acknowledgments": 2,
+          "frontmatter": 1,
+          "toc": 1,
+          "chapter": 1,
+          "page-list": 1,
+          "bodymatter": 12
+        },
+        "directions": {},
+        "links": {
+          "other": 18
+        },
+        "rights_metadata": [],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "extended",
+      "proposed_test_cases": [
+        "12 image resources in predominantly image-based manga",
+        "Right-to-left spine",
+        "Do not treat title/credits as a successful full text import",
+        "Explain unsupported image-only reading rather than opening an empty book"
+      ]
+    },
+    {
+      "file": "hume-enquiry-epub2.epub",
+      "download_url": "https://www.gutenberg.org/ebooks/9662.epub.images",
+      "source_url": "https://www.gutenberg.org/ebooks/9662",
+      "rights_notice": "Project Gutenberg: public domain in the USA; retain included license and credits",
+      "bytes": 241648,
+      "sha256": "547f420638beb17e2799ebcffc9f7498aaf5138925d05c1d2f8b02b404f9d21c",
+      "observed": {
+        "epub_version": "2.0",
+        "title": "An Enquiry Concerning Human Understanding",
+        "languages": [
+          "en"
+        ],
+        "spine_items": 8,
+        "spine_direction": null,
+        "nav_documents": 0,
+        "ncx_documents": 1,
+        "image_resources": 1,
+        "body_text_characters": 377518,
+        "heading_elements": 180,
+        "paragraphs": 325,
+        "line_breaks": 449,
+        "epub_types": {},
+        "directions": {},
+        "links": {
+          "other": 225,
+          "fragment": 493
+        },
+        "rights_metadata": [
+          "Public domain in the USA."
+        ],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "core",
+      "proposed_test_cases": [
+        "EPUB 2 package and NCX navigation",
+        "Chapter and note links across content files",
+        "Long paragraphs and footnotes",
+        "Compare import/resume timings against the PDF of the same title; editions may differ"
+      ]
+    },
+    {
+      "file": "hume-enquiry-epub3.epub",
+      "download_url": "https://www.gutenberg.org/ebooks/9662.epub3.images",
+      "source_url": "https://www.gutenberg.org/ebooks/9662",
+      "rights_notice": "Project Gutenberg: public domain in the USA; retain included license and credits",
+      "bytes": 238926,
+      "sha256": "0d5cb87e3f1a80f888de4066222d6abed729d1413680b32976ffd5bc4938aaea",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "An Enquiry Concerning Human Understanding",
+        "languages": [
+          "en"
+        ],
+        "spine_items": 5,
+        "spine_direction": null,
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 1,
+        "body_text_characters": 387045,
+        "heading_elements": 180,
+        "paragraphs": 325,
+        "line_breaks": 449,
+        "epub_types": {
+          "frontmatter": 1,
+          "toc": 1
+        },
+        "directions": {},
+        "links": {
+          "other": 225,
+          "fragment": 671
+        },
+        "rights_metadata": [
+          "Public domain in the USA."
+        ],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "core",
+      "proposed_test_cases": [
+        "EPUB 3 navigation document",
+        "Multiple chapter destinations within one content file",
+        "Long paragraphs, linked notes and index",
+        "Compare navigation against the EPUB 2 edition without assuming identical generated frontmatter"
+      ]
+    },
+    {
+      "file": "internallinks.epub",
+      "download_url": "https://github.com/IDPF/epub3-samples/releases/download/20230704/internallinks.epub",
+      "source_url": "https://idpf.github.io/epub3-samples/30/samples.html",
+      "rights_notice": "Sample table: CC-BY-SA-3.0; retain attribution and per-file notices",
+      "bytes": 663694,
+      "sha256": "deaf03a1843f52cc5e4cedb226ca8659610efe1be5e810fccf615bcb549238aa",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "IDに漢字などを使用したサンプル",
+        "languages": [
+          "ja"
+        ],
+        "spine_items": 7,
+        "spine_direction": null,
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 10,
+        "body_text_characters": 13540,
+        "heading_elements": 26,
+        "paragraphs": 66,
+        "line_breaks": 2,
+        "epub_types": {
+          "toc": 1
+        },
+        "directions": {},
+        "links": {
+          "other": 12,
+          "fragment": 47
+        },
+        "rights_metadata": [],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "extended",
+      "proposed_test_cases": [
+        "Japanese text and non-ASCII anchor IDs",
+        "Resolve fragment destinations and relative links",
+        "Separate navigation correctness from unsupported language-specific word segmentation"
+      ]
+    },
+    {
+      "file": "israelsailing.epub",
+      "download_url": "https://github.com/IDPF/epub3-samples/releases/download/20230704/israelsailing.epub",
+      "source_url": "https://idpf.github.io/epub3-samples/30/samples.html",
+      "rights_notice": "Package metadata: Creative commons 2.5 CC-BY-SA; sample table default CC-BY-SA-3.0. Retain original attribution and all bundled notices; do not relabel as project MIT.",
+      "bytes": 1358190,
+      "sha256": "10c397036d2eb54db172d05c9e3cda4382d04e8e9ce3ddd8741ba7058c3dcd4a",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "מפליגים בישראל",
+        "languages": [
+          "he"
+        ],
+        "spine_items": 12,
+        "spine_direction": "rtl",
+        "nav_documents": 1,
+        "ncx_documents": 1,
+        "image_resources": 7,
+        "body_text_characters": 55860,
+        "heading_elements": 21,
+        "paragraphs": 110,
+        "line_breaks": 510,
+        "epub_types": {
+          "toc": 1
+        },
+        "directions": {
+          "rtl": 11
+        },
+        "links": {
+          "other": 14
+        },
+        "rights_metadata": [
+          "Creative commons 2.5 CC-BY-SA"
+        ],
+        "license_links": [],
+        "encrypted_resources": false
+      },
+      "test_tier": "extended",
+      "proposed_test_cases": [
+        "Hebrew mixed with left-to-right content",
+        "Right-to-left spine direction and element direction",
+        "Maintain logical text order independently of display direction"
+      ]
+    },
+    {
+      "file": "moby-dick.epub",
+      "download_url": "https://github.com/IDPF/epub3-samples/releases/download/20230704/moby-dick.epub",
+      "source_url": "https://idpf.github.io/epub3-samples/30/samples.html",
+      "rights_notice": "Sample table: CC-BY-SA-3.0; retain attribution and per-file notices",
+      "bytes": 1628868,
+      "sha256": "81bc079841a38e91a02a7776d04786a2fc311cfd300064e9fc533ce7c54cf7b4",
+      "observed": {
+        "epub_version": "3.0",
+        "title": "Moby-Dick",
+        "languages": [
+          "en-US"
+        ],
+        "spine_items": 144,
+        "spine_direction": null,
+        "nav_documents": 1,
+        "ncx_documents": 0,
+        "image_resources": 2,
+        "body_text_characters": 1222979,
+        "heading_elements": 147,
+        "paragraphs": 2678,
+        "line_breaks": 0,
+        "epub_types": {
+          "frontmatter": 7,
+          "toc": 4,
+          "landmarks": 1,
+          "cover": 1,
+          "bodymatter": 137,
+          "copyright-page": 2,
+          "titlepage": 1,
+          "colophon": 1,
+          "noteref": 1,
+          "footnote": 1,
+          "epigraph": 1,
+          "chapter": 136
+        },
+        "directions": {},
+        "links": {
+          "other": 152,
+          "fragment": 2
+        },
+        "rights_metadata": [
+          "This work is shared with the public using the Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0) license."
+        ],
+        "license_links": [
+          {
+            "rel": "cc:license",
+            "href": "http://creativecommons.org/licenses/by-sa/3.0/"
+          }
+        ],
+        "encrypted_resources": false
+      },
+      "test_tier": "core",
+      "proposed_test_cases": [
+        "144 spine entries; follow declared reading order",
+        "EPUB 3 navigation with no legacy NCX fallback",
+        "136 explicit chapter markers",
+        "Explicit noteref and footnote semantics",
+        "Large-book import, resume and scrolling performance"
+      ]
+    }
+  ],
+  "inspection": "ZIP CRCs, mimetype, container/package XML, local manifest resources and spine references checked. XHTML parsed and structural features counted. This is not full EPUBCheck validation or a Still import test.",
+  "status": "Optional download corpus for native EPUB importer tests. Files are ignored by Git; run scripts/download-epub-fixtures.py to fetch and verify them.",
+  "total_bytes": 6729259
+}

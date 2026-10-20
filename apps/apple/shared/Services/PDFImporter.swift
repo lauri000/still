@@ -1,11 +1,6 @@
 import Foundation
 import PDFKit
 
-struct ImportedBook: Sendable {
-    var book: Book
-    var pdfData: Data
-}
-
 enum PDFImportError: LocalizedError {
     case invalidPDF, locked, tooLarge, noPages, copyingNotAllowed
     var errorDescription: String? {
@@ -76,7 +71,7 @@ enum PDFImporter {
                         originalFilename: filename, importedAt: Date(), pages: pages,
                         chapters: chapters.sorted { $0.pageIndex < $1.pageIndex })
         let repairedBook = PDFTextRepair.apply(to: book, result: repaired, enabled: Array(repeating: true, count: pages.count))
-        return ImportedBook(book: prepareReader ? ReaderPipeline.prepare(repairedBook) : repairedBook, pdfData: data)
+        return ImportedBook(book: prepareReader ? ReaderPipeline.prepare(repairedBook) : repairedBook, sourceData: data)
     }
 
     static func reprocess(url: URL, book: Book, progress: @Sendable (Int, Int) async -> Void) async throws -> Book {

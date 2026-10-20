@@ -117,6 +117,8 @@ final class ReaderEngine: ObservableObject {
     }
     // Scroll updates are cheap; save when settling or leaving the reader.
     func browse(_ newIndex: Int) { if passageMode && newIndex != index { move(to: newIndex) } }
+    func seekPosition(_ position: ReadingPosition) { seek(book.readerCache.get(book).index(position)) }
+
     func seek(_ newIndex: Int) {
         stopPlayback()
         scrubOrigin = nil

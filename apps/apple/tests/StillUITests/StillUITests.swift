@@ -152,7 +152,7 @@ final class StillUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reset-library", "--empty-library"]
         app.launch()
         XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["No PDFs yet"].exists)
+        XCTAssertTrue(app.staticTexts["No books yet"].exists)
         XCTAssertFalse(app.buttons["book-The art of attention"].exists)
         attachScreenshot("Empty library")
         app.buttons["importPDF"].tap()

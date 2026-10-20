@@ -12,6 +12,7 @@ fun appleTimestamp(): Double = System.currentTimeMillis() / 1000.0 - 978307200.0
 @Serializable
 data class Book(
     val schemaVersion: Int = 1,
+    val sourceFormat: String = "pdf",
     val id: String = newID(),
     val title: String,
     val author: String = "",
@@ -27,7 +28,11 @@ data class Book(
     val headingMatches: List<HeadingMatch>? = null,
     @Transient val readerCache: ReaderCache = ReaderCache(),
 ) {
-    val needsReprocessing: Boolean get() = pipelineVersion != ReaderPipeline.VERSION || pages.any { it.wordIndex == null } || headingMatches == null
+    val isEpub get() = sourceFormat == "epub"
+    val unitName get() = if (isEpub) "Section" else "Page"
+    val unitPlural get() = if (isEpub) "sections" else "pages"
+    val sourceFilename get() = if (isEpub) "original.epub" else "original.pdf"
+    val needsReprocessing: Boolean get() = pipelineVersion != ReaderPipeline.version(this) || pages.any { it.wordIndex == null } || headingMatches == null
 
     val readingStartPageIndex: Int
         get() = pages.indexOfFirst { it.id == readingStart?.pageID }.coerceAtLeast(0)
@@ -48,11 +53,19 @@ data class Book(
 
     fun editText(index: Int, text: String): Book {
         if (index !in pages.indices || pages[index].text == text) return this
+        val mapping = TextEditMapping(pages[index].text, text)
         val start = readingStart?.let {
-            if (it.pageID == pages[index].id) it.copy(utf16Offset = Tokenizer.relocatedOffset(it.utf16Offset, pages[index].text, text)) else it
+            if (it.pageID == pages[index].id) it.copy(utf16Offset = mapping.offset(it.utf16Offset)) else it
         }
         return copy(
-            pages = pages.mapIndexed { i, page -> if (i == index) page.copy(text = text, isReviewed = false, edited = true, wordIndex = null) else page },
+            pages = pages.mapIndexed { i, page -> if (i == index) page.copy(text = text, isReviewed = false, edited = true, wordIndex = null,
+                headings = page.headings?.mapNotNull { h ->
+                    val start = mapping.offset(h.start)
+                    val end = mapping.offset(h.end)
+                    if (end > start) TextHeading(start, end, h.level) else null
+                }) else page },
+            chapters = chapters.map { chapter -> if (chapter.pageIndex == index && chapter.utf16Offset != null)
+                chapter.copy(utf16Offset = mapping.offset(chapter.utf16Offset)) else chapter },
             readingStart = start, position = position?.copy(finished = false),
         )
     }
@@ -71,14 +84,16 @@ data class BookPage(
     val textProcessingVersion: Int? = null,
     val edited: Boolean? = null,
     val wordIndex: List<Int>? = null,
+    val sourceHref: String? = null,
+    val headings: List<TextHeading>? = null,
 ) {
     // The index is compact UTF-16 (offset, length, paragraph flag) triples.
     val words: List<TextWord> get() {
-        val index = wordIndex ?: return Tokenizer.words(text)
+        val index = wordIndex ?: return Tokenizer.words(text, preserveLineBreaks = sourceHref != null)
         return buildList(index.size / 3) {
             for (i in index.indices step 3) {
                 val offset = index[i]; val length = index[i + 1]
-                add(TextWord(text.substring(offset, offset + length), offset, length, index[i + 2] == 1))
+                add(TextWord(text.substring(offset, offset + length), offset, length, index[i + 2] == 1, index[i + 2] == 2))
             }
         }
     }
@@ -87,18 +102,23 @@ data class BookPage(
 }
 
 @Serializable
+data class TextHeading(val start: Int, val end: Int, val level: Int)
+
+@Serializable
 data class BookChapter(
     val id: String = newID(),
     val title: String,
     val pageIndex: Int,
     val level: Int = 0,
     val source: String = "Manual",
+    val utf16Offset: Int? = null,
+    val sourceAnchor: String? = null,
 )
 
 @Serializable
 data class ReadingPosition(val pageID: String, val utf16Offset: Int, val finished: Boolean = false)
 
-data class TextWord(val text: String, val offset: Int, val length: Int, val endsParagraph: Boolean)
+data class TextWord(val text: String, val offset: Int, val length: Int, val endsParagraph: Boolean, val endsLine: Boolean = false)
 data class ReadingToken(val id: Int, val pageID: String, val pageIndex: Int, val word: TextWord) {
     val position get() = ReadingPosition(pageID, word.offset)
 }
@@ -110,7 +130,7 @@ object Tokenizer {
     private val wordPattern = Pattern.compile("[^\\p{Z}\\u0009-\\u000D\\u0085]+")
     private val graphemePattern = Regex("\\X")
 
-    fun words(text: String): List<TextWord> {
+    fun words(text: String, preserveLineBreaks: Boolean = false): List<TextWord> {
         val matcher = wordPattern.matcher(text)
         return buildList {
             if (!matcher.find()) return@buildList
@@ -119,7 +139,8 @@ object Tokenizer {
                 val word = matcher.group()
                 val next = matcher.find()
                 val gap = text.substring(end, if (next) matcher.start() else text.length)
-                add(TextWord(word, start, end - start, "\n\n" in gap || "\r\n\r\n" in gap))
+                val paragraph = "\n\n" in gap || "\r\n\r\n" in gap
+                add(TextWord(word, start, end - start, paragraph, preserveLineBreaks && !paragraph && '\n' in gap))
             } while (next)
         }
     }
@@ -136,18 +157,7 @@ object Tokenizer {
         return page.lastOrNull { it.word.offset <= position.utf16Offset }?.id ?: page.firstOrNull()?.id ?: 0
     }
 
-    fun relocatedOffset(offset: Int, old: String, new: String): Int {
-        var prefix = 0
-        var suffix = 0
-        while (prefix < minOf(old.length, new.length) && old[prefix] == new[prefix]) prefix++
-        while (suffix < minOf(old.length, new.length) - prefix && old[old.lastIndex - suffix] == new[new.lastIndex - suffix]) suffix++
-        val mapped = when {
-            offset < prefix -> offset
-            offset >= old.length - suffix -> offset + new.length - old.length
-            else -> prefix
-        }
-        return mapped.coerceIn(0, new.length)
-    }
+    fun relocatedOffset(offset: Int, old: String, new: String): Int = TextEditMapping(old, new).offset(offset)
 
     fun duration(word: TextWord, wordsPerMinute: Double, naturalPauses: Boolean): Double {
         val base = 60 / wordsPerMinute.coerceIn(60.0, 900.0)
@@ -168,4 +178,21 @@ object Tokenizer {
             book.includesPage(it) && (!book.pages[it].isReviewed || book.pages[it].hasNoText)
         }
     }
+}
+
+/** Scan an edit once before relocating the section's headings and chapter destinations. */
+class TextEditMapping(old: String, new: String) {
+    private var prefix = 0
+    private var suffix = 0
+    private val oldCount = old.length
+    private val newCount = new.length
+    init {
+        while (prefix < minOf(old.length, new.length) && old[prefix] == new[prefix]) prefix++
+        while (suffix < minOf(old.length, new.length) - prefix && old[old.lastIndex - suffix] == new[new.lastIndex - suffix]) suffix++
+    }
+    fun offset(offset: Int): Int = when {
+        offset < prefix -> offset
+        offset >= oldCount - suffix -> offset + newCount - oldCount
+        else -> prefix
+    }.coerceIn(0, newCount)
 }

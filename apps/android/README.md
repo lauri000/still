@@ -20,7 +20,7 @@ Release keys stay outside the repository; the release helper builds a committed 
 
 ## Reading
 
-Import a PDF, choose the starting page using the PDF preview, and tap **Read**. The compact header contains page navigation and progress; text fills the remaining screen in portrait and landscape. Hold anywhere in the invisible bottom-right quarter of the reading area to begin; release to pause. While holding, move right to increase the current speed or left to decrease it. Each touch starts at the saved speed, from 60 to 900 WPM. A floating WPM label appears only when speed changes and fades after adjustments stop.
+Import a PDF or EPUB, choose the starting page or section using the preview, and tap **Read**. The compact header contains page navigation and progress; text fills the remaining screen in portrait and landscape. Hold anywhere in the invisible bottom-right quarter of the reading area to begin; release to pause. While holding, move right to increase the current speed or left to decrease it. Each touch starts at the saved speed, from 60 to 900 WPM. A floating WPM label appears only when speed changes and fades after adjustments stop.
 
 Start a horizontal swipe anywhere outside that corner to move forward/backward through the text. The starting zone determines the entire gesture: crossing into or out of the corner never switches between scrubbing and speed control. Additional fingers cannot take over. Scrubbing pauses playback without changing speed; hold the corner again to resume from the selected word. Tapping words in single-line mode does not jump to them. Screen readers retain start/pause, speed adjustments, and next/previous word actions.
 
@@ -34,7 +34,7 @@ The book's ellipsis menu contains corrections, page inclusion/review, chapters, 
 
 `ReaderScreen` owns controls and saved view selection. Its `WordRibbon` and `WordMotion` are single-line only: the ribbon lays out one horizontal neighborhood, and motion interpolates horizontal positions. `PassageView` owns native scrolling and exact-word hit testing; `PassageLayout` contains geometry and source-token ranges, without duplicate display text. Both views share `ReadingSession` for the reading position, while only single-line mode can start its clock.
 
-`LibraryViewModel` owns one cancellable preparation job for imports and text repair. Both use the same progress/error cleanup and await the existing serial repository queue for atomic commits. Cancellation stays outside a commit once it begins. `PdfImporter` owns PDFium document/descriptor lifetimes through one helper; per-page text and geometry resources remain scoped to their use. The backup schema and persisted preference keys are unchanged.
+`LibraryViewModel` owns one cancellable preparation job for imports and text repair. Both use the same progress/error cleanup and await the existing serial repository queue for atomic commits. Cancellation stays outside a commit once it begins. `PdfImporter` owns PDFium document/descriptor lifetimes through one helper; per-page text and geometry resources remain scoped to their use. PDF backups and persisted preference keys remain compatible; EPUB backups add an original source payload. See [EPUB support](../../docs/epub.md).
 
 ## Storage and compatibility
 
@@ -53,6 +53,8 @@ The existing Apple JSON backup format is preserved, including Foundation date en
 - Word segmentation is based on whitespace. Languages without word-separating spaces need a future language-aware tokenizer.
 
 ## Verification
+
+Python 3 generates the small EPUB fixtures before tests. Optional real books are downloaded separately; see [EPUB fixtures](../../docs/epub.md).
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:lintDebug

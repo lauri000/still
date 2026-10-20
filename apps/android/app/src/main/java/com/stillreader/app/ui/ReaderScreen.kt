@@ -120,7 +120,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                             Text(section.title, Modifier.weight(1f).testTag("readerChapter"), color = Muted, fontSize = 11.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        Text("${if (state.finished) "Finished · " else ""}Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
+                        Text("${if (state.finished) "Finished · " else ""}${session.book.unitName} ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
                             Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -156,7 +156,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             state.blockedPage?.let { page ->
                 Column(Modifier.align(Alignment.BottomCenter).padding(16.dp).widthIn(max = 500.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
+                    Text("${session.book.unitName} ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
                     Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
                     TextButton(onClick = { onReview(page) }) { Text("Review this page") }
                 }
@@ -191,7 +191,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
-                OptionToggle("Pause at unchecked pages", strict) { strict = it; model.options(natural, strict) }
+                OptionToggle("Pause at unchecked ${session.book.unitPlural}", strict) { strict = it; model.options(natural, strict) }
                 Text("Require page approval before playback. Otherwise, unchecked text plays immediately and pages without text are skipped.", fontSize = 12.sp, color = Muted)
             }
         }, confirmButton = { TextButton(onClick = { options = false }) { Text("Done") } })
@@ -199,8 +199,8 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     if (contents) ReaderContentsSheet(session, model, onClose = { contents = false }, onPage = { contents = false; pagePicker = true })
     if (pagePicker) {
         var page by remember { mutableIntStateOf(session.current?.pageIndex ?: session.book.readingStartPageIndex) }
-        AlertDialog(onDismissRequest = { pagePicker = false }, title = { Text("Go to page") },
-            text = { PageSelector(page, session.book.pages.size) { page = it } },
+        AlertDialog(onDismissRequest = { pagePicker = false }, title = { Text("Go to ${session.book.unitName.lowercase()}") },
+            text = { PageSelector(page, session.book.pages.size, session.book.unitName) { page = it } },
             confirmButton = { TextButton(onClick = { session.seekPage(page); pagePicker = false }) { Text("Go") } },
             dismissButton = { TextButton(onClick = { pagePicker = false }) { Text("Cancel") } })
     }

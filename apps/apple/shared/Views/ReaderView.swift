@@ -82,7 +82,7 @@ struct ReaderView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("readerHeader")
     }
     private var pageDescription: String {
-        "\(engine.isFinished ? "Finished · " : "")Page \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
+        "\(engine.isFinished ? "Finished · " : "")\(engine.book.unitName) \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
     }
     private var pageMenu: some View {
         Button { engine.pause(); showingContents = true } label: {
@@ -204,7 +204,7 @@ struct ReaderView: View {
     #endif
     private func reviewNotice(_ index: Int) -> some View {
         VStack(spacing: 10) {
-            Text("Page \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
+            Text("\(engine.book.unitName) \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
             Text("Compare its text with the PDF, then mark it reviewed. Blank or scanned pages can be entered manually or excluded.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
             Button("Review this page") { engine.pause(); onReviewPage(index); dismiss() }.buttonStyle(SecondaryButton())
@@ -239,7 +239,7 @@ struct ReaderView: View {
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
-                Toggle("Pause at unchecked pages", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
+                Toggle("Pause at unchecked \(engine.book.unitPlural)", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
                     pauseAtUncheckedPages = $0
                     engine.allowUnreviewed = !$0
                 })).accessibilityIdentifier("pauseAtUncheckedPages")

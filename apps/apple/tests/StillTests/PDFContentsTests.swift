@@ -49,6 +49,6 @@ final class PDFContentsTests: XCTestCase {
         XCTAssertEqual(try JSONSerialization.jsonObject(with: before) as? NSDictionary,
                        try JSONSerialization.jsonObject(with: JSONEncoder().encode(imported.book)) as? NSDictionary)
         XCTAssertEqual(try Data(contentsOf: url), data)
-        XCTAssertEqual(imported.pdfData, data)
+        XCTAssertEqual(imported.sourceData, data)
     }
 }

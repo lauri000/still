@@ -11,6 +11,10 @@ settings:
     TARGETED_DEVICE_FAMILY: '1,2'
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.20
 targets:
   Still:
     type: application
@@ -21,6 +25,8 @@ targets:
       - ../../shared/resources
       - path: ../../shared/fixtures/sample.pdf
         buildPhase: resources
+    dependencies:
+      - package: ZIPFoundation
     configFiles:
       Debug: ios/Config.xcconfig
       Release: ios/Config.xcconfig
@@ -34,14 +40,33 @@ targets:
       - ../../shared/resources
       - path: ../../shared/fixtures/sample.pdf
         buildPhase: resources
+    dependencies:
+      - package: ZIPFoundation
     configFiles:
       Debug: macos/Config.xcconfig
       Release: macos/Config.xcconfig
   StillTests:
+    preBuildScripts:
+      - name: Generate EPUB test fixtures
+        script: python3 "$SRCROOT/../../scripts/epub-fixtures.py"
+        inputFiles:
+          - $(SRCROOT)/../../scripts/epub-fixtures.py
+        outputFiles:
+          - $(SRCROOT)/../../shared/fixtures/epub/structured.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/legacy.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/fixed-layout.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/encrypted.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/unsafe-entity.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/missing-spine.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/path-escape.epub
+          - $(SRCROOT)/../../shared/fixtures/epub/image-only.epub
     type: bundle.unit-test
     platform: iOS
     sources:
       - tests/StillTests
+      - path: ../../shared/fixtures/epub
+        type: folder
+        buildPhase: resources
       - path: ../../shared/fixtures/outline.pdf
         buildPhase: resources
       - path: ../../shared/fixtures/no-outline.pdf

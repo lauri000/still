@@ -21,7 +21,7 @@ class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, av
         }
         tokens.indices.forEach { index ->
             val gap = spacing * (if (headingIDs[tokens[index].id] != null) 1.2 else 1.0)
-            val newParagraph = index > 0 && (headingIDs[tokens[index - 1].id] != headingIDs[tokens[index].id] || tokens[index - 1].word.endsParagraph || tokens[index - 1].pageID != tokens[index].pageID)
+            val newParagraph = index > 0 && (headingIDs[tokens[index - 1].id] != headingIDs[tokens[index].id] || tokens[index - 1].word.endsParagraph || tokens[index - 1].word.endsLine || tokens[index - 1].pageID != tokens[index].pageID)
             if (index > start && (newParagraph || used + gap + measuredWidths[index] > availableWidth.coerceAtLeast(1.0))) {
                 append(index); start = index; used = 0.0
             }

@@ -47,6 +47,7 @@ import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.Book
 import com.stillreader.app.core.PdfTextRepair
 import com.stillreader.app.data.PdfImporter
+import com.stillreader.app.data.BookImporter
 import kotlinx.coroutines.CancellationException
 import java.io.File
 
@@ -87,7 +88,7 @@ fun StillApp(model: LibraryViewModel) {
             book != null -> BookScreen(book, model, canUndoImprovement = state.undoReprocessID == book.id, onBack = { model.select(null) },
                 onTool = { name, page -> toolPage = page; tool = name },
                 onExport = { exportID = book.id; exporter.launch("${book.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json") })
-            else -> LibraryScreen(state.books, model::select) { picker.launch(arrayOf("application/pdf", "application/json", "application/octet-stream")) }
+            else -> LibraryScreen(state.books, model::select) { picker.launch(arrayOf("application/pdf", "application/epub+zip", "application/json", "application/octet-stream")) }
         }
         state.importing?.let { progress ->
             Dialog(onDismissRequest = model::cancelImport) {
@@ -113,7 +114,7 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, import: (
         Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Books", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Button(onClick = import, modifier = Modifier.testTag("importPDF"), shape = RoundedCornerShape(12.dp)) {
-                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import PDF")
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import book")
             }
         }
         if (books.size > 5) OutlinedTextField(search, { search = it }, label = { Text("Search books") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -122,9 +123,9 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, import: (
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(Icons.Outlined.Description, null, Modifier.size(40.dp), tint = Muted)
                 Spacer(Modifier.height(18.dp))
-                Text(if (books.isEmpty()) "No PDFs yet" else "No matching books", fontSize = 20.sp)
+                Text(if (books.isEmpty()) "No books yet" else "No matching books", fontSize = 20.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(if (books.isEmpty()) "Import a PDF to start reading." else "Try another title.", color = Muted)
+                Text(if (books.isEmpty()) "Import a PDF or EPUB to start reading." else "Try another title.", color = Muted)
             }
         } else LazyColumn {
             items(filtered, key = { it.id }) { book ->
@@ -134,9 +135,9 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, import: (
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(book.title, fontSize = 17.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val page = book.pages.indexOfFirst { it.id == book.position?.pageID }
-                        Text(when { book.position?.finished == true -> "Finished · ${book.pages.size} pages"
-                            page >= 0 -> "Page ${page + 1} of ${book.pages.size}"
-                            else -> "${book.pages.size} pages" }, color = Muted, fontSize = 12.sp)
+                        Text(when { book.position?.finished == true -> "Finished · ${book.pages.size} ${book.unitPlural}"
+                            page >= 0 -> "${book.unitName} ${page + 1} of ${book.pages.size}"
+                            else -> "${book.pages.size} ${book.unitPlural}" }, color = Muted, fontSize = 12.sp)
                     }
                     Icon(Icons.AutoMirrored.Default.KeyboardArrowRight, null, tint = Muted)
                 }
@@ -160,6 +161,7 @@ fun Header(title: String, back: () -> Unit, actions: @Composable RowScope.() -> 
 private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: Boolean, onBack: () -> Unit, onTool: (String, Int) -> Unit, onExport: () -> Unit) {
     var page by rememberSaveable(book.id) { mutableIntStateOf(book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(book.readingStartPageIndex)) }
     val opening by model.state.collectAsState()
+    var startOffset by rememberSaveable(book.id) { mutableIntStateOf(0) }
     var changed by rememberSaveable(book.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -187,19 +189,19 @@ private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: 
             }
         }
         Column(Modifier.weight(1f).widthIn(max = 1200.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            PageSelector(page, book.pages.size, if (book.position != null && !changed) "Page" else "Start page") { page = it; changed = true }
-            PdfContentsPreview(book, model.importer, model.repository.pdfFile(book.id), page, Modifier.weight(1f).fillMaxWidth()) { page = it; changed = true }
+            PageSelector(page, book.pages.size, if (book.position != null && !changed) book.unitName else "Start ${book.unitName.lowercase()}") { page = it; startOffset = 0; changed = true }
+            PdfContentsPreview(book, model.importer, model.repository.sourceFile(book), page, Modifier.weight(1f).fillMaxWidth(), startOffset = startOffset, chooseOffset = { startOffset = it ?: 0 }) { page = it; changed = true }
             if (book.pages[page].hasNoText) Text("No selectable text on this page. Choose another page or use Edit text.", fontSize = 12.sp, color = Muted)
-            if (book.needsReprocessing) Text("This book needs reader preparation. Reprocess the saved PDF to read it. Your corrections and page choices are kept.", fontSize = 13.sp, color = Muted)
-            Button(onClick = { if (book.needsReprocessing) model.reprocess(book.id) else model.openReader(if (changed || book.position == null) page else null); changed = false },
+            if (book.needsReprocessing && !model.isPreparing(book.id)) Text("This book needs reader preparation. Reprocess the original file to read it. Your corrections and page choices are kept.", fontSize = 13.sp, color = Muted)
+            Button(onClick = { if (book.needsReprocessing && !model.isPreparing(book.id)) model.reprocess(book.id) else model.openReader(if (changed || book.position == null) page else null, startOffset = startOffset); changed = false },
                 enabled = !opening.opening && (book.needsReprocessing || !(book.pages[page].hasNoText && (changed || book.position == null))),
                 modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp).testTag("startReading"), shape = RoundedCornerShape(12.dp)) {
-                Text(if (opening.opening) "Opening…" else if (book.needsReprocessing) "Reprocess book" else if (book.position != null && !changed) { if (book.position.finished) "Read again" else "Continue reading" } else "Read")
+                Text(if (opening.opening) "Opening…" else if (book.needsReprocessing && !model.isPreparing(book.id)) "Reprocess book" else if (book.position != null && !changed) { if (book.position.finished) "Read again" else "Continue reading" } else "Read")
             }
         }
     }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Delete this book?") },
-        text = { Text("This removes the imported PDF, corrections, and reading progress from Still on this device.") },
+        text = { Text("This removes the imported book, corrections, and reading progress from Still on this device.") },
         confirmButton = { TextButton(onClick = { deleting = false; model.delete(book.id) }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } })
 }
@@ -240,6 +242,17 @@ fun PdfPreview(importer: PdfImporter, file: File, page: Int, modifier: Modifier 
             bitmap != null -> Image(bitmap!!.asImageBitmap(), "PDF page ${page + 1} preview", Modifier.fillMaxSize().testTag("pdfPreview"), contentScale = ContentScale.Fit)
             error != null -> Text(error!!, Modifier.padding(24.dp), color = Muted)
             else -> CircularProgressIndicator(Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+fun BookPreview(book: Book, importer: BookImporter, file: File, page: Int, modifier: Modifier = Modifier, startOffset: Int = 0) {
+    if (!book.isEpub) PdfPreview(importer.pdf, file, page, modifier)
+    else {
+        val paragraphs = remember(book.pages[page].text, startOffset) { book.pages[page].text.drop(startOffset.coerceIn(0, book.pages[page].text.length)).take(6000).split("\n\n") }
+        LazyColumn(modifier.clip(RoundedCornerShape(8.dp)).background(Surface).testTag("epubPreview"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            items(paragraphs.size) { index -> Text(paragraphs[index], fontSize = 18.sp, lineHeight = 28.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif) }
         }
     }
 }

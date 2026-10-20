@@ -28,7 +28,7 @@ data class LibraryState(
 
 class LibraryViewModel @JvmOverloads constructor(application: Application, private val saved: SavedStateHandle, root: File? = null) : AndroidViewModel(application) {
     val repository = BookRepository(root ?: File(application.filesDir, "Still"))
-    val importer = PdfImporter(application)
+    val importer = BookImporter(application)
     private val mutable = MutableStateFlow(LibraryState(selectedID = saved["selectedID"]))
     val state = mutable.asStateFlow()
     private val preferences = application.getSharedPreferences("reading", 0)
@@ -48,6 +48,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     private var warmJob: Job? = null
     private var pendingWrites = 0
     private val pendingEdits = mutableMapOf<String, Job>()
+    private val preparationBases = mutableMapOf<String, Book>()
     private var beforeReprocess: Book? = null
 
     init {
@@ -64,6 +65,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     fun selectedBook(): Book? = state.value.books.firstOrNull { it.id == state.value.selectedID }
+    fun isPreparing(id: String) = id in preparationBases
     fun select(id: String?) {
         closeReader()
         warmJob?.cancel()
@@ -76,7 +78,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
     fun dismissError() { mutable.update { it.copy(error = null) } }
     private fun report(error: Throwable) {
-        val message = if (error is OutOfMemoryError) "This document needs more memory than is available. Try a smaller PDF or backup."
+        val message = if (error is OutOfMemoryError) "This document needs more memory than is available. Try a smaller book or backup."
             else error.message?.takeIf { it.isNotBlank() } ?: "The file could not be opened. It may be damaged or password protected."
         mutable.update { it.copy(error = message) }
     }
@@ -84,8 +86,14 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     fun updateBook(id: String, debounce: Boolean = false, rebuildReader: Boolean = true, change: (Book) -> Book) {
         val original = state.value.books.firstOrNull { it.id == id } ?: return
         val changed = change(original)
-        val updated = if (rebuildReader) ReaderPipeline.update(original, changed) else changed
+        val updated = changed
         if (updated == original) return
+        if (!rebuildReader) preparationBases.remove(id)
+        else if (id !in preparationBases && !original.needsReprocessing &&
+            (original.title != updated.title || original.chapters != updated.chapters ||
+                original.pages.indices.any { original.pages[it].text != updated.pages[it].text })) {
+            preparationBases[id] = original
+        }
         if (beforeReprocess?.id == id) beforeReprocess = null
         mutable.update { it.copy(books = it.books.map { book -> if (book.id == id) updated else book }, saving = true,
             undoReprocessID = it.undoReprocessID?.takeUnless { undoID -> undoID == id }) }
@@ -100,9 +108,19 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     private fun enqueueSave(updated: Book) {
+        val base = preparationBases[updated.id]
         pendingWrites++
         operations.trySend {
-            try { repository.save(updated) } catch (error: Exception) { report(error) }
+            try {
+                val prepared = base?.let { ReaderPipeline.update(it, updated) } ?: updated
+                repository.save(prepared)
+                withContext(Dispatchers.Main) {
+                    if (state.value.books.firstOrNull { it.id == updated.id } == updated) {
+                        preparationBases.remove(updated.id)
+                        mutable.update { state -> state.copy(books = state.books.map { if (it.id == updated.id) prepared else it }) }
+                    }
+                }
+            } catch (error: Exception) { report(error) }
             withContext(Dispatchers.Main) {
                 pendingWrites--
                 mutable.update { it.copy(saving = pendingWrites > 0 || pendingEdits.isNotEmpty()) }
@@ -111,8 +129,10 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     suspend fun flush() {
-        flushEdits()
-        repositoryOperation { }
+        do {
+            flushEdits()
+            repositoryOperation { }
+        } while (pendingEdits.isNotEmpty() || pendingWrites > 0)
     }
 
     /** Await the same serial queue used by autosaves, without owning the caller's cancellation policy. */
@@ -146,19 +166,19 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
             // Once the commit begins, complete it and publish the saved book even if Cancel was tapped.
             withContext(NonCancellable) {
                 val source = imported
-                val book = repositoryOperation { repository.insert(source.book, source.pdf) }
+                val book = repositoryOperation { repository.insert(source.book, source.source) }
                 saved["selectedID"] = book.id
                 mutable.update { it.copy(books = listOf(book) + it.books, selectedID = book.id) }
             }
-        } finally { imported?.pdf?.delete() }
+        } finally { imported?.source?.delete() }
     }
     fun cancelImport() { importJob?.cancel() }
 
-    fun reprocess(bookID: String) = prepareBook("Reprocessing original PDF…") {
+    fun reprocess(bookID: String) = prepareBook("Reprocessing original book…") {
         closeReader()
         flush()
         val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
-        val updated = importer.reprocess(repository.pdfFile(bookID), original) { progress -> mutable.update { it.copy(importing = progress) } }
+        val updated = importer.reprocess(repository.sourceFile(original), original) { progress -> mutable.update { it.copy(importing = progress) } }
         ensureActive()
         check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed while it was being reprocessed. Please try again." }
         withContext(NonCancellable) {
@@ -168,12 +188,13 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         }
     }
 
-    fun restoreExtractedText(bookID: String, index: Int) = prepareBook("Reading original page…") {
+    fun restoreExtractedText(bookID: String, index: Int) = prepareBook("Reading original text…") {
+        flush()
         val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
-        val text = importer.extractedPage(repository.pdfFile(bookID), index)
+        val restored = importer.restorePage(repository.sourceFile(original), original, index)
         ensureActive()
         check(state.value.books.firstOrNull { it.id == bookID } == original) { "The book changed. Please try again." }
-        updateBook(bookID) { it.editText(index, text) }
+        updateBook(bookID, rebuildReader = false) { restored }
     }
 
     fun undoReprocess(bookID: String) {
@@ -183,23 +204,24 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         updateBook(bookID, rebuildReader = false) { previous }
     }
 
-    fun openReader(startPage: Int? = null, seekPage: Int? = null) {
+    fun openReader(startPage: Int? = null, seekPage: Int? = null, startOffset: Int = 0, seekOffset: Int? = null) {
         openJob?.cancel()
-        flushEdits()
-        val book = selectedBook() ?: return
-        if (book.needsReprocessing) {
-            mutable.update { it.copy(error = "Reprocess this book from its original PDF before reading.") }
-            return
-        }
-        if (startPage != null || book.position == null) {
-            val index = (startPage ?: 0).coerceIn(book.pages.indices)
-            updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[index].id, 0)) }
-        }
-        val sessionBook = selectedBook() ?: return
+        val id = selectedBook()?.id ?: return
         state.value.reader?.pause()
         mutable.update { it.copy(opening = true) }
         openJob = viewModelScope.launch {
             try {
+                flush()
+                val book = selectedBook()?.takeIf { it.id == id } ?: return@launch
+                if (book.needsReprocessing) {
+                    mutable.update { it.copy(error = "Reprocess this book from its original file before reading.") }
+                    return@launch
+                }
+                if (startPage != null || book.position == null) {
+                    val index = (startPage ?: 0).coerceIn(book.pages.indices)
+                    updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[index].id, startOffset)) }
+                }
+                val sessionBook = selectedBook() ?: return@launch
                 withContext(Dispatchers.Default) { sessionBook.readerCache.get(sessionBook) }
                 ensureActive()
                 if (state.value.selectedID != sessionBook.id || selectedBook() != sessionBook) return@launch
@@ -209,7 +231,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                 session.wordsPerMinute = preferences.getInt("wpm", 250).toDouble()
                 session.naturalPauses = preferences.getBoolean("naturalPauses", true)
                 session.allowUnreviewed = !preferences.getBoolean("strictReview", false)
-                seekPage?.let { session.seekPage(it) }
+                seekPage?.let { if (seekOffset != null) session.seekPosition(ReadingPosition(sessionBook.pages[it].id, seekOffset)) else session.seekPage(it) }
                 mutable.update { it.copy(reader = session, opening = false) }
                 saved["readerOpen"] = true
                 if (session.tokens.isEmpty()) session.play()
@@ -242,9 +264,11 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
     fun export(uri: Uri, bookID: String) {
         flushEdits()
-        val book = state.value.books.firstOrNull { it.id == bookID } ?: return
+        val snapshot = state.value.books.firstOrNull { it.id == bookID } ?: return
+        val base = preparationBases[bookID]
         operations.trySend {
             try {
+                val book = base?.let { ReaderPipeline.update(it, snapshot) } ?: snapshot
                 getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { repository.export(book, it) }
                     ?: error("The backup could not be written to this location.")
             } catch (error: Exception) { report(error) }

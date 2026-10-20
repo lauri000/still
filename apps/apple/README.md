@@ -1,6 +1,6 @@
 # Still for iOS, iPadOS, and macOS
 
-The two native Apple targets share SwiftUI views, PDFKit services, reader logic, and resources. Each target has its own platform directory and build settings. There are no third-party Apple dependencies.
+The two native Apple targets share SwiftUI views, PDFKit services, reader logic, and resources. Each target has its own platform directory and build settings. EPUB archives use ZIPFoundation 0.9.20 (MIT), pinned in Swift Package Manager. Its license is bundled with the app.
 
 ## Build and run
 
@@ -25,7 +25,7 @@ xcodegen generate --spec apps/apple/project.yml
 - `ios/`: iOS build settings and the UIKit PDF view wrapper.
 - `macos/`: macOS build settings, entitlements, and the AppKit PDF view wrapper.
 - `shared/Core/`: book model, tokenizer, and playback engine.
-- `shared/Services/`: PDF import, persistence, library state, and the bundled sample loader.
+- `shared/Services/`: PDF/EPUB import, persistence, library state, and the bundled sample loader.
 - `shared/Views/`: library, page selection, reader, editing tools, and PDF coordination. `ReaderView` owns controls and uses the engine’s reading mode; `SingleLineView` owns focused words/headings and horizontal animation, while `PassageView` owns native manual scrolling. The starting-word picker keeps its own flow layout.
 - `shared/Resources/`: shared Apple assets.
 - `shared/StillApp.swift`: common application entry point and library initialization.
@@ -43,7 +43,7 @@ See the [reading guide](../../docs/reading.md) and [portable book contract](../.
 
 ## Verify
 
-Run from the repository root:
+Run from the repository root (Python 3 generates the small EPUB test fixtures; real books are optional downloads described in [EPUB tests](../../docs/epub.md)):
 
 ```sh
 xcodebuild -project apps/apple/Still.xcodeproj -scheme StillMac \

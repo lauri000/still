@@ -8,6 +8,7 @@ struct BookRepository: Sendable {
     }
 
     func directory(for id: UUID) -> URL { root.appendingPathComponent(id.uuidString, isDirectory: true) }
+    func sourceURL(for book: Book) -> URL { directory(for: book.id).appendingPathComponent(book.sourceFilename) }
     func pdfURL(for id: UUID) -> URL { directory(for: id).appendingPathComponent("original.pdf") }
 
     func load() throws -> (books: [Book], unreadableCount: Int) {
@@ -20,7 +21,7 @@ struct BookRepository: Sendable {
                 let book = try JSONDecoder().decode(Book.self, from: Data(contentsOf: folder.appendingPathComponent("book.json")))
                 guard book.hasValidStructure,
                       book.id.uuidString == folder.lastPathComponent,
-                      FileManager.default.fileExists(atPath: pdfURL(for: book.id).path)
+                      FileManager.default.fileExists(atPath: sourceURL(for: book).path)
                 else { throw RepositoryError.invalidBook }
                 books.append(ReaderPipeline.loaded(book))
             } catch { unreadable += 1 }
@@ -35,12 +36,12 @@ struct BookRepository: Sendable {
         try encoder.encode(book).write(to: directory(for: book.id).appendingPathComponent("book.json"), options: .atomic)
     }
 
-    func insert(_ book: Book, pdfData: Data) throws {
+    func insert(_ book: Book, sourceData: Data) throws {
         let folder = directory(for: book.id)
         guard !FileManager.default.fileExists(atPath: folder.path) else { throw RepositoryError.alreadyExists }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
-            try pdfData.write(to: pdfURL(for: book.id), options: .atomic)
+            try sourceData.write(to: sourceURL(for: book), options: .atomic)
             try save(book)
         } catch {
             try? FileManager.default.removeItem(at: folder)

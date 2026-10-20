@@ -48,7 +48,7 @@ final class PDFTextRepairTests: XCTestCase {
         for index in old.pages.indices { old.pages[index].wordIndex = nil; old.pages[index].edited = nil }
         old.pages[1].text = "My manual correction"
         let repository = BookRepository(root: root)
-        try repository.insert(old, pdfData: imported.pdfData)
+        try repository.insert(old, sourceData: imported.sourceData)
         let library = LibraryStore(repository: repository)
         await library.load()
         library.reprocess(old.id)

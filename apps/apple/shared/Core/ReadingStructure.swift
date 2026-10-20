@@ -9,6 +9,7 @@ struct ReadingStructure: Sendable {
         let pageIndex: Int
     }
     struct Section: Sendable {
+        let chapterID: UUID
         let title: String
         let pageIndex: Int
         let level: Int
@@ -19,25 +20,36 @@ struct ReadingStructure: Sendable {
     let sections: [Section]
     let headings: [Heading]
     let chapterEnds: Set<Int>
+    private let isEpub: Bool
     private let headingWords: [Int: Heading]
 
     init(book: Book, tokens: [ReadingToken]) {
+        isEpub = book.isEpub
         var starts = Array(repeating: -1, count: book.pages.count)
         var ends = Array(repeating: 0, count: book.pages.count)
         for token in tokens {
             if starts[token.pageIndex] < 0 { starts[token.pageIndex] = token.id }
             ends[token.pageIndex] = token.id + 1
         }
+        // EPUB sections can span a whole book; resolve persisted spans with binary searches.
+        func lowerBound(page: Int, offset: Int, wordEnd: Bool = false) -> Int {
+            var low = starts[page], high = ends[page]
+            while low < high {
+                let middle = (low + high) / 2, word = tokens[(low + high) / 2].word
+                if word.offset + (wordEnd ? word.length : 0) < offset { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
         struct Line { let text: String; let range: NSRange }
         var lines: [Int: [Line]] = [:]
         var savedMatches: [HeadingMatch] = []
         let linePattern = try! NSRegularExpression(pattern: "[^\\r\\n]+")
-        func match(_ title: String, page: Int, level: Int) -> Heading? {
+        func match(_ title: String, page: Int, level: Int, expectedStart: Int? = nil) -> Heading? {
             let normalized = Self.normalize(title)
-            guard (3...240).contains(normalized.utf16.count), starts[page] >= 0 else { return nil }
+            guard ((book.isEpub ? 1 : 3)...240).contains(normalized.utf16.count), starts[page] >= 0 else { return nil }
             let span: NSRange?
             if let prepared = book.headingMatches {
-                span = prepared.first { $0.pageIndex == page && $0.title == normalized && $0.level == level }
+                span = prepared.first { $0.pageIndex == page && $0.title == normalized && $0.level == level && (expectedStart == nil || $0.start == expectedStart) }
                     .map { NSRange(location: $0.start, length: $0.end - $0.start) }
             } else {
                 let source = book.pages[page].text as NSString
@@ -66,9 +78,10 @@ struct ReadingStructure: Sendable {
             }
             guard let span else { return nil }
             savedMatches.append(HeadingMatch(title: normalized, pageIndex: page, level: level, start: span.location, end: NSMaxRange(span)))
-            let pageTokens = tokens[starts[page]..<ends[page]]
-            guard let first = pageTokens.first(where: { $0.word.offset >= span.location }),
-                  let last = pageTokens.last(where: { $0.word.offset + $0.word.length <= NSMaxRange(span) }), last.id >= first.id else { return nil }
+            let firstIndex = lowerBound(page: page, offset: span.location)
+            let lastIndex = lowerBound(page: page, offset: NSMaxRange(span) + 1, wordEnd: true) - 1
+            guard firstIndex < ends[page], lastIndex >= firstIndex else { return nil }
+            let first = tokens[firstIndex], last = tokens[lastIndex]
             if let start = book.readingStart, start.pageID == first.pageID, start.utf16Offset > first.word.offset { return nil }
             let actual = tokens[first.id...last.id].map { $0.word.text }.joined(separator: " ")
             guard Self.normalize(actual) == normalized else { return nil }
@@ -78,14 +91,20 @@ struct ReadingStructure: Sendable {
         var candidates: [Section] = []
         for chapter in book.chapters {
             guard book.pages.indices.contains(chapter.pageIndex), starts[chapter.pageIndex] >= 0 else { continue }
-            guard seen.insert("\(chapter.pageIndex):\(chapter.level):\(Self.normalize(chapter.title))").inserted else { continue }
-            let heading = match(chapter.title, page: chapter.pageIndex, level: chapter.level)
-            candidates.append(Section(title: chapter.title, pageIndex: chapter.pageIndex, level: chapter.level,
-                                      index: heading?.words.lowerBound ?? starts[chapter.pageIndex], heading: heading))
+            if let offset = chapter.utf16Offset, let start = book.readingStart, start.pageID == book.pages[chapter.pageIndex].id, offset < start.utf16Offset { continue }
+            guard seen.insert("\(chapter.pageIndex):\(chapter.level):\(Self.normalize(chapter.title)):\(chapter.utf16Offset ?? -1)").inserted else { continue }
+            let explicit = chapter.utf16Offset.flatMap { offset in book.headingMatches?.first { $0.pageIndex == chapter.pageIndex && ($0.start..<$0.end).contains(offset) } }
+            let heading = explicit.flatMap { match($0.title, page: $0.pageIndex, level: $0.level, expectedStart: $0.start) } ?? match(chapter.title, page: chapter.pageIndex, level: chapter.level)
+            let destination = chapter.utf16Offset.flatMap { offset in min(lowerBound(page: chapter.pageIndex, offset: offset + 1, wordEnd: true), ends[chapter.pageIndex] - 1) }
+            candidates.append(Section(chapterID: chapter.id, title: chapter.title, pageIndex: chapter.pageIndex, level: chapter.level,
+                                      index: destination ?? heading?.words.lowerBound ?? starts[chapter.pageIndex], heading: heading))
         }
         candidates.sort { $0.index == $1.index ? $0.level < $1.level : $0.index < $1.index }
         sections = candidates
         var mapped = candidates.compactMap(\.heading)
+        if book.isEpub {
+            for h in book.headingMatches ?? [] { if let heading = match(h.title, page: h.pageIndex, level: h.level, expectedStart: h.start) { mapped.append(heading) } }
+        }
         let titles = (0..<min(3, book.pages.count)).compactMap { match(book.title, page: $0, level: -1) }
         if titles.count == 1, let title = titles.first, !mapped.contains(where: { $0.words.overlaps(title.words) }) { mapped.append(title) }
         var accepted: [Heading] = []
@@ -122,7 +141,7 @@ struct ReadingStructure: Sendable {
         return low > 0 ? sections[low - 1] : nil
     }
     func destination(title: String, page: Int) -> Int? {
-        sections.first { $0.pageIndex == page && Self.normalize($0.title) == Self.normalize(title) }?.heading?.words.lowerBound
+        sections.first { $0.pageIndex == page && Self.normalize($0.title) == Self.normalize(title) }.flatMap { isEpub ? $0.index : $0.heading?.words.lowerBound }
     }
     func duration(index: Int, base: Double) -> Double {
         let heading = heading(at: index)

@@ -7,6 +7,8 @@ struct ReadingStartView: View {
     let onSave: (ReadingPosition?) -> Void
     @State private var pageIndex: Int
     @State private var selectedOffset: Int
+    @State private var words: [TextWord]
+    @State private var scrollRequest = 0
 
     init(book: Book, pdfURL: URL, initialPage: Int, onSave: @escaping (ReadingPosition?) -> Void) {
         self.book = book
@@ -14,10 +16,10 @@ struct ReadingStartView: View {
         self.onSave = onSave
         let index = min(max(0, initialPage), book.pages.count - 1)
         _pageIndex = State(initialValue: index)
+        _words = State(initialValue: book.pages[index].words)
         _selectedOffset = State(initialValue: book.readingStart?.pageID == book.pages[index].id ? book.readingStart!.utf16Offset : 0)
     }
 
-    private var words: [TextWord] { Tokenizer.words(in: book.pages[pageIndex].text) }
     private var selectedWord: TextWord? { words.first { $0.offset + $0.length > selectedOffset } }
 
     var body: some View {
@@ -35,8 +37,8 @@ struct ReadingStartView: View {
             HStack(spacing: 12) {
                 Button { changePage(pageIndex - 1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 40) }
                     .disabled(pageIndex == 0).accessibilityLabel("Previous start page")
-                Text("PDF page").font(.system(size: 12))
-                TextField("Page number", value: Binding(get: { pageIndex + 1 }, set: { changePage($0 - 1) }), format: .number.grouping(.never))
+                Text(book.unitName).font(.system(size: 12))
+                TextField("\(book.unitName) number", value: Binding(get: { pageIndex + 1 }, set: { changePage($0 - 1) }), format: .number.grouping(.never))
                     .textFieldStyle(.roundedBorder).frame(width: 65).accessibilityIdentifier("startPageNumber")
                 Text("of \(book.pages.count)").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Button { changePage(pageIndex + 1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 40) }
@@ -45,13 +47,13 @@ struct ReadingStartView: View {
                 if !book.chapters.isEmpty {
                     Menu("Jump to chapter") {
                         ForEach(book.chapters.sorted { $0.pageIndex < $1.pageIndex }) { chapter in
-                            Button(chapter.title) { changePage(chapter.pageIndex) }
+                            Button(chapter.title) { changePage(chapter.pageIndex); selectedOffset = chapter.utf16Offset ?? 0; scrollRequest += 1 }
                         }
                     }.fixedSize()
                 }
             }.buttonStyle(.plain)
             GeometryReader { geometry in
-                if geometry.size.width > 650 {
+                if geometry.size.width > 650 && !book.isEpub {
                     HStack(spacing: 20) {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "Original PDF")
@@ -62,7 +64,7 @@ struct ReadingStartView: View {
                 } else { wordPicker }
             }
             if let word = selectedWord {
-                Text("Start at “\(word.text)” on PDF page \(pageIndex + 1)\(book.pages[pageIndex].label != String(pageIndex + 1) ? " (printed \(book.pages[pageIndex].label))" : "").")
+                Text("Start at “\(word.text)” in \(book.unitName.lowercased()) \(pageIndex + 1)\(book.pages[pageIndex].label != String(pageIndex + 1) ? " (printed \(book.pages[pageIndex].label))" : "").")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.forest).lineLimit(2)
             }
             HStack {
@@ -86,30 +88,43 @@ struct ReadingStartView: View {
         let activeOffset = pageWords.first { $0.offset + $0.length > selectedOffset }?.offset
         return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Tap the first word to keep")
-            ScrollView {
-                if pageWords.isEmpty {
-                    ContentUnavailableView("No text on this page", systemImage: "doc.text", description: Text("Choose another page, or add text in the editor first."))
-                } else {
-                    FlowLayout(spacing: 5) {
-                        ForEach(pageWords, id: \.offset) { word in
-                            Button { selectedOffset = word.offset } label: {
-                                Text(word.text).font(.custom("Georgia", size: 17)).padding(.horizontal, 3).padding(.vertical, 6)
-                                    .foregroundStyle(word.offset == activeOffset ? Palette.surface : (word.offset < selectedOffset ? Palette.muted.opacity(0.5) : Palette.ink))
-                                    .background(word.offset == activeOffset ? Palette.forest : .clear, in: RoundedRectangle(cornerRadius: 4))
-                                    .strikethrough(word.offset < selectedOffset)
-                            }.buttonStyle(.plain).accessibilityIdentifier("startWord-\(word.offset)")
-                                .accessibilityLabel("Start at \(word.text)")
-                        }
-                    }.padding(16)
-                }
-            }.background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if pageWords.isEmpty {
+                        ContentUnavailableView("No text in this \(book.unitName.lowercased())", systemImage: "doc.text", description: Text("Choose another \(book.unitName.lowercased()), or add text in the editor first."))
+                    } else {
+                        // A spine document may contain a whole book; only nearby groups create word controls.
+                        LazyVStack(alignment: .leading, spacing: 5) {
+                            ForEach(Array(stride(from: 0, to: pageWords.count, by: 160)), id: \.self) { first in
+                                FlowLayout(spacing: 5) {
+                                    ForEach(pageWords[first..<min(first + 160, pageWords.count)], id: \.offset) { word in
+                                        Button { selectedOffset = word.offset } label: {
+                                            Text(word.text).font(.custom("Georgia", size: 17)).padding(.horizontal, 3).padding(.vertical, 6)
+                                                .foregroundStyle(word.offset == activeOffset ? Palette.surface : (word.offset < selectedOffset ? Palette.muted.opacity(0.5) : Palette.ink))
+                                                .background(word.offset == activeOffset ? Palette.forest : .clear, in: RoundedRectangle(cornerRadius: 4))
+                                                .strikethrough(word.offset < selectedOffset)
+                                        }.buttonStyle(.plain).accessibilityIdentifier("startWord-\(word.offset)")
+                                            .accessibilityLabel("Start at \(word.text)")
+                                    }
+                                }.id(first)
+                            }
+                        }.padding(16)
+                    }
+                }.background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line))
+                    .onAppear { proxy.scrollTo((pageWords.firstIndex { $0.offset + $0.length > selectedOffset } ?? 0) / 160 * 160, anchor: .top) }
+                    .onChange(of: scrollRequest) { _, _ in
+                        proxy.scrollTo((pageWords.firstIndex { $0.offset + $0.length > selectedOffset } ?? 0) / 160 * 160, anchor: .top)
+                    }
+            }
         }
     }
 
     private func changePage(_ index: Int) {
         pageIndex = min(max(0, index), book.pages.count - 1)
         selectedOffset = 0
+        words = book.pages[pageIndex].words
+        scrollRequest += 1
     }
 }
 

@@ -121,6 +121,8 @@ class ReadingSession(val book: Book, private val scope: CoroutineScope, private 
     }
     // Scrolling updates the shared cursor; persist after settling or leaving the reader.
     fun browse(index: Int) { if (passageMode && index != state.value.index) move(index) }
+    fun seekPosition(position: ReadingPosition) = seek(document.index(position))
+
     fun seek(index: Int) {
         stop(); scrubOrigin = null
         mutable.value = state.value.copy(scrubbing = false)

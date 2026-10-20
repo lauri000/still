@@ -99,7 +99,7 @@ final class ImportAndPersistenceTests: XCTestCase {
         book.pages[0].text = "Corrected words"
         book.position = ReadingPosition(pageID: book.pages[0].id, utf16Offset: 10)
         let pdf = try SampleBook.pdfData()
-        try repository.insert(book, pdfData: pdf)
+        try repository.insert(book, sourceData: pdf)
         let loaded = try XCTUnwrap(repository.load().books.first)
         XCTAssertEqual(loaded.pages[0].extractedText, "Original words")
         XCTAssertEqual(loaded.pages[0].text, "Corrected words")
@@ -234,7 +234,7 @@ final class PlaybackTests: XCTestCase {
         store.editPage(bookID: book.id, pageID: book.pages[0].id, text: "after")
         XCTAssertFalse(store.books[0].pages[0].isReviewed)
         XCTAssertEqual(store.books[0].pages[0].extractedText, "before")
-        store.flush()
+        await store.waitForSaves()
         try? FileManager.default.removeItem(at: store.repository.root)
     }
 }
@@ -535,7 +535,7 @@ final class LibraryOperationTests: XCTestCase {
             malformed.id = UUID()
             mutate(&malformed)
             XCTAssertThrowsError(try BookBackup(book: malformed, pdfData: pdf).validate())
-            try repository.insert(malformed, pdfData: pdf)
+            try repository.insert(malformed, sourceData: pdf)
         }
         let loaded = try repository.load()
         XCTAssertTrue(loaded.books.isEmpty)
