@@ -40,11 +40,10 @@ final class StillUITests: XCTestCase {
             attachScreenshot("Full width reader \(orientation.rawValue)")
         }
         app.buttons["toggleContext"].tap()
-        let passage = app.otherElements["nearbyPassage"]
-        XCTAssertTrue(passage.exists)
+        let passage = app.scrollViews["passageScroll"]
+        XCTAssertTrue(passage.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(passage.frame.width, app.windows.firstMatch.frame.width * 0.8)
     }
-
 
     @MainActor
     func testBookTypographyAndReaderContentsPreservePositionAndTrim() throws {
