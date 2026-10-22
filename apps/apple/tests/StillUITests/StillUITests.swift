@@ -40,7 +40,8 @@ final class StillUITests: XCTestCase {
             attachScreenshot("Full width reader \(orientation.rawValue)")
         }
         app.buttons["toggleContext"].tap()
-        let passage = app.scrollViews["passageScroll"]
+        // The reader surface identifier overrides the nested passage scroll identifier.
+        let passage = app.scrollViews["readingSurface"]
         XCTAssertTrue(passage.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(passage.frame.width, app.windows.firstMatch.frame.width * 0.8)
     }
