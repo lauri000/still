@@ -441,8 +441,8 @@ class AndroidReaderTests {
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
         compose.onNodeWithTag("readingOptions").performClick()
-        compose.onNodeWithContentDescription("Animated scrolling").performClick()
-        compose.onNodeWithContentDescription("Focus letter").performClick()
+        compose.onNodeWithContentDescription("Animated scrolling").performScrollTo().assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithContentDescription("Focus letter").performScrollTo().assertIsOff().performClick().assertIsOn()
         compose.onNodeWithText("Done").performClick()
         compose.runOnIdle { model.state.value.reader!!.seek(40) }
         compose.onNodeWithTag("toggleContext").performClick()
@@ -460,8 +460,14 @@ class AndroidReaderTests {
             assertTrue(session.naturalPauses)
             assertEquals(250.0, session.wordsPerMinute, .01)
         }
-        // Tap a noninitial word in a fully visible row using its real glyph bounds.
-        val row = compose.onNodeWithTag("currentPassageRow")
+        // The top row may be clipped after scrolling. Pick a fully visible body
+        // row so glyph coordinates remain valid at every viewport width.
+        val rowNode = compose.onAllNodes(SemanticsMatcher("passage body row") {
+            val tag = it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" }
+            val index = tag.removePrefix("passageRow-").toIntOrNull()
+            index != null && model.state.value.reader!!.structure.headingAt(index) == null
+        }).fetchSemanticsNodes().first { it.size.height > 0 && it.boundsInRoot.height >= it.size.height - 1 }
+        val row = compose.onNodeWithTag(rowNode.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag])
         val layouts = mutableListOf<TextLayoutResult>()
         row.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         val layout = layouts.single()
@@ -469,7 +475,9 @@ class AndroidReaderTests {
         val link = links[1.coerceAtMost(links.lastIndex)]
         val selected = link.item.toInt()
         val selectedText = layout.layoutInput.text.text.substring(link.start, link.end)
-        row.performTouchInput { click(layout.getBoundingBox(link.start).center) }
+        val glyph = layout.getBoundingBox(link.start)
+        // Avoid the exact midpoint between text cursor offsets at fractional densities.
+        row.performTouchInput { click(Offset(glyph.left + glyph.width * .25f, glyph.center.y)) }
         compose.onNodeWithTag("wordRibbon").assertIsDisplayed()
         compose.onNodeWithTag("holdToRead").assertIsDisplayed()
         compose.runOnIdle {
