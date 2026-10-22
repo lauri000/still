@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.ReadingSession
 import com.stillreader.app.core.ReadingFocus
+import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.sign
 import kotlin.math.roundToInt
@@ -106,7 +107,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             else -> false
         }
     }) {
-        Column(Modifier.testTag("readerHeader")) {
+        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).testTag("readerHeader")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Default.ArrowBack, "Back") }
                 Column(Modifier.weight(1f).heightIn(min = 48.dp)
@@ -135,7 +136,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 color = Forest, trackColor = Line, strokeCap = StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {})
         }
         if (passage) {
-            Box(Modifier.weight(1f).fillMaxWidth().testTag("readingSurface")) {
+            Box(Modifier.weight(1f).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).testTag("readingSurface")) {
                 PassageView(session, state) { index ->
                     session.seek(index)
                     session.passageMode = false
@@ -147,14 +148,14 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             if (session.structure.headingAt(state.index) != null) {
                 HeadingCue(session, state.index)
             } else WordRibbon(session, state.index, focusLetter, animatedScrolling && state.playing && !state.scrubbing, activeWordSizePercent)
-            androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+            androidx.compose.animation.AnimatedVisibility(showSpeed, modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).padding(16.dp),
                 enter = fadeIn(tween(80)), exit = fadeOut(tween(180))) {
                 Text("${wpm.toInt()} wpm", modifier = Modifier.testTag("speedOverlay")
                     .background(Paper.copy(alpha = .94f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
                     color = Forest, fontSize = 14.sp)
             }
             state.blockedPage?.let { page ->
-                Column(Modifier.align(Alignment.BottomCenter).padding(16.dp).widthIn(max = 500.dp)
+                Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).padding(16.dp).widthIn(max = 500.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("${session.book.unitName} ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
                     Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
@@ -211,7 +212,7 @@ private fun HeadingCue(session: ReadingSession, index: Int) {
     val title = session.structure.headingAt(index)?.title ?: return
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    BoxWithConstraints(Modifier.widthIn(max = 700.dp).fillMaxSize().padding(24.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).padding(24.dp)) {
         val style = LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = 28.sp)
         val size = remember(title, maxWidth, maxHeight, density, style) {
             with(density) {
@@ -326,7 +327,10 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
         val neighborSize = 22f
         val fontSize = neighborSize * activeWordSizePercent / 100f
         val neighborHeight = 48.dp
-        val radius = 6
+        val gap = with(LocalDensity.current) { 18.dp.roundToPx() }
+        // Spacing bounds the number needed even for the shortest words. Size the
+        // context from the viewport while retaining the existing heading boundaries.
+        val radius = ceil(with(LocalDensity.current) { maxWidth.toPx() } / (2 * gap)).toInt() + 1
         var start = index.coerceAtMost(session.tokens.size)
         var end = (index + 1).coerceAtMost(session.tokens.size)
         while (start > maxOf(0, index - radius) && session.structure.headingAt(start - 1) == null) start--
@@ -376,7 +380,6 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
         }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
             val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
             val selected = tokens.indexOfFirst { it.id == index }
-            val gap = 18.dp.roundToPx()
             layout(constraints.maxWidth, constraints.maxHeight) {
                 if (selected !in placeables.indices) return@layout
                 val focus = placeables[selected]

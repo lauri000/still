@@ -16,26 +16,30 @@ struct SingleLineView: View {
             if let heading = engine.structure.heading(at: engine.index) {
                 Text(heading.title).font(.custom("Georgia", size: 28)).foregroundStyle(Palette.ink)
                     .lineLimit(8).minimumScaleFactor(0.5)
-                    .multilineTextAlignment(.center).padding(32).frame(maxWidth: 700)
+                    .multilineTextAlignment(.center).padding(32)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityAddTraits(.isHeader).accessibilityIdentifier("currentHeading")
                     .accessibilityValue("Word \(engine.index + 1) of \(engine.tokens.count)")
                     .accessibilityAdjustableAction(adjustWord)
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
-                    ribbon(time: timeline.date.timeIntervalSinceReferenceDate)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                GeometryReader { geometry in
+                    TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !scrolling)) { timeline in
+                        ribbon(time: timeline.date.timeIntervalSinceReferenceDate, width: geometry.size.width)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }
     }
 
-    private func ribbon(time: Double) -> some View {
+    private func ribbon(time: Double, width: CGFloat) -> some View {
         let fontSize = 22 * CGFloat(activeWordSizePercent) / 100
         let focused = FocusWord(engine.current?.word.text ?? "", enabled: focusLetter)
+        // Include enough context to fill any window, still stopping at headings.
+        let radius = Int(ceil(width / (CenteredWordLayout.spacing * 2))) + 1
         var start = min(engine.index, engine.tokens.count), end = min(engine.tokens.count, engine.index + 1)
-        while start > max(0, engine.index - 6), engine.structure.heading(at: start - 1) == nil { start -= 1 }
-        while end < min(engine.tokens.count, engine.index + 7), engine.structure.heading(at: end) == nil { end += 1 }
+        while start > max(0, engine.index - radius), engine.structure.heading(at: start - 1) == nil { start -= 1 }
+        while end < min(engine.tokens.count, engine.index + radius + 1), engine.structure.heading(at: end) == nil { end += 1 }
         return CenteredWordLayout(selected: engine.index - start, focusAnchor: focused.anchor, firstTokenID: start,
                                   scrolling: scrolling, time: time,
                                   duration: WordMotion.duration(wordsPerMinute: engine.wordsPerMinute)) {
@@ -65,11 +69,6 @@ struct SingleLineView: View {
         .frame(height: 102).frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .clipped()
-        .mask {
-            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
-                                   .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
-                           startPoint: .leading, endPoint: .trailing)
-        }
     }
 
     private func adjustWord(_ direction: AccessibilityAdjustmentDirection) {
@@ -89,7 +88,7 @@ struct CenteredWordLayout: Layout {
     var scrolling: Bool
     var time: Double
     var duration: Double
-    private let spacing: CGFloat = 18
+    static let spacing: CGFloat = 18
 
     struct Cache { var motion = WordMotion() }
     func makeCache(subviews: Subviews) -> Cache { Cache() }
@@ -117,16 +116,16 @@ struct CenteredWordLayout: Layout {
                       proposal: ProposedViewSize(width: currentWidth, height: currentSize.height))
         let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
         var targets = [firstTokenID + selected: leading]
-        var leadingEdge = leading - spacing
+        var leadingEdge = leading - Self.spacing
         for index in (0..<selected).reversed() {
             leadingEdge -= sizes[index].width
             targets[firstTokenID + index] = leadingEdge
-            leadingEdge -= spacing
+            leadingEdge -= Self.spacing
         }
-        var trailingEdge = leading + currentWidth + spacing
+        var trailingEdge = leading + currentWidth + Self.spacing
         for index in (selected + 1)..<subviews.count {
             targets[firstTokenID + index] = trailingEdge
-            trailingEdge += sizes[index].width + spacing
+            trailingEdge += sizes[index].width + Self.spacing
         }
         let displayed = cache.motion.positions(index: firstTokenID + selected, targets: targets,
             viewportWidth: bounds.width, enabled: scrolling, time: time, duration: duration)

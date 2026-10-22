@@ -3,6 +3,7 @@ package com.stillreader.app
 import android.app.Application
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
@@ -63,13 +64,14 @@ class AndroidReaderTests {
         previousActiveWordSize = if (preferences.contains("activeWordSizePercent")) preferences.getInt("activeWordSizePercent", 100) else null
         preferences.edit().putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).putBoolean("strictReview", false).commit()
     }
-    private fun launch(seed: Boolean = true, legacy: Boolean = false) {
+    private fun launch(seed: Boolean = true, legacy: Boolean = false, book: Book? = null) {
         if (seed) {
             val backup = backup()
             val pdf = File(root, "source.pdf").apply { writeBytes(Base64.getDecoder().decode(backup.pdfData)) }
-            BookRepository(File(root, "books")).insert(if (legacy) backup.book else ReaderPipeline.prepare(backup.book), pdf)
+            BookRepository(File(root, "books")).insert(if (legacy) backup.book else ReaderPipeline.prepare(book ?: backup.book), pdf)
         }
         compose.runOnUiThread {
+            compose.activity.enableEdgeToEdge()
             model = ViewModelProvider(store, object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
@@ -581,6 +583,42 @@ class AndroidReaderTests {
         compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertTrue(layouts.single().layoutInput.text.spanStyles.isEmpty())
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
+    }
+
+    @Test fun shortWordsFillTheWindowWidth() {
+        val page = BookPage(number = 1, extractedText = List(200) { "i" }.joinToString(" "))
+        val book = backup().book.copy(pages = listOf(page), chapters = emptyList(),
+            position = ReadingPosition(page.id, 200), readingStart = null)
+        launch(book = book)
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertEquals(root.left, surface.left, 1f)
+        assertEquals(root.right, surface.right, 1f)
+
+        fun assertFilled() {
+            val neighbors = compose.onAllNodes(SemanticsMatcher("nearby word") {
+                it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" }.startsWith("nearbyWord-")
+            }).fetchSemanticsNodes().map { it.boundsInRoot }.filter { it.width > 0 }
+            val gap = 18 * compose.activity.resources.displayMetrics.density + 1
+            assertTrue("Text should reach the left edge", neighbors.minOf { it.left } <= surface.left + gap)
+            assertTrue("Text should reach the right edge", neighbors.maxOf { it.right } >= surface.right - gap)
+            compose.runOnIdle { assertEquals(100, model.state.value.reader!!.state.value.index) }
+        }
+        assertFilled()
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithContentDescription("Focus letter").performClick()
+        compose.onNodeWithText("Done").performClick()
+        assertFilled()
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("currentPassageRow").isDisplayed() }
+        val passage = compose.onNodeWithTag("nearbyPassage").fetchSemanticsNode().boundsInRoot
+        val safeInsets = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)!!
+            .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+        assertEquals(root.width - safeInsets.left - safeInsets.right, passage.width, 2f)
+        compose.onNodeWithTag("toggleContext").performClick()
+        assertFilled()
     }
 
     private fun assertFocusedCharacterCentered() {

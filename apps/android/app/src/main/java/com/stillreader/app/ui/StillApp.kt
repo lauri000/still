@@ -78,7 +78,10 @@ fun StillApp(model: LibraryViewModel) {
             else -> model.select(null)
         }
     }
-    Box(Modifier.fillMaxSize().background(Paper).safeDrawingPadding()) {
+    // Let the ribbon reach the window edges; controls and passage inset themselves.
+    val safeInsets = if (state.reader != null) WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)
+        else WindowInsets.safeDrawing
+    Box(Modifier.fillMaxSize().background(Paper).windowInsetsPadding(safeInsets)) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             state.reader != null -> ReaderScreen(state.reader!!, model,

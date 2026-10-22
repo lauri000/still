@@ -31,10 +31,16 @@ struct ReaderView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            focusStage
-        }.background(Palette.paper).foregroundStyle(Palette.ink)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                header
+                // Only the ribbon extends under horizontal system insets. Wrapped
+                // passage text and controls keep their safe-area margins.
+                focusStage
+                    .padding(.leading, engine.passageMode ? 0 : -geometry.safeAreaInsets.leading)
+                    .padding(.trailing, engine.passageMode ? 0 : -geometry.safeAreaInsets.trailing)
+            }.background(Palette.paper).foregroundStyle(Palette.ink)
+        }
         .onAppear {
             engine.wordsPerMinute = savedWPM
             engine.naturalPauses = savedNaturalPauses
@@ -106,7 +112,7 @@ struct ReaderView: View {
                         engine.seek(index)
                         engine.passageMode = false
                     }
-                        .frame(maxWidth: 850).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     SingleLineView(engine: engine, focusLetter: focusLetter,
                         activeWordSizePercent: activeWordSizePercent, animatedScrolling: animatedScrolling)

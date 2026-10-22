@@ -3,6 +3,50 @@ import UIKit
 
 final class StillUITests: XCTestCase {
     @MainActor
+    func testReaderUsesFullWidthAcrossRotation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        openTextEditor(in: app)
+        let editor = app.textViews["pageTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText(String(repeating: "i ", count: 120))
+        app.buttons["startReading"].tap()
+        let surface = app.otherElements["readingSurface"]
+        XCTAssertTrue(surface.waitForExistence(timeout: 5))
+        for _ in 0..<10 where wordOrdinal(in: app) < 40 {
+            surface.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.3))
+                .press(forDuration: 0.05, thenDragTo: surface.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.3)))
+        }
+        XCTAssertEqual(app.staticTexts["currentWord"].label, "i")
+        let ordinal = wordOrdinal(in: app)
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft, .landscapeRight] {
+            XCUIDevice.shared.orientation = orientation
+            waitForRotation(in: app, landscape: orientation != .portrait, controlID: "toggleContext")
+            let window = app.windows.firstMatch.frame
+            XCTAssertEqual(surface.frame.minX, window.minX, accuracy: 1)
+            XCTAssertEqual(surface.frame.maxX, window.maxX, accuracy: 1)
+            XCTAssertEqual(app.staticTexts["currentWord"].frame.midX, window.midX, accuracy: 1)
+            let neighbors = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "nearbyWord-")).allElementsBoundByIndex
+                .map(\.frame).filter { $0.intersects(window) }
+            XCTAssertLessThanOrEqual(neighbors.map(\.minX).min() ?? .infinity, window.minX + 19)
+            XCTAssertGreaterThanOrEqual(neighbors.map(\.maxX).max() ?? 0, window.maxX - 19)
+            XCTAssertEqual(wordOrdinal(in: app), ordinal)
+            attachScreenshot("Full width reader \(orientation.rawValue)")
+        }
+        app.buttons["toggleContext"].tap()
+        let passage = app.otherElements["nearbyPassage"]
+        XCTAssertTrue(passage.exists)
+        XCTAssertGreaterThan(passage.frame.width, app.windows.firstMatch.frame.width * 0.8)
+    }
+
+
+    @MainActor
     func testBookTypographyAndReaderContentsPreservePositionAndTrim() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library", "--with-headings"]

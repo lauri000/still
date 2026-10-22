@@ -31,7 +31,7 @@ fun PassageView(session: ReadingSession, state: ReadingState, selectWord: (Int) 
     val measurer = rememberTextMeasurer()
     val onSelectWord by rememberUpdatedState(selectWord)
     val list = rememberLazyListState(initialFirstVisibleItemIndex = document.blockContaining(state.index))
-    BoxWithConstraints(Modifier.widthIn(max = 850.dp).fillMaxSize().testTag("nearbyPassage")) {
+    BoxWithConstraints(Modifier.fillMaxSize().testTag("nearbyPassage")) {
         val fontSize = if (maxHeight < 240.dp) 20f else 24f
         val style = LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = fontSize.sp)
         val width = with(density) { (maxWidth - 48.dp).toPx().toDouble().coerceAtLeast(1.0) }
