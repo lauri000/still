@@ -1,7 +1,7 @@
 repository: https://github.com/lauri000/still
 pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
 # Build locally with scripts/android-release.py. zsp uploads this signed APK.
-release_source: ./dist/still-0.1.20-android-universal.apk
+release_source: ./dist/still-0.1.21-android-universal.apk
 name: Still
 summary: An offline PDF and EPUB speed reader.
 description: |
@@ -18,9 +18,9 @@ tags:
   - productivity
 icon: ./docs/store/icon.png
 images:
-  - ./docs/screenshots/android/starting-page.png
+  - ./docs/screenshots/direct-reading/android-library.png
   - ./docs/screenshots/full-screen-reader/android-single-line.png
   - ./docs/screenshots/scroll-reading/android-reading.png
   - ./docs/screenshots/full-screen-reader/android-landscape.png
   - ./docs/screenshots/scroll-reading/android-text-size.png
-release_notes: ./docs/releases/0.1.20.md
+release_notes: ./docs/releases/0.1.21.md
