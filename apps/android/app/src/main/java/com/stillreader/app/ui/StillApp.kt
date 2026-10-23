@@ -44,6 +44,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
+import com.stillreader.app.core.BookProgress
 import com.stillreader.app.core.Book
 import com.stillreader.app.data.PdfImporter
 import com.stillreader.app.data.BookImporter
@@ -162,7 +163,7 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover:
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(book.title, fontSize = 17.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val page = book.pages.indexOfFirst { it.id == book.position?.pageID }
-                        Text(when { book.position?.finished == true -> "Finished · ${book.pages.size} ${book.unitPlural}"
+                        Text(if (book.isEpub) remember(book) { BookProgress(book).savedStatus() } else when { book.position?.finished == true -> "Finished · ${book.pages.size} ${book.unitPlural}"
                             page >= 0 -> "${book.unitName} ${page + 1} of ${book.pages.size}"
                             else -> "${book.pages.size} ${book.unitPlural}" }, color = Muted, fontSize = 12.sp)
                     }

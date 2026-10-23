@@ -46,6 +46,18 @@ final class LibraryStore: ObservableObject {
                     sample.book.pages[index].text = (ProcessInfo.processInfo.arguments.contains("--with-headings") ? SampleBook.sections[index].0 + "\n\n" : "") + SampleBook.sections[index].1
                     sample.book.pages[index].isReviewed = true
                 }
+                // UI fixture: several chapter anchors share one text unit. Production imports are unchanged.
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--epub-sample") {
+                    var text = ""
+                    sample.book.chapters = SampleBook.sections.map { title, body in
+                        let offset = text.utf16.count
+                        text += title + "\n\n" + body + "\n\n"
+                        return BookChapter(id: UUID(), title: title, pageIndex: 0, level: 0, source: "EPUB navigation", utf16Offset: offset)
+                    }
+                    sample.book.pages = [BookPage(id: UUID(), number: 1, label: "1", extractedText: text, text: text,
+                        isReviewed: true, isIncluded: true, sourceHref: "sample.xhtml")]
+                    sample.book.sourceFormat = "epub"
+                }
                 sample.book = ReaderPipeline.prepare(sample.book)
                 if ProcessInfo.processInfo.arguments.contains("--legacy-sample") { sample.book.pipelineVersion = nil }
                 try repository.insert(sample.book, sourceData: sample.sourceData)

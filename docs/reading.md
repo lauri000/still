@@ -2,7 +2,7 @@
 
 
 1. Tap a book in the library to read immediately at your saved position. New imports and Gutenberg downloads also open directly in the reader; there is no preview or setup screen.
-2. Tap the chapter/page area in the reader header for **Contents** or **Go to page**. Navigation preserves your chosen beginning. To exclude front matter, use **… → Choose starting word** beside the book in the library.
+2. Tap the chapter/progress area in the reader header for **Contents**. EPUBs show chapter names and percentage read, with **Go to progress** for jumping through the book; PDFs retain **Go to page**. Navigation preserves your chosen beginning. To exclude front matter, use **… → Choose starting word** beside the book in the library.
 3. In single-line view on iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
 
 Closing the reader returns directly to the library. The **…** menu beside each book contains text editing, chapters, beginning trim, title/author, reprocessing, export, and deletion. Original PDF previews remain available in **Edit text** for comparison.
@@ -27,7 +27,13 @@ Optional tools live in the **…** menu beside the book in the library: **Edit t
 
 Tap the chapter/page area in the reader header to open **Contents**. The original
 PDF outline and additional saved chapters are available here, with **Go to page**
-for direct page navigation. Selecting an entry pauses reading and seeks to its
+for PDF page navigation. EPUBs show chapter names and overall percentage read;
+contents entries show their position in the book. **Go to progress** moves to a
+percentage using the existing word cursor, and Cancel leaves the cursor unchanged.
+Progress counts only retained words, respecting the chosen beginning and excluded
+text, and only a completed book is labelled 100% read. The library shows the saved
+chapter and percentage. Internal EPUB file boundaries stay unchanged and are
+not presented as numbered sections. Selecting an entry pauses reading and seeks to its
 exact heading when mapped, or to its destination page otherwise. It does not
 change the beginning trim. Entries outside the retained reading selection are
 visible but disabled. Closing Contents alone keeps the exact word.
@@ -103,3 +109,11 @@ The preview/setup landing page has been removed on Android and Apple. Library ta
 Verified with 72 Android JVM tests (3 optional corpus tests skipped), 95 Apple unit/integration tests (2 optional corpus tests skipped), and 41 Android reader/scrolling/catalog scenarios (2 optional tests skipped). All 17 iPhone UI scenarios and four focused iPad scenarios pass after adapting the former preview-navigation tests to the new flow. A targeted Android rerun covers the empty-outline fix, PDF contents, and EPUB chapter navigation. Android lint reports zero errors and 23 existing warnings; the macOS target builds. Physical devices were not exercised.
 
 Reviewed native library previews: [Android](screenshots/direct-reading/android-library.png) and [iPhone](screenshots/direct-reading/iphone-library.png).
+
+## Chapter and progress verification (23 October 2026)
+
+EPUB reader headers, library status, contents, and text-tool labels now use chapter names and word-based progress instead of numbered source sections. Progress navigation uses the existing reader cursor. The stored text units, chapter anchors, corrections, backups, and saved positions are unchanged; no reimport or migration is needed.
+
+Verified with 76 Android JVM tests (3 optional corpus tests skipped), 99 Apple unit/integration tests (2 optional corpus tests skipped), seven focused Android device scenarios, three iPhone UI scenarios, and the EPUB navigation/resume scenario on iPad. Coverage includes several chapters in one source file, uneven source-file sizes, trims, excluded text, completion, missing chapter metadata, progress jumps and cancellation, mode switching, exact resume, and existing PDF navigation. Android lint reports zero errors and 23 existing warnings; the macOS build passes. Physical devices were not exercised.
+
+Reviewed native previews: [Android contents](screenshots/chapter-progress/android-contents.png), [iPhone reader](screenshots/chapter-progress/iphone-reader.png), [iPhone contents](screenshots/chapter-progress/iphone-contents.png), and [iPad contents](screenshots/chapter-progress/ipad-contents.png).

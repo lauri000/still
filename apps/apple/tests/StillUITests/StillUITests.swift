@@ -111,6 +111,52 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
+    func testEpubChapterProgressAndNavigationSurviveRelaunch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library", "--epub-sample"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        readBook(in: app)
+        let header = app.buttons["readerPage"]
+        XCTAssertTrue(header.label.contains("A place to begin"))
+        XCTAssertTrue(header.label.contains("0% read"))
+        XCTAssertFalse(header.label.contains("Section"))
+        header.tap()
+        XCTAssertFalse(app.buttons["readerGoToPage"].exists)
+        let chapter = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'contentsEntry-' AND label CONTAINS 'Keep the meaning'")).firstMatch
+        XCTAssertTrue(chapter.waitForExistence(timeout: 5)); chapter.tap()
+        XCTAssertTrue(header.label.contains("Keep the meaning"))
+        let selected = wordOrdinal(in: app)
+        attachScreenshot("EPUB chapter and progress")
+        header.tap()
+        attachScreenshot("EPUB contents progress")
+        app.buttons["readerGoToProgress"].tap()
+        XCTAssertTrue(app.sliders["bookProgressSlider"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), selected)
+        header.tap()
+        app.buttons["readerGoToProgress"].tap()
+        app.sliders["bookProgressSlider"].adjust(toNormalizedSliderPosition: 0.5)
+        app.buttons["Go"].tap()
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        let destination = wordOrdinal(in: app)
+        XCTAssertNotEqual(destination, selected)
+        app.buttons["toggleContext"].tap()
+        app.buttons["toggleContext"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), destination)
+        app.buttons["Close reader"].tap()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["book-The art of attention"].label.contains("% read"))
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        readBook(in: app)
+        XCTAssertEqual(wordOrdinal(in: app), destination)
+        XCTAssertFalse(app.buttons["readerPage"].label.contains("Section"))
+    }
+
+    @MainActor
     func testLibraryOpensReaderDirectlyAndResumesAfterRelaunch() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]

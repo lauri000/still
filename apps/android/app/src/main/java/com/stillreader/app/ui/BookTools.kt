@@ -39,7 +39,7 @@ fun BookTools(book: Book, tool: String, initialPage: Int, model: LibraryViewMode
         }
         when (tool) {
             "Edit text" -> {
-                Column(Modifier.padding(20.dp)) { PageSelector(page, book.pages.size, book.unitName) { model.pause(); page = it } }
+                Column(Modifier.padding(20.dp)) { BookTextSelector(book, page) { model.pause(); page = it } }
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp)) {
                     if (maxWidth > 700.dp) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                         BookPreview(book, model.importer, model.repository.sourceFile(book), page, Modifier.weight(1f).fillMaxHeight())
@@ -57,7 +57,7 @@ fun BookTools(book: Book, tool: String, initialPage: Int, model: LibraryViewMode
                     label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(book.author, { text -> model.updateBook(book.id, debounce = true) { it.copy(author = text) } },
                     label = { Text("Author") }, modifier = Modifier.fillMaxWidth())
-                Text("${book.pages.size} ${book.unitPlural} · ${book.originalFilename}", color = Muted)
+                Text(if (book.isEpub) book.originalFilename else "${book.pages.size} pages · ${book.originalFilename}", color = Muted)
                 Text("The original file is kept with your corrections and reading progress on this device. Export a book backup to move it to another device.", color = Muted, fontSize = 14.sp)
             }
         }
@@ -72,9 +72,9 @@ private fun EditPanel(book: Book, pageIndex: Int, model: LibraryViewModel, modif
         if ('\uFFFD' in page.text) Text("Some characters could not be decoded. Compare them with the original.", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         if (Regex("[\\p{L}]-[\\t ]*\\n[\\p{L}]").containsMatchIn(page.text)) Text("Some words may be split across lines. Check the hyphens against the PDF.", color = Muted, fontSize = 13.sp)
         OutlinedTextField(page.text, { text -> model.updateBook(book.id, debounce = true) { it.editText(pageIndex, text) } },
-            label = { Text("${book.unitName} text") }, modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp).testTag("pageText"),
+            label = { Text(if (book.isEpub) "Book text" else "Page text") }, modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp).testTag("pageText"),
             textStyle = TextStyle(fontFamily = FontFamily.Serif, fontSize = 17.sp, lineHeight = 26.sp))
-        OptionToggle("Include this ${book.unitName.lowercase()}", page.isIncluded) { included ->
+        OptionToggle(if (book.isEpub) "Include this text" else "Include this page", page.isIncluded) { included ->
             model.updateBook(book.id) { it.copy(pages = it.pages.mapIndexed { index, item -> if (index == pageIndex) item.copy(isIncluded = included) else item }) }
         }
         OptionToggle("Reviewed", page.isReviewed) { reviewed ->
@@ -94,10 +94,10 @@ private fun StartingWord(book: Book, page: Int, changePage: (Int) -> Unit, model
     LaunchedEffect(page) { if (chunks.isNotEmpty()) list.scrollToItem((words.indexOfFirst { it.offset + it.length > offset }.coerceAtLeast(0)) / 160) }
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("Tap the first word to keep.", color = Muted)
-        PageSelector(page, book.pages.size, book.unitName, onChange = changePage)
+        BookTextSelector(book, page, onChange = changePage)
         LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Surface).testTag("startingWords"), state = list,
             contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (words.isEmpty()) item { Text("No selectable text in this ${book.unitName.lowercase()}.", color = Muted) }
+            if (words.isEmpty()) item { Text("No selectable text here.", color = Muted) }
             items(chunks, key = { it.first().offset }) { chunk ->
                 val start = chunk.first().offset
                 val end = chunk.last().let { it.offset + it.length }
@@ -133,6 +133,7 @@ private fun StartingWord(book: Book, page: Int, changePage: (Int) -> Unit, model
 
 @Composable
 private fun Chapters(book: Book, initialPage: Int, model: LibraryViewModel, close: () -> Unit) {
+    val progress = remember(book) { BookProgress(book) }
     var adding by remember { mutableStateOf(false) }
     Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (book.chapters.isEmpty()) Text("This book has no chapters. You can add your own.", color = Muted)
@@ -143,7 +144,7 @@ private fun Chapters(book: Book, initialPage: Int, model: LibraryViewModel, clos
             }.padding(start = (chapter.level.coerceAtMost(6) * 12).dp)) {
                 Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
                     Text(chapter.title)
-                    Text("${book.unitName} ${book.pages[chapter.pageIndex].label}", color = Muted, fontSize = 12.sp)
+                    Text(if (book.isEpub) progress.percent(chapter.pageIndex, chapter.utf16Offset ?: 0)?.let { "$it% of book" } ?: "" else "Page ${book.pages[chapter.pageIndex].label}", color = Muted, fontSize = 12.sp)
                 }
                 IconButton(onClick = { model.updateBook(book.id) { it.copy(chapters = it.chapters.filterNot { item -> item.id == chapter.id }, chaptersCustomized = true) } }) {
                     Icon(Icons.Outlined.Delete, "Remove ${chapter.title}", tint = Muted)
@@ -159,11 +160,35 @@ private fun Chapters(book: Book, initialPage: Int, model: LibraryViewModel, clos
         AlertDialog(onDismissRequest = { adding = false }, title = { Text("Add chapter") }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Chapter title") }, singleLine = true)
-                PageSelector(page, book.pages.size, book.unitName) { page = it }
+                BookTextSelector(book, page) { page = it }
             }
         }, confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = {
             model.updateBook(book.id) { it.copy(chapters = (it.chapters + BookChapter(title = title.trim(), pageIndex = page)).sortedBy { it.pageIndex }, chaptersCustomized = true) }
             adding = false
         }) { Text("Add") } }, dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun BookTextSelector(book: Book, page: Int, onChange: (Int) -> Unit) {
+    if (!book.isEpub) { PageSelector(page, book.pages.size, "Page", onChange = onChange); return }
+    val progress = remember(book) { BookProgress(book, readingOnly = false) }
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Box {
+            TextButton(onClick = { expanded = true }, modifier = Modifier.testTag("bookTextLocation")) {
+                Text(progress.textLabel(page), maxLines = 2)
+            }
+            DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+                book.pages.indices.forEach { index ->
+                    DropdownMenuItem(text = { Text(progress.textLabel(index), maxLines = 2) },
+                        onClick = { onChange(index); expanded = false })
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(enabled = page > 0, onClick = { onChange(page - 1) }) { Text("Earlier text") }
+            TextButton(enabled = page < book.pages.lastIndex, onClick = { onChange(page + 1) }) { Text("Later text") }
+        }
     }
 }

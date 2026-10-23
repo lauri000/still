@@ -123,7 +123,7 @@ object EpubImporter {
                     pages += BookPage(number = pages.size + 1, text = content.text, extractedText = content.text,
                         isReviewed = true, sourceHref = item.path, headings = content.headings, edited = false)
                 }
-                progress(ImportProgress("Reading section ${index + 1} of ${spineItems.size}…", .85f * (index + 1) / spineItems.size))
+                progress(ImportProgress("Reading book…", .85f * (index + 1) / spineItems.size))
             }
             require(pages.isNotEmpty()) { "This EPUB has no readable text. Image-only books are not supported yet." }
             val chapters = links.mapNotNull { link ->

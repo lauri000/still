@@ -10,15 +10,16 @@ struct PDFContentsList: View {
     var readingOnly = false
     let select: (PDFContentsEntry) -> Void
     var body: some View {
+        let progress = BookProgress(book)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     if loading { ProgressView("Loading contents…").padding() }
-                    else if failed { message("Contents unavailable", "You can still choose a \(book.unitName.lowercased()) using the controls.") }
-                    else if entries.isEmpty { message("No contents", "This book has no contents. Use the \(book.unitName.lowercased()) controls to choose where to read.") }
+                    else if failed { message("Contents unavailable", book.isEpub ? "Use book progress to choose where to read." : "You can still choose a page using the controls.") }
+                    else if entries.isEmpty { message("No contents", book.isEpub ? "This book has no chapter list. Use book progress to choose where to read." : "This book has no contents. Use the page controls to choose where to read.") }
                     else {
                         ForEach(PDFContents.visible(entries, collapsed: collapsed)) { entry in
-                            row(entry).id(entry.id)
+                            row(entry, progress: progress).id(entry.id)
                         }
                     }
                 }.padding(4)
@@ -38,7 +39,7 @@ struct PDFContentsList: View {
         }.padding(16)
     }
 
-    private func row(_ entry: PDFContentsEntry) -> some View {
+    private func row(_ entry: PDFContentsEntry, progress: BookProgress) -> some View {
         let selected = selectedID == entry.id
         let available = entry.pageIndex.map { book.pages.indices.contains($0) && (!readingOnly || book.includesPage(at: $0) && !book.pages[$0].hasNoText && !(entry.utf16Offset.map { offset in book.readingStart.map { $0.pageID == book.pages[entry.pageIndex!].id && offset < $0.utf16Offset } ?? false } ?? false)) } ?? false
         return HStack(spacing: 0) {
@@ -58,7 +59,7 @@ struct PDFContentsList: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.title).font(.system(size: 14, weight: selected ? .semibold : .regular))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(entry.pageIndex != nil && !available ? "Outside reading selection" : entry.pageIndex.flatMap { book.pages.indices.contains($0) ? "\(book.unitName) \(book.pages[$0].label)" : nil } ?? "No local destination")
+                    Text(entry.pageIndex != nil && !available ? "Outside reading selection" : entry.pageIndex.flatMap { book.pages.indices.contains($0) ? (book.isEpub ? progress.percent(page: $0, offset: entry.utf16Offset ?? 0).map { "\($0)% of book" } ?? "" : "Page \(book.pages[$0].label)") : nil } ?? "No local destination")
                         .font(.caption).foregroundStyle(Palette.muted)
                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 6).padding(.trailing, 8)
                     .contentShape(Rectangle())
@@ -84,11 +85,13 @@ struct ReaderContentsSheet: View {
     @State private var loading = true
     @State private var failed = false
     @State private var collapsed: Set<String> = []
+    @State private var showingProgress = false
+    @State private var destination = 0.0
 
     private var selectedID: String? {
         let current = engine.structure.section(at: engine.index)
         return entries.first { entry in engine.book.isEpub ? current.map { entry.id == "chapter-" + $0.chapterID.uuidString } == true : entry.pageIndex == current?.pageIndex && ReadingStructure.normalize(entry.title) == current.map { ReadingStructure.normalize($0.title) } }?.id
-            ?? PDFContents.current(in: entries, page: engine.current?.pageIndex ?? 0, selectedID: nil)?.id
+            ?? PDFContents.current(in: entries, page: engine.current?.pageIndex ?? 0, selectedID: nil, utf16Offset: engine.book.isEpub ? engine.current?.word.offset : nil)?.id
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -97,13 +100,18 @@ struct ReaderContentsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }
             }
-            Menu("Go to \(engine.book.unitName.lowercased())") {
-                ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
-                    if engine.book.includesPage(at: index) {
-                        Button("\(engine.book.unitName) \(page.label)") { engine.seekPage(index); dismiss() }
+            if engine.book.isEpub {
+                Button("Go to progress") { destination = engine.progress * 100; showingProgress = true }
+                    .accessibilityIdentifier("readerGoToProgress")
+            } else {
+                Menu("Go to page") {
+                    ForEach(Array(engine.book.pages.enumerated()), id: \.element.id) { index, page in
+                        if engine.book.includesPage(at: index) {
+                            Button("\(engine.book.unitName) \(page.label)") { engine.seekPage(index); dismiss() }
+                        }
                     }
-                }
-            }.accessibilityIdentifier("readerGoToPage")
+                }.accessibilityIdentifier("readerGoToPage")
+            }
             PDFContentsList(book: engine.book, entries: entries, loading: loading, failed: failed,
                             selectedID: selectedID, collapsed: $collapsed, readingOnly: true) { entry in
                 guard let page = entry.pageIndex else { return }
@@ -114,6 +122,20 @@ struct ReaderContentsSheet: View {
             }
         }.padding(20).background(Palette.paper)
             .presentationDetents([.large]).frame(idealWidth: 400, idealHeight: 600)
+            .sheet(isPresented: $showingProgress) {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Go to progress").font(.headline)
+                    Text("\(Int(destination.rounded()))% of book").accessibilityIdentifier("progressDestination")
+                    Slider(value: $destination, in: 0...100, step: 1) { Text("Book progress") }
+                        .accessibilityIdentifier("bookProgressSlider")
+                    HStack {
+                        Button("Cancel") { showingProgress = false }
+                        Spacer()
+                        Button("Go") { engine.seek(Int(destination / 100 * Double(engine.tokens.count))); showingProgress = false; dismiss() }
+                            .disabled(engine.tokens.isEmpty)
+                    }
+                }.padding(24).frame(idealWidth: 360).presentationDetents([.height(230)])
+            }
             .task {
                 if engine.book.isEpub { entries = PDFContents.fromChapters(engine.book) }
                 else if let url {

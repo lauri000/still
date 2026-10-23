@@ -59,18 +59,19 @@ struct BookToolsView: View {
 
     private func reviewView(_ book: Book) -> some View {
         let page = book.pages[min(pageIndex, book.pages.count - 1)]
+        let progress = BookProgress(book, readingOnly: false)
         return VStack(spacing: 0) {
             HStack {
-                Button { movePage(-1) } label: { Image(systemName: "chevron.left").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == 0).accessibilityLabel("Previous page")
+                Button { movePage(-1) } label: { Image(systemName: "chevron.left").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == 0).accessibilityLabel(book.isEpub ? "Earlier text" : "Previous page")
                 Menu {
                     ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, item in
-                        Button("\(item.isReviewed ? "✓ " : "")\(book.unitName) \(item.label)\(book.includesPage(at: index) ? "" : " · skipped")") { library.flush(); pageIndex = index }
+                        Button("\(item.isReviewed ? "✓ " : "")\(progress.textLabel(page: index))\(book.includesPage(at: index) ? "" : " · skipped")") { library.flush(); pageIndex = index }
                     }
                 } label: {
-                    HStack(spacing: 9) { Text("\(book.unitName) \(page.label)").font(.system(size: 13, weight: .semibold)); Image(systemName: "chevron.down").font(.system(size: 9)) }
-                }.menuStyle(.borderlessButton).fixedSize()
-                Text("of \(book.pages.count)").font(.system(size: 11)).foregroundStyle(Palette.muted)
-                Button { movePage(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == book.pages.count - 1).accessibilityLabel("Next page")
+                    HStack(spacing: 9) { Text(progress.textLabel(page: pageIndex)).lineLimit(2).font(.system(size: 13, weight: .semibold)); Image(systemName: "chevron.down").font(.system(size: 9)) }
+                }.menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
+                if !book.isEpub { Text("of \(book.pages.count)").font(.system(size: 11)).foregroundStyle(Palette.muted) }
+                Button { movePage(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 42) }.buttonStyle(.plain).disabled(pageIndex == book.pages.count - 1).accessibilityLabel(book.isEpub ? "Later text" : "Next page")
                 Spacer()
                 if page.isReviewed { Label("Reviewed", systemImage: "checkmark.seal.fill").font(.system(size: 11)).foregroundStyle(Palette.forest) }
                 else { Label(page.hasNoText ? "No text" : "Unchecked", systemImage: "circle.dotted").font(.system(size: 11)).foregroundStyle(Palette.muted) }
@@ -157,7 +158,8 @@ struct BookToolsView: View {
     }
 
     private func chaptersView(_ book: Book) -> some View {
-        ScrollView {
+        let progress = BookProgress(book)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
@@ -168,15 +170,15 @@ struct BookToolsView: View {
                     Button { chapterDraft = ""; addingChapter = true } label: { Label("Add chapter", systemImage: "plus") }.buttonStyle(SecondaryButton())
                 }.padding(.bottom, 12)
                 if book.chapters.isEmpty {
-                    ContentUnavailableView("No chapters found", systemImage: "list.bullet.indent", description: Text("Add a chapter and its starting \(book.unitName.lowercased())."))
+                    ContentUnavailableView("No chapters found", systemImage: "list.bullet.indent", description: Text("Add a chapter and choose where it starts."))
                 }
                 ForEach(book.chapters.sorted { $0.pageIndex < $1.pageIndex }) { chapter in
                     HStack(spacing: 18) {
-                        Text(String(format: "%02d", chapter.pageIndex + 1)).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
+                        if !book.isEpub { Text(String(format: "%02d", chapter.pageIndex + 1)).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted) }
                         Button { pageIndex = chapter.pageIndex; section = "Edit text" } label: {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(chapter.title).font(.custom("Georgia", size: 18))
-                                Text("\(book.unitName) \(book.pages[chapter.pageIndex].label) · \(chapter.source)").font(.system(size: 10)).foregroundStyle(Palette.muted)
+                                Text(book.isEpub ? progress.percent(page: chapter.pageIndex, offset: chapter.utf16Offset ?? 0).map { "\($0)% of book" } ?? "" : "Page \(book.pages[chapter.pageIndex].label) · \(chapter.source)").font(.system(size: 10)).foregroundStyle(Palette.muted)
                             }.padding(.leading, CGFloat(min(chapter.level, 4)) * 12)
                         }.buttonStyle(.plain)
                         Spacer()
@@ -202,11 +204,12 @@ struct BookToolsView: View {
         }.padding(30).frame(idealWidth: 440).background(Palette.paper)
     }
     private func chapterSheet(_ book: Book) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
+        let progress = BookProgress(book, readingOnly: false)
+        return VStack(alignment: .leading, spacing: 20) {
             Text("A new chapter").font(.custom("Georgia", size: 27))
             TextField("Chapter title", text: $chapterDraft).textFieldStyle(.roundedBorder).accessibilityIdentifier("chapterTitle")
-            Picker("Starting page", selection: $pageIndex) {
-                ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, page in Text("\(book.unitName) \(page.label)").tag(index) }
+            Picker(book.isEpub ? "Starting text" : "Starting page", selection: $pageIndex) {
+                ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, _ in Text(progress.textLabel(page: index)).tag(index) }
             }
             HStack {
                 Button("Cancel") { addingChapter = false }.buttonStyle(SecondaryButton())

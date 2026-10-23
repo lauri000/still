@@ -168,6 +168,69 @@ class AndroidReaderTests {
         assertEquals(original.chapters.map { it.utf16Offset }, (model.selectedBook() ?: model.state.value.books.first()).chapters.map { it.utf16Offset })
     }
 
+    @Test fun epubWithoutChaptersStillNavigatesByBookProgress() {
+        launch(seed = false)
+        val file = File(root, "structured.epub")
+        fixture("epub/structured.epub").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.reader != null }
+        val id = model.state.value.reader!!.book.id
+        compose.runOnUiThread {
+            model.closeReader()
+            model.updateBook(id) { it.copy(chapters = emptyList(), chaptersCustomized = true) }
+            model.openReader()
+        }
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.onNodeWithText("This book has no chapter list. Use book progress to choose where to read.").assertIsDisplayed()
+        compose.onNodeWithText("Go to progress").performClick()
+        compose.onNodeWithTag("bookProgressSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(100f) }
+        compose.onNodeWithText("Go").performClick()
+        compose.runOnIdle {
+            val session = model.state.value.reader!!
+            assertEquals(session.tokens.lastIndex, session.state.value.index)
+            assertFalse(session.state.value.finished)
+        }
+        compose.onNodeWithTag("readerChapter", useUnmergedTree = true).assertDoesNotExist()
+        compose.onAllNodes(hasText("Section", substring = true)).assertCountEquals(0)
+    }
+
+    @Test fun epubChapterProgressReplacesSectionsAndNavigationPersists() {
+        launch(seed = false)
+        val file = File(root, "structured.epub")
+        fixture("epub/structured.epub").use { input -> file.outputStream().use { input.copyTo(it) } }
+        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
+        compose.waitUntil(20_000) { model.state.value.reader != null }
+        val session = model.state.value.reader!!
+        val chapter = session.book.chapters[2]
+        compose.runOnUiThread { session.seekPosition(ReadingPosition(session.book.pages[chapter.pageIndex].id, chapter.utf16Offset!!)) }
+        compose.onNodeWithTag("readerChapter", useUnmergedTree = true).assertTextEquals("Repeat")
+        compose.onNodeWithTag("readerPage", useUnmergedTree = true).assertTextContains("% read", substring = true)
+        compose.onAllNodes(hasText("Section", substring = true)).assertCountEquals(0)
+        val before = session.state.value.index
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.onNodeWithText("Go to progress").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle { assertEquals(before, session.state.value.index) }
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-chapter-${chapter.id}").isDisplayed() }
+        compose.onAllNodes(hasText("Section", substring = true)).assertCountEquals(0)
+        outlineScreenshot("epub-contents-progress")
+        compose.onNodeWithText("Go to progress").performClick()
+        compose.onNodeWithTag("bookProgressSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(50f) }
+        compose.onNodeWithText("Go").performClick()
+        compose.runOnIdle { assertEquals(session.tokens.size / 2, session.state.value.index) }
+        val target = session.current!!.position
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onAllNodes(hasText("Section", substring = true)).assertCountEquals(0)
+        compose.onNodeWithText(BookProgress(session.book.copy(position = target)).savedStatus()).assertIsDisplayed()
+        readBook()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.runOnIdle { assertEquals(target, model.state.value.reader!!.current!!.position) }
+    }
+
     @Test fun epubImportChaptersModesResumeAndBackup() {
         launch(seed = false)
         val file = File(root, "structured.epub")

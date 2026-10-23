@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 @Composable
 internal fun ContentsList(book: Book, entries: List<PdfContentsEntry>, loading: Boolean, failed: Boolean,
     selectedID: String?, collapsed: Set<String>, toggle: (String) -> Unit, select: (PdfContentsEntry) -> Unit, modifier: Modifier, readingOnly: Boolean = false) {
+    val progress = remember(book) { BookProgress(book) }
     val visible = PdfContents.visible(entries, collapsed)
     val listState = rememberLazyListState()
     LaunchedEffect(selectedID, visible.map { it.id }) {
@@ -38,8 +39,8 @@ internal fun ContentsList(book: Book, entries: List<PdfContentsEntry>, loading: 
         if (loading || failed || entries.isEmpty()) item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(when { loading -> "Loading contents…"; failed -> "Contents unavailable"; else -> if (book.isEpub) "No contents" else "No PDF contents" }, fontWeight = FontWeight.SemiBold)
-                if (!loading) Text(if (failed) "You can still choose a ${book.unitName.lowercase()} using the controls."
-                    else "This book has no contents. Use the ${book.unitName.lowercase()} controls to choose where to read.", color = Muted, fontSize = 14.sp)
+                if (!loading) Text(if (failed) if (book.isEpub) "Use book progress to choose where to read." else "You can still choose a page using the controls."
+                    else if (book.isEpub) "This book has no chapter list. Use book progress to choose where to read." else "This book has no contents. Use the page controls to choose where to read.", color = Muted, fontSize = 14.sp)
             }
         }
         items(visible, key = { it.id }) { entry ->
@@ -55,7 +56,7 @@ internal fun ContentsList(book: Book, entries: List<PdfContentsEntry>, loading: 
                     .testTag("contentsEntry-${entry.id}").heightIn(min = 48.dp).padding(vertical = 10.dp, horizontal = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(entry.title, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                    Text(if (entry.pageIndex != null && !available) "Outside reading selection" else entry.pageIndex?.let { book.pages.getOrNull(it)?.let { p -> "${book.unitName} ${p.label}" } } ?: "No local destination", fontSize = 12.sp, color = Muted)
+                    Text(if (entry.pageIndex != null && !available) "Outside reading selection" else entry.pageIndex?.let { book.pages.getOrNull(it)?.let { p -> if (book.isEpub) progress.percent(it, entry.utf16Offset ?: 0)?.let { percent -> "$percent% of book" } ?: "" else "Page ${p.label}" } } ?: "No local destination", fontSize = 12.sp, color = Muted)
                 }
             }
         }
@@ -83,7 +84,7 @@ internal fun ReaderContentsSheet(session: ReadingSession, model: com.stillreader
     val state by session.state.collectAsState()
     val current = session.structure.sectionAt(state.index)
     val selected = entries.firstOrNull { current != null && (if (session.book.isEpub) it.id == "chapter-${current.chapterID}" else it.pageIndex == current.pageIndex && ReadingStructure.normalize(it.title) == ReadingStructure.normalize(current.title)) }
-        ?: PdfContents.current(entries, session.current?.pageIndex ?: 0)
+        ?: PdfContents.current(entries, session.current?.pageIndex ?: 0, utf16Offset = if (session.book.isEpub) session.current?.word?.offset else null)
     // Observe completion outside the deferred sheet content, including an empty outline.
     val isLoading = loading
     val hasFailed = failed
@@ -92,7 +93,7 @@ internal fun ReaderContentsSheet(session: ReadingSession, model: com.stillreader
             Text("Contents", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("Done") }
         }
-        TextButton(onClick = onPage, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Go to ${session.book.unitName.lowercase()}") }
+        TextButton(onClick = onPage, modifier = Modifier.padding(horizontal = 12.dp)) { Text(if (session.book.isEpub) "Go to progress" else "Go to page") }
         ContentsList(session.book, entries, isLoading, hasFailed, selected?.id, collapsed,
             { collapsed = if (it in collapsed) collapsed - it else collapsed + it },
             { entry -> entry.pageIndex?.let { page ->

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.ReadingSession
 import com.stillreader.app.core.ReadingFocus
+import com.stillreader.app.core.BookProgress
 import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.sign
@@ -65,6 +66,7 @@ import kotlin.math.roundToInt
 @Composable
 fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -> Unit, onReview: (Int) -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
+    val bookProgress = remember(session.book) { BookProgress(session.book) }
     var passage by rememberSaveable(session.book.id) { mutableStateOf(false) }
     SideEffect { session.passageMode = passage }
     var options by remember { mutableStateOf(false) }
@@ -113,17 +115,19 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Default.ArrowBack, "Back") }
                 Column(Modifier.weight(1f).heightIn(min = 48.dp)
-                    .clickable(onClickLabel = "Contents and pages") { session.pause(); contents = true }
+                    .clickable(onClickLabel = if (session.book.isEpub) "Chapters and book progress" else "Contents and pages") { session.pause(); contents = true }
                     .testTag("readerContents")
                     .padding(horizontal = 4.dp), verticalArrangement = Arrangement.Center) {
                     Text(session.book.title, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        session.structure.sectionAt(state.index)?.let { section ->
-                            Text(section.title, Modifier.weight(1f).testTag("readerChapter"), color = Muted, fontSize = 11.sp,
+                        (if (session.book.isEpub) session.current?.let { bookProgress.chapterTitle(it.pageIndex, it.word.offset) }
+                            else session.structure.sectionAt(state.index)?.title)?.let { chapter ->
+                            Text(chapter, Modifier.weight(1f).testTag("readerChapter"), color = Muted, fontSize = 11.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        Text("${if (state.finished) "Finished · " else ""}${session.book.unitName} ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
+                        Text(if (session.book.isEpub) "${if (state.finished) "Finished · " else ""}${if (state.finished) 100 else 100L * state.index / session.tokens.size.coerceAtLeast(1)}% read"
+                            else "${if (state.finished) "Finished · " else ""}Page ${session.current?.let { session.book.pages[it.pageIndex].label } ?: "—"} of ${session.book.pages.size}",
                             Modifier.testTag("readerPage"), color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -162,7 +166,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             state.blockedPage?.let { page ->
                 Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).padding(16.dp).widthIn(max = 500.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${session.book.unitName} ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
+                    Text(if (session.book.isEpub) "This text needs a check." else "Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
                     Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
                     TextButton(onClick = { onReview(page) }) { Text("Review this page") }
                 }
@@ -201,13 +205,24 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
-                OptionToggle("Pause at unchecked ${session.book.unitPlural}", strict) { strict = it; model.options(natural, strict) }
+                OptionToggle(if (session.book.isEpub) "Pause at unchecked text" else "Pause at unchecked pages", strict) { strict = it; model.options(natural, strict) }
                 Text("Require page approval before playback. Otherwise, unchecked text plays immediately and pages without text are skipped.", fontSize = 12.sp, color = Muted)
             }
         }, confirmButton = { TextButton(onClick = { options = false }) { Text("Done") } })
     }
     if (contents) ReaderContentsSheet(session, model, onClose = { contents = false }, onPage = { contents = false; pagePicker = true })
-    if (pagePicker) {
+    if (pagePicker && session.book.isEpub) {
+        var percent by remember { mutableFloatStateOf(session.progress * 100) }
+        AlertDialog(onDismissRequest = { pagePicker = false }, title = { Text("Go to progress") }, text = {
+            Column {
+                Text("${percent.roundToInt()}% of book", Modifier.testTag("progressDestination"))
+                Slider(percent, { percent = it }, valueRange = 0f..100f, steps = 99,
+                    modifier = Modifier.testTag("bookProgressSlider").semantics { contentDescription = "Book progress" })
+            }
+        }, confirmButton = { TextButton(enabled = session.tokens.isNotEmpty(), onClick = {
+            session.seek((percent / 100 * session.tokens.size).toInt()); pagePicker = false
+        }) { Text("Go") } }, dismissButton = { TextButton(onClick = { pagePicker = false }) { Text("Cancel") } })
+    } else if (pagePicker) {
         var page by remember { mutableIntStateOf(session.current?.pageIndex ?: session.book.readingStartPageIndex) }
         AlertDialog(onDismissRequest = { pagePicker = false }, title = { Text("Go to ${session.book.unitName.lowercase()}") },
             text = { PageSelector(page, session.book.pages.size, session.book.unitName) { page = it } },

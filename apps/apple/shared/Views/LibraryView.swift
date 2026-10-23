@@ -194,6 +194,7 @@ struct LibraryView: View {
     }
 
     private func bookStatus(_ book: Book) -> String {
+        if book.isEpub { return BookProgress(book).savedStatus() }
         if let position = book.position, let page = book.pages.firstIndex(where: { $0.id == position.pageID }) {
             return position.finished ? "Finished · \(book.pages.count) \(book.unitPlural)" : "\(book.unitName) \(page + 1) of \(book.pages.count)"
         }

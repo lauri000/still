@@ -20,6 +20,7 @@ struct ReaderView: View {
     @State private var showingSettings = false
     @State private var showingContents = false
     private let pdfURL: URL?
+    private let bookProgress: BookProgress
     @GestureState private var dragInProgress = false
     @State private var speedFeedbackID = 0
     @State private var showSpeed = false
@@ -29,6 +30,7 @@ struct ReaderView: View {
     init(book: Book, pdfURL: URL? = nil, onReviewPage: @escaping (Int) -> Void, onCheckpoint: @escaping (ReadingPosition) -> Void) {
         _engine = StateObject(wrappedValue: ReaderEngine(book: book))
         self.pdfURL = pdfURL
+        bookProgress = BookProgress(book)
         self.onReviewPage = onReviewPage
         self.onCheckpoint = onCheckpoint
     }
@@ -98,7 +100,8 @@ struct ReaderView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("readerHeader")
     }
     private var pageDescription: String {
-        "\(engine.isFinished ? "Finished · " : "")\(engine.book.unitName) \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
+        if engine.book.isEpub { return "\(engine.isFinished ? "Finished · " : "")\(engine.isFinished ? 100 : 100 * engine.index / max(1, engine.tokens.count))% read" }
+        return "\(engine.isFinished ? "Finished · " : "")\(engine.book.unitName) \(engine.current.map { engine.book.pages[$0.pageIndex].label } ?? "—") of \(engine.book.pages.count)"
     }
     private var pageMenu: some View {
         Button { engine.pause(); showingContents = true } label: {
@@ -106,13 +109,13 @@ struct ReaderView: View {
                 Text(engine.book.title)
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.ink)
                 HStack(spacing: 8) {
-                    if let section = engine.structure.section(at: engine.index) {
-                        Text(section.title).lineLimit(1).truncationMode(.tail).accessibilityIdentifier("readerChapter")
+                    if let title = engine.book.isEpub ? engine.current.flatMap({ bookProgress.chapterTitle(page: $0.pageIndex, offset: $0.word.offset) }) : engine.structure.section(at: engine.index)?.title {
+                        Text(title).lineLimit(1).truncationMode(.tail).accessibilityIdentifier("readerChapter")
                     }
                     Text(pageDescription).fixedSize(horizontal: true, vertical: false)
                 }.font(.system(size: 11)).foregroundStyle(Palette.muted)
             }.lineLimit(1).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier("readerPage").accessibilityHint("Contents and pages")
+        }.buttonStyle(.plain).accessibilityIdentifier("readerPage").accessibilityHint(engine.book.isEpub ? "Chapters and book progress" : "Contents and pages")
     }
     private var focusStage: some View {
         GeometryReader { geometry in
@@ -220,7 +223,7 @@ struct ReaderView: View {
     #endif
     private func reviewNotice(_ index: Int) -> some View {
         VStack(spacing: 10) {
-            Text("\(engine.book.unitName) \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
+            Text(engine.book.isEpub ? "This text needs a check." : "Page \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
             Text("Compare its text with the PDF, then mark it reviewed. Blank or scanned pages can be entered manually or excluded.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
             Button("Review this page") { engine.pause(); onReviewPage(index); dismiss() }.buttonStyle(SecondaryButton())
@@ -255,7 +258,7 @@ struct ReaderView: View {
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Divider()
-                Toggle("Pause at unchecked \(engine.book.unitPlural)", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
+                Toggle(engine.book.isEpub ? "Pause at unchecked text" : "Pause at unchecked pages", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
                     pauseAtUncheckedPages = $0
                     engine.allowUnreviewed = !$0
                 })).accessibilityIdentifier("pauseAtUncheckedPages")

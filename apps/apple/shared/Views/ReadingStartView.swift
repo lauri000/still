@@ -24,6 +24,7 @@ struct ReadingStartView: View {
     private var selectedWord: TextWord? { words.first { $0.offset + $0.length > selectedOffset } }
 
     var body: some View {
+        let progress = BookProgress(book, readingOnly: false)
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -37,13 +38,22 @@ struct ReadingStartView: View {
             }
             HStack(spacing: 12) {
                 Button { changePage(pageIndex - 1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 40) }
-                    .disabled(pageIndex == 0).accessibilityLabel("Previous start page")
-                Text(book.unitName).font(.system(size: 12))
-                TextField("\(book.unitName) number", value: Binding(get: { pageIndex + 1 }, set: { changePage($0 - 1) }), format: .number.grouping(.never))
-                    .textFieldStyle(.roundedBorder).frame(width: 65).accessibilityIdentifier("startPageNumber")
-                Text("of \(book.pages.count)").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    .disabled(pageIndex == 0).accessibilityLabel(book.isEpub ? "Earlier text" : "Previous start page")
+                if book.isEpub {
+                    Menu {
+                        ForEach(Array(book.pages.enumerated()), id: \.element.id) { index, _ in
+                            Button(progress.textLabel(page: index)) { changePage(index) }
+                        }
+                    } label: { Text(progress.textLabel(page: pageIndex)).lineLimit(2) }
+                    .accessibilityIdentifier("startTextLocation")
+                } else {
+                    Text(book.unitName).font(.system(size: 12))
+                    TextField("\(book.unitName) number", value: Binding(get: { pageIndex + 1 }, set: { changePage($0 - 1) }), format: .number.grouping(.never))
+                        .textFieldStyle(.roundedBorder).frame(width: 65).accessibilityIdentifier("startPageNumber")
+                    Text("of \(book.pages.count)").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
                 Button { changePage(pageIndex + 1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 40) }
-                    .disabled(pageIndex == book.pages.count - 1).accessibilityLabel("Next start page")
+                    .disabled(pageIndex == book.pages.count - 1).accessibilityLabel(book.isEpub ? "Later text" : "Next start page")
                 Spacer()
                 if !book.chapters.isEmpty {
                     Menu("Jump to chapter") {
@@ -65,7 +75,7 @@ struct ReadingStartView: View {
                 } else { wordPicker }
             }
             if let word = selectedWord {
-                Text("Start at “\(word.text)” in \(book.unitName.lowercased()) \(pageIndex + 1)\(book.pages[pageIndex].label != String(pageIndex + 1) ? " (printed \(book.pages[pageIndex].label))" : "").")
+                Text(book.isEpub ? "Start at “\(word.text)”" : "Start at “\(word.text)” on page \(pageIndex + 1)\(book.pages[pageIndex].label != String(pageIndex + 1) ? " (printed \(book.pages[pageIndex].label))" : "").")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.forest).lineLimit(2)
             }
             HStack {
@@ -91,7 +101,7 @@ struct ReadingStartView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     if pageWords.isEmpty {
-                        ContentUnavailableView("No text in this \(book.unitName.lowercased())", systemImage: "doc.text", description: Text("Choose another \(book.unitName.lowercased()), or add text in the editor first."))
+                        ContentUnavailableView("No text here", systemImage: "doc.text", description: Text("Choose another location, or add text in the editor first."))
                     } else {
                         // A spine document may contain a whole book; only nearby groups create word controls.
                         LazyVStack(alignment: .leading, spacing: 5) {
