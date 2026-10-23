@@ -14,29 +14,6 @@ root = Path(__file__).resolve().parents[1] / "shared" / "fixtures"
         {"id": 2, "title": "Restricted", "copyright": True, "formats": {"application/epub+zip": "https://books.example/restricted.epub"}},
         {"id": 3, "title": "No EPUB", "copyright": False, "formats": {"text/html": "https://books.example/read"}},
     ]}, indent=2) + "\n")
-(root / "catalog-opds.json").write_text(json.dumps({
-    "metadata": {"title": "Test catalog", "numberOfItems": 4},
-    "links": [{"rel": ["next"], "href": "?page=2"}, {"rel": ["first", "previous"], "href": "?page=1"},
-              {"rel": "search", "href": "search{?query,title,author}", "type": "application/opds+json", "templated": True}],
-    "navigation": [{"title": "All books", "href": "/all", "type": "application/opds+json"}],
-    "publications": [
-        {"metadata": {"identifier": "urn:still:test", "title": "A quiet test", "author": [{"name": "Still Reader"}, "Another Author"],
-                      "language": ["en", "fi"], "description": "<p>Original &amp; readable.</p>"},
-         "links": [{"rel": ["download"], "type": "application/epub+zip", "href": "/test.epub"}], "images": [{"href": "/cover.png"}]},
-        {"metadata": {"identifier": "urn:still:paid", "title": "Not a free download", "author": "Writer", "language": "fr"},
-         "links": [{"rel": "buy", "type": "application/epub+zip", "href": "/buy.epub"}]},
-    ],
-    "groups": [{"metadata": {"title": "More"}, "publications": [{"metadata": {"identifier": "urn:still:group", "title": "Grouped book", "author": {"name": "Group Author"}, "language": "sv"},
-                "links": [{"rel": "http://opds-spec.org/acquisition/open-access", "type": "application/epub+zip", "href": "group.epub"}]}]}]
-}, indent=2) + "\n")
-(root / "catalog-atom.xml").write_text('''<?xml version="1.0"?>
-<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/terms/">
-<title>Test Atom catalog</title><link rel="next" href="?page=2"/>
-<link rel="search" type="application/atom+xml" href="search?q={searchTerms}"/>
-<entry><id>urn:still:atom</id><title>Atom edition</title><author><name>Still Reader</name></author><dc:language>en</dc:language>
-<summary>Original test content</summary><link rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip" href="test.epub"/>
-<link rel="http://opds-spec.org/image" type="image/png" href="cover.png"/></entry>
-<entry><title>Browse all</title><link type="application/atom+xml;profile=opds-catalog" href="all"/></entry></feed>''')
 paragraph = "Attention moves one word at a time. Café, naïve, and 世界 stay intact. This is original test prose for Still. "
 with zipfile.ZipFile(root / "sample.epub", "w") as z:
     def put(name, text, compress=zipfile.ZIP_DEFLATED):

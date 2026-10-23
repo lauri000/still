@@ -66,10 +66,6 @@ targets:
       - tests/StillTests
       - path: ../../shared/fixtures/catalog-gutendex.json
         buildPhase: resources
-      - path: ../../shared/fixtures/catalog-opds.json
-        buildPhase: resources
-      - path: ../../shared/fixtures/catalog-atom.xml
-        buildPhase: resources
       - path: ../../shared/fixtures/sample.epub
         buildPhase: resources
       - path: ../../shared/fixtures/epub

@@ -11,7 +11,8 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["importPDF"].exists)
         app.buttons["discoverBooks"].tap()
         XCTAssertTrue(app.textFields["catalogSearch"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Catalog settings"].exists)
+        XCTAssertTrue(app.staticTexts["Project Gutenberg"].exists)
+        XCTAssertFalse(app.buttons["Catalog settings"].exists)
         app.buttons["Books"].tap()
         XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 5))
     }

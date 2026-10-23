@@ -38,7 +38,7 @@ class CatalogDeviceTests {
         try {
             compose.runOnUiThread {
                 library = LibraryViewModel(application, SavedStateHandle(), root)
-                catalog = CatalogViewModel().apply { configure(GutendexProvider(client)) }
+                catalog = CatalogViewModel(initialProvider = GutendexProvider(client))
             }
             compose.setContent {
                 StillTheme {
@@ -74,6 +74,49 @@ class CatalogDeviceTests {
         } finally {
             runCatching { compose.runOnUiThread { library.pause() } }
             runCatching { compose.runOnUiThread { catalog.cancel() } }
+            root.deleteRecursively()
+        }
+    }
+    @Test fun liveGutenbergBrowse() = runBlocking {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("liveCatalog") == "true")
+        val page = withTimeout(20_000) { GutendexProvider().search("", "") }
+        assertTrue("Live Gutenberg returned no downloadable books", page.books.isNotEmpty())
+        assertTrue(page.books.all { it.id.startsWith("gutenberg:") && it.epubURL != null })
+        assertNotNull(page.next)
+    }
+    @Test fun networkPermissionAndCancelRetryStates() {
+        val root = File(application.cacheDir, "catalog-permission-${java.util.UUID.randomUUID()}")
+        val allowed = mutableStateOf(false)
+        var requests = 0
+        val client = object : CatalogClient() {
+            override suspend fun get(url: String, limit: Int, progress: (Float?) -> Unit): ByteArray {
+                requests++
+                if (requests == 1) awaitCancellation()
+                return fixture("catalog-gutendex.json")
+            }
+        }
+        lateinit var library: LibraryViewModel
+        lateinit var catalog: CatalogViewModel
+        try {
+            compose.runOnUiThread {
+                library = LibraryViewModel(application, SavedStateHandle(), root)
+                catalog = CatalogViewModel(initialProvider = GutendexProvider(client))
+            }
+            compose.setContent { StillTheme { CatalogScreen(library, {}, catalog, networkAllowed = allowed.value) } }
+            compose.onNodeWithText("Network access is disabled for Still.").assertIsDisplayed()
+            compose.onNodeWithText("Open app settings").assertIsDisplayed()
+            assertEquals(0, requests)
+            compose.runOnUiThread { allowed.value = true }
+            compose.onNodeWithText("Loading books…").assertIsDisplayed()
+            compose.onNodeWithText("Cancel").performClick()
+            compose.onNodeWithText("Loading stopped. Tap Try again when you’re ready.").assertIsDisplayed()
+            compose.onNodeWithText("Try again").performClick()
+            compose.waitUntil(5_000) { catalog.state.value.page != null }
+            compose.onNodeWithText("A quiet test").assertIsDisplayed()
+            compose.onNodeWithText("Catalogs").assertDoesNotExist()
+            compose.onNodeWithText("Standard Ebooks").assertDoesNotExist()
+        } finally {
+            compose.runOnUiThread { catalog.cancel(); library.pause() }
             root.deleteRecursively()
         }
     }

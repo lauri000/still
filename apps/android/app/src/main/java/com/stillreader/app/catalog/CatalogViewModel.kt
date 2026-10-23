@@ -9,28 +9,54 @@ import kotlinx.coroutines.flow.update
 
 data class CatalogState(val page: CatalogPage? = null, val loading: Boolean = false, val error: String? = null,
     val query: String = "", val language: String = "", val selected: CatalogBook? = null)
-class CatalogViewModel : ViewModel() {
-    var provider: CatalogProvider = GutendexProvider(); private set
+class CatalogViewModel(private val requestTimeoutMillis: Long = 20_000, initialProvider: CatalogProvider = GutendexProvider()) : ViewModel() {
+    val provider: CatalogProvider = initialProvider
     private val mutable = MutableStateFlow(CatalogState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
+    private var deadline: Job? = null
+    private var generation = 0L
     private var lastURL: String? = null
     fun query(value: String) { mutable.update { it.copy(query = value) } }
     fun language(value: String) { mutable.update { it.copy(language = value) }; load() }
     fun select(value: CatalogBook?) { mutable.update { it.copy(selected = value) } }
-    fun configure(value: CatalogProvider) { provider = value; mutable.value = CatalogState(); load() }
     fun retry() = load(lastURL)
     fun load(url: String? = null) {
-        job?.cancel(); lastURL = url
+        cancel(); lastURL = url
+        val token = generation
         val source = provider; val query = state.value.query; val language = state.value.language
         mutable.update { it.copy(loading = true, error = null) }
+        // Independent of socket cleanup: a stalled DNS lookup/read must not own the spinner.
+        deadline = viewModelScope.launch {
+            delay(requestTimeoutMillis)
+            if (generation == token && state.value.loading) {
+                this@CatalogViewModel.cancel()
+                mutable.update { it.copy(error = "${source.name} took too long to respond. Please try again.") }
+            }
+        }
         job = viewModelScope.launch {
             try {
                 val result = source.search(query, language, url); ensureActive()
-                mutable.update { it.copy(page = result, loading = false) }
+                if (generation == token) mutable.update { it.copy(page = result, error = null) }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { mutable.update { it.copy(loading = false, error = error.message ?: "Could not load this catalog.") } }
+            catch (error: Exception) {
+                if (generation == token) mutable.update { it.copy(error = error.message ?: "Could not load this catalog.") }
+            } finally {
+                if (generation == token) {
+                    deadline?.cancel(); deadline = null
+                    mutable.update { it.copy(loading = false) }
+                }
+            }
         }
     }
-    fun cancel() { job?.cancel(); mutable.update { it.copy(loading = false) } }
+    fun cancel() {
+        generation++
+        deadline?.cancel(); deadline = null
+        job?.cancel(); job = null
+        mutable.update { it.copy(loading = false) }
+    }
+    fun stopLoading() {
+        cancel()
+        if (state.value.page == null) mutable.update { it.copy(error = "Loading stopped. Tap Try again when you’re ready.") }
+    }
 }

@@ -8,34 +8,47 @@ final class CatalogStore: ObservableObject {
     @Published var error: String?
     @Published var query = ""
     @Published var language = ""
-    @Published var provider: any CatalogProvider = GutendexProvider()
+    let provider: any CatalogProvider
     private var task: Task<Void, Never>?
+    private var deadline: Task<Void, Never>?
+    private let requestTimeoutNanoseconds: UInt64
     private var generation = UUID()
     private var lastURL: URL?
+    init(provider: any CatalogProvider = GutendexProvider(), requestTimeoutNanoseconds: UInt64 = 20_000_000_000) {
+        self.provider = provider
+        self.requestTimeoutNanoseconds = requestTimeoutNanoseconds
+    }
     func load(_ url: URL? = nil) {
-        task?.cancel(); let token = UUID(); generation = token
+        cancel(); let token = generation
         lastURL = url; loading = true; error = nil
         let provider = provider, query = query, language = language
+        deadline = Task {
+            do { try await Task.sleep(nanoseconds: requestTimeoutNanoseconds) } catch { return }
+            guard generation == token, loading else { return }
+            cancel()
+            error = "\(provider.name) took too long to respond. Please try again."
+        }
         task = Task {
+            defer { if token == generation { loading = false; deadline?.cancel(); deadline = nil } }
             do {
                 let result = try await provider.search(query: query, language: language, page: url)
                 guard !Task.isCancelled, token == generation else { return }
-                page = result; loading = false
+                page = result
             } catch {
                 guard !Task.isCancelled, token == generation else { return }
-                self.error = error.localizedDescription; loading = false
+                self.error = error.localizedDescription
             }
         }
     }
     func retry() { load(lastURL) }
-    func configure(_ provider: any CatalogProvider) { self.provider = provider; query = ""; page = nil; load() }
-    func cancel() { task?.cancel() }
+    func cancel() { generation = UUID(); deadline?.cancel(); deadline = nil; task?.cancel(); task = nil; loading = false }
+    func stopLoading() { cancel(); if page == nil { error = "Loading stopped. Tap Try again when you’re ready." } }
+
 }
 struct CatalogView: View {
     @EnvironmentObject private var library: LibraryStore
     @StateObject private var catalog = CatalogStore()
     @State private var selected: CatalogBook?
-    @State private var settings = false
     let onBack: () -> Void
     let onImported: (UUID) -> Void
     var body: some View {
@@ -45,13 +58,11 @@ struct CatalogView: View {
                 Spacer()
                 Text("Discover").font(.headline)
                 Spacer()
-                Button { settings = true } label: { Image(systemName: "slider.horizontal.3").accessibilityLabel("Catalog settings") }.buttonStyle(.plain)
             }
             if let selected { detail(selected) } else { browsing }
         }.padding(28).frame(maxWidth: 900).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task { if catalog.page == nil { catalog.load() } }
         .onDisappear { catalog.cancel() }
-        .sheet(isPresented: $settings) { CatalogSettings { catalog.configure($0); selected = nil } }
     }
     private var browsing: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -64,15 +75,18 @@ struct CatalogView: View {
                 Text("All languages").tag("")
                 ForEach(["en", "fi", "sv", "fr", "de", "es", "it", "pt", "nl", "ru", "zh", "ja"], id: \.self) { code in Text(Locale.current.localizedString(forLanguageCode: code) ?? code).tag(code) }
             }.onChange(of: catalog.language) { _, _ in catalog.load() }
-            if catalog.provider is OPDSProvider { Text("Language filters apply to each page. Browse further for more matches.").font(.caption).foregroundStyle(Palette.muted) }
-            if catalog.loading { ProgressView("Loading books…").frame(maxWidth: .infinity, maxHeight: .infinity) }
+            if catalog.loading {
+                VStack(spacing: 16) {
+                    ProgressView("Loading books…")
+                    Button("Cancel") { catalog.stopLoading() }.buttonStyle(SecondaryButton())
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
             else if let error = catalog.error {
                 VStack(spacing: 16) { Text(error); Button("Try again") { catalog.retry() }.buttonStyle(SecondaryButton()) }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let page = catalog.page {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(page.navigation) { link in Button { catalog.query = ""; catalog.load(link.url) } label: { HStack { Text(link.title); Spacer(); Image(systemName: "chevron.right") }.padding(.vertical, 18) }.buttonStyle(.plain); Divider() }
-                        if page.books.isEmpty { Text(page.navigation.isEmpty ? "No books on this page match your search. Try another search or the next page." : "Choose a collection to browse books.").foregroundStyle(Palette.muted).padding(.vertical, 30) }
+                        if page.books.isEmpty { Text("No books on this page match your search. Try another search or the next page.").foregroundStyle(Palette.muted).padding(.vertical, 30) }
                         ForEach(page.books) { book in
                             Button { selected = book } label: {
                                 HStack(spacing: 18) {
@@ -93,7 +107,7 @@ struct CatalogView: View {
                 HStack {
                     Button("Previous") { catalog.load(page.previous) }.disabled(page.previous == nil)
                     Spacer()
-                    if let count = page.total { Text("\(count) books").font(.caption).foregroundStyle(Palette.muted) }
+                    if let count = page.total { Text("\(count) catalog entries").font(.caption).foregroundStyle(Palette.muted) }
                     Spacer()
                     Button("Next") { catalog.load(page.next) }.disabled(page.next == nil)
                 }.buttonStyle(SecondaryButton())
@@ -113,10 +127,9 @@ struct CatalogView: View {
                     if let existing { onImported(existing.id) }
                     else { library.download(book, provider: catalog.provider, completion: onImported) }
                 }.buttonStyle(PrimaryButton()).disabled(library.isImporting || (book.epubURL == nil && existing == nil)).accessibilityIdentifier("downloadEPUB")
-                if book.epubURL == nil { Text("This edition has no direct EPUB download. Borrowing, purchases, and DRM are not supported.").font(.caption) }
                 if !book.summary.isEmpty { Text(book.summary).textSelection(.enabled) }
                 if !book.subjects.isEmpty { Text(book.subjects.joined(separator: " · ")).font(.callout).foregroundStyle(Palette.muted) }
-                if let url = book.webURL { Link("View at provider", destination: url) }
+                if let url = book.webURL { Link("View at Project Gutenberg", destination: url) }
                 Text("Saved on this device for offline reading.").font(.caption).foregroundStyle(Palette.muted)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -144,45 +157,4 @@ func platformImage(_ data: Data) -> Image? {
             kCGImageSourceCreateThumbnailWithTransform: true
           ] as CFDictionary) else { return nil }
     return Image(decorative: thumbnail, scale: 1)
-}
-private struct CatalogSettings: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var kind = "gutenberg"
-    @State private var customURL = UserDefaults.standard.string(forKey: "catalog.customURL") ?? ""
-    @State private var username = ""
-    @State private var password = ""
-    @State private var error: String?
-    let connect: (any CatalogProvider) -> Void
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Catalog settings").font(.title2)
-            Picker("Provider", selection: $kind) {
-                Text("Project Gutenberg").tag("gutenberg")
-                Text("Standard Ebooks").tag("standard")
-                Text("Custom OPDS catalog").tag("custom")
-            }
-            if kind == "custom" { TextField("https://example.org/opds", text: $customURL).textFieldStyle(.roundedBorder) }
-            if kind != "gutenberg" {
-                if kind == "standard" {
-                    Text("Standard Ebooks requires authorized feed access. Use your Patrons Circle email as the username; leave the password blank unless instructed by the provider.").font(.callout)
-                    Link("Access requirements", destination: URL(string: "https://standardebooks.org/help/how-to-add-an-opds-feed-to-your-ereader")!)
-                }
-                TextField("Username (optional)", text: $username).textFieldStyle(.roundedBorder)
-                SecureField("Password (optional)", text: $password).textFieldStyle(.roundedBorder)
-                Text("Credentials are kept only while this catalog is open and sent only to its HTTPS origin.").font(.caption).foregroundStyle(Palette.muted)
-            }
-            if let error { Text(error).foregroundStyle(.red) }
-            HStack {
-                Button("Cancel") { dismiss() }.buttonStyle(SecondaryButton())
-                Spacer()
-                Button("Connect") {
-                    if kind == "gutenberg" { connect(GutendexProvider()); dismiss(); return }
-                    guard let url = catalogURL(kind == "standard" ? "https://standardebooks.org/feeds/opds" : customURL.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = "Enter a valid HTTPS catalog URL without embedded credentials."; return }
-                    if kind == "custom" { UserDefaults.standard.set(url.absoluteString, forKey: "catalog.customURL") }
-                    let client = CatalogClient(credentials: CatalogCredentials(origin: url, username: username, password: password))
-                    connect(OPDSProvider(id: url.absoluteString, name: kind == "standard" ? "Standard Ebooks" : url.host ?? "OPDS", endpoint: url, client: client)); dismiss()
-                }.buttonStyle(PrimaryButton())
-            }
-        }.padding(28).frame(minWidth: 300, idealWidth: 450)
-    }
 }

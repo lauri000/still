@@ -19,40 +19,17 @@ final class CatalogTests: XCTestCase {
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
         XCTAssertEqual(query.first { $0.name == "search" }?.value, "Austen & Brontë")
         XCTAssertEqual(query.first { $0.name == "languages" }?.value, "en,fr")
-        XCTAssertEqual(query.first { $0.name == "copyright" }?.value, "false")
+        XCTAssertNil(query.first { $0.name == "copyright" }); XCTAssertNil(query.first { $0.name == "mime_type" })
+        XCTAssertEqual(try provider.requestURL(query: "", language: "", page: nil).absoluteString, "https://gutendex.com/books/")
         let next = URL(string: "https://gutendex.com/books?page=2&languages=en")!
         XCTAssertEqual(try provider.requestURL(query: "different", language: "fr", page: next), next)
         XCTAssertThrowsError(try provider.requestURL(query: "", language: "", page: URL(string: "https://other.example/feed")!))
     }
-    func testOPDSGroupsContributorsRelativeLinksAndPurchaseExclusion() throws {
-        let page = try OPDSProvider.parse(catalogFixture("catalog-opds", "json"), base: URL(string: "https://catalog.example/feed")!, providerID: "test")
-        XCTAssertEqual(page.books.count, 3); XCTAssertEqual(page.books[0].authors, ["Still Reader", "Another Author"])
-        XCTAssertEqual(page.books[0].epubURL?.absoluteString, "https://catalog.example/test.epub")
-        XCTAssertEqual(page.books[0].summary, "Original & readable."); XCTAssertNil(page.books[1].epubURL)
-        XCTAssertEqual(page.next?.absoluteString, "https://catalog.example/feed?page=2")
-        XCTAssertEqual(page.navigation.first?.url.absoluteString, "https://catalog.example/all")
-        XCTAssertEqual(try OPDSProvider.searchURL(page.searchTemplate!, query: "A&B C", base: URL(string: "https://catalog.example/feed")!).absoluteString, "https://catalog.example/search?query=A%26B%20C")
-    }
-    func testStandardEbooksAtomCompatibility() throws {
-        let page = try OPDSProvider.parse(catalogFixture("catalog-atom", "xml"), base: URL(string: "https://catalog.example/feed/")!, providerID: "test")
-        XCTAssertEqual(page.books.first?.title, "Atom edition"); XCTAssertEqual(page.books.first?.languages, ["en"])
-        XCTAssertEqual(page.books.first?.epubURL?.absoluteString, "https://catalog.example/feed/test.epub")
-        XCTAssertEqual(page.navigation.count, 1)
-        XCTAssertEqual(try OPDSProvider.searchURL(page.searchTemplate!, query: "A B", base: URL(string: "https://catalog.example/feed/")!).absoluteString, "https://catalog.example/feed/search?q=A%20B")
-    }
-    func testAtomOpenSearchDescriptionLink() throws {
-        let xml = #"<feed xmlns="http://www.w3.org/2005/Atom"><title>Feed</title><link rel="search" type="application/opensearchdescription+xml" href="/search.xml"/></feed>"#
-        let page = try OPDSProvider.parse(Data(xml.utf8), base: URL(string: "https://catalog.example/feed")!, providerID: "test")
-        XCTAssertEqual(page.searchDescription?.absoluteString, "https://catalog.example/search.xml")
-        XCTAssertNil(page.searchTemplate)
-    }
-    func testInvalidResponsesAndCredentialScope() throws {
-        XCTAssertThrowsError(try GutendexProvider.parse(Data("{}".utf8), base: URL(string: "https://gutendex.com/books")!))
-        XCTAssertThrowsError(try OPDSProvider.parse(Data("<html/>".utf8), base: URL(string: "https://catalog.example/")!, providerID: "test"))
-        let auth = CatalogCredentials(origin: URL(string: "https://test.example/feed")!, username: "member", password: "secret")
-        XCTAssertNotNil(auth.header(for: URL(string: "https://test.example/download")!))
-        for url in ["https://other.example/download", "http://test.example/download", "https://test.example:444/download"] { XCTAssertNil(auth.header(for: URL(string: url)!)) }
-        XCTAssertNil(catalogURL("https://user:pass@test.example/feed")); XCTAssertNil(catalogURL("file:///tmp/book"))
+    func testInvalidResponsesAndUnsafeURLsAreRejected() throws {
+        for response in ["{}", "<html/>", #"{"count":1,"results":{}}"#] {
+            XCTAssertThrowsError(try GutendexProvider.parse(Data(response.utf8), base: URL(string: "https://gutendex.com/books/")!))
+        }
+        for url in ["https://user:pass@test.example/feed", "file:///tmp/book", "http://test.example/book"] { XCTAssertNil(catalogURL(url)) }
     }
     func testEPUBImportPaginationTextMetadataCoverAndPersistence() async throws {
         let data = try catalogFixture("sample", "epub")
@@ -95,7 +72,7 @@ final class CatalogTests: XCTestCase {
         store.download(entry, provider: provider) { _ in second.fulfill() }
         await fulfillment(of: [second], timeout: 2)
         XCTAssertEqual(store.books.count, 1)
-        // A second provider returning the same EPUB is also deduplicated by content/identifier.
+        // A different catalog identity for the same EPUB is also deduplicated by content/identifier.
         let third = expectation(description: "same EPUB")
         var other = entry
         other = CatalogBook(id: "other:one", title: other.title, epubURL: other.epubURL)
@@ -121,7 +98,7 @@ final class CatalogTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertFalse(store.isImporting); XCTAssertTrue(store.books.isEmpty); XCTAssertNil(store.errorMessage)
     }
-    func testHTTPAuthenticationLimitsAndRateLimitCooldown() async throws {
+    func testHTTPFailuresLimitsAndRateLimitCooldown() async throws {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [CatalogURLProtocol.self]
         let client = CatalogClient(session: URLSession(configuration: config))
         let url = URL(string: "https://test.example/feed")!

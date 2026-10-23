@@ -18,13 +18,13 @@ private class Response(url: String, val status: Int = 200, val bytes: ByteArray 
     override fun getHeaderField(name: String) = headers[name]
 }
 class CatalogNetworkTests {
-    @Test fun redirectsStripCredentialsAndRejectDowngrades() = runTest {
+    @Test fun redirectsFollowHTTPSAndRejectDowngrades() = runTest {
         val calls = mutableListOf<Response>()
-        val client = CatalogClient(CatalogCredentials("https://catalog.example/feed", "member", "secret")) { url ->
+        val client = CatalogClient { url ->
             Response(url, if (calls.isEmpty()) 302 else 200, headers = mapOf("Location" to "https://cdn.example/file")).also { calls += it }
         }
         assertEquals("ok", client.get("https://catalog.example/feed").decodeToString())
-        assertNotNull(calls[0].getRequestProperty("Authorization"))
+        assertNull(calls[0].getRequestProperty("Authorization"))
         assertNull(calls[1].getRequestProperty("Authorization"))
         val unsafe = CatalogClient { url -> Response(url, 302, headers = mapOf("Location" to "http://catalog.example/file")) }
         assertTrue(runCatching { unsafe.get("https://catalog.example/feed") }.isFailure)
@@ -71,6 +71,28 @@ class CatalogNetworkTests {
         reading.await()
         transfer.cancelAndJoin()
         assertEquals(0L, released.count)
+    }
+    @Test fun cancellationDoesNotWaitForBlockingDisconnect() = runTest {
+        val reading = CompletableDeferred<Unit>()
+        val finishRead = java.util.concurrent.CountDownLatch(1)
+        val finishDisconnect = java.util.concurrent.CountDownLatch(1)
+        val client = CatalogClient { url -> object : HttpURLConnection(URL(url)) {
+            override fun connect() { }
+            override fun disconnect() { finishDisconnect.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+            override fun usingProxy() = false
+            override fun getResponseCode(): Int {
+                reading.complete(Unit)
+                finishRead.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                return 200
+            }
+        } }
+        val transfer = launch { client.get("https://catalog.example/feed") }
+        try {
+            reading.await()
+            val start = System.nanoTime()
+            transfer.cancel()
+            assertTrue("Cancellation blocked the caller on socket cleanup", System.nanoTime() - start < 1_000_000_000L)
+        } finally { finishRead.countDown(); finishDisconnect.countDown(); transfer.join() }
     }
     @Test fun cancelledRequestDoesNotOpenConnection() = runTest {
         var requests = 0
