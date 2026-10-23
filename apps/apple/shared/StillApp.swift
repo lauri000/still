@@ -13,6 +13,7 @@ struct StillApp: App {
                 UserDefaults.standard.set(arguments.contains("--require-review"), forKey: "pauseAtUncheckedPages")
                 UserDefaults.standard.set(false, forKey: "focusLetter")
                 UserDefaults.standard.set(100, forKey: "activeWordSizePercent")
+                UserDefaults.standard.set(22, forKey: "passageTextSize")
                 UserDefaults.standard.set(false, forKey: "animatedScrolling")
                 UserDefaults.standard.set(250.0, forKey: "readingWPM")
             }

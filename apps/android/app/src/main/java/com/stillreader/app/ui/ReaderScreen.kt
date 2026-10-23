@@ -68,6 +68,8 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     var passage by rememberSaveable(session.book.id) { mutableStateOf(false) }
     SideEffect { session.passageMode = passage }
     var options by remember { mutableStateOf(false) }
+    var passageOptions by remember { mutableStateOf(false) }
+    var passageTextSize by remember(model) { mutableIntStateOf(model.passageTextSize) }
     var pagePicker by remember { mutableStateOf(false) }
     var contents by remember { mutableStateOf(false) }
     var wpm by remember(session) { mutableDoubleStateOf(session.wordsPerMinute) }
@@ -128,6 +130,9 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 IconButton(onClick = { session.pause(); passage = !passage; session.passageMode = passage }, modifier = Modifier.testTag("toggleContext")) {
                     Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
                 }
+                if (passage) TextButton(onClick = { passageOptions = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.width(48.dp).testTag("passageTextOptions").semantics { contentDescription = "Text size" }) {
+                    Text("Aa", fontFamily = FontFamily.Serif, fontSize = 20.sp, color = Ink, maxLines = 1)
+                }
                 if (!passage) IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
                     Icon(Icons.Default.MoreHoriz, "Reading options")
                 }
@@ -137,7 +142,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
         }
         if (passage) {
             Box(Modifier.weight(1f).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).testTag("readingSurface")) {
-                PassageView(session, state) { index ->
+                PassageView(session, state, passageTextSize) { index ->
                     session.seek(index)
                     session.passageMode = false
                     passage = false
@@ -164,6 +169,10 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
             }
         }
     }
+    if (passageOptions) PassageTextOptions(passageTextSize, change = {
+        passageTextSize = it
+        model.passageTextSize = it
+    }, dismiss = { passageOptions = false })
     if (options) {
         var natural by remember { mutableStateOf(session.naturalPauses) }
         var strict by remember { mutableStateOf(!session.allowUnreviewed) }

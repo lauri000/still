@@ -11,6 +11,7 @@
 		01B7800F2406444484734978 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A0B5CABD58A15FE12E8F0619 /* sample.pdf */; };
 		0220B001EA07F0AFAEDBB557 /* PDFImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5181295A831D4AF34C8BCEA9 /* PDFImporter.swift */; };
 		025079F31E8AE6775DAB54BB /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC83DE87527CA28E752840D /* Catalog.swift */; };
+		0354467B0F3B8867892369C4 /* PassageTextOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F29D4D2C06394BC5954D37C4 /* PassageTextOptions.swift */; };
 		083065E3ACF12347B6D11989 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 848C4D408A0722D93878CAB3 /* Assets.xcassets */; };
 		0BE187247FEC589CCC262759 /* ReadingStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ACFDB841F420647FAE2C2B /* ReadingStartView.swift */; };
 		0CCAEBFC204A0B229A6C4266 /* SampleBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2735FFD23ACE7763251013 /* SampleBook.swift */; };
@@ -50,6 +51,7 @@
 		5FCAA500ADA6F736F71EABE2 /* PassageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E32C7892CF2228D881400FC1 /* PassageView.swift */; };
 		644F5D056A93865CCA47501A /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B54E49EDAC91E6444624A7B /* LibraryView.swift */; };
 		64D88EC6815F3F80EC70C6A1 /* PDFCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57784C5D8E8853A1F8453092 /* PDFCoordinator.swift */; };
+		67D8B8AEBC04E5D156D572E1 /* PassageTextOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F29D4D2C06394BC5954D37C4 /* PassageTextOptions.swift */; };
 		684229A93AAF45FF15580E76 /* PassageLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C2B3383944C688E381FC15B /* PassageLayout.swift */; };
 		6E164DF9BBF01F23082CCF80 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B54E49EDAC91E6444624A7B /* LibraryView.swift */; };
 		6E8848210CB1D0EBF6D9B994 /* PDFContentsReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8ECD5633AC97577699C2B6 /* PDFContentsReader.swift */; };
@@ -191,6 +193,7 @@
 		EB5717B2C64A21274D4C7AA2 /* SCOWL-Copyright.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SCOWL-Copyright.txt"; sourceTree = "<group>"; };
 		EDC83DE87527CA28E752840D /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		F037A274C48ECFF7DCB9F025 /* ZIPFoundation-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "ZIPFoundation-LICENSE.txt"; sourceTree = "<group>"; };
+		F29D4D2C06394BC5954D37C4 /* PassageTextOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassageTextOptions.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -259,6 +262,7 @@
 				50037580BCA3FFC598E15040 /* BookDetailView.swift */,
 				14EC546E72B53F28364F11A3 /* FocusWord.swift */,
 				4B54E49EDAC91E6444624A7B /* LibraryView.swift */,
+				F29D4D2C06394BC5954D37C4 /* PassageTextOptions.swift */,
 				E32C7892CF2228D881400FC1 /* PassageView.swift */,
 				1E6B8811C4AD1FAD6A61CB74 /* PDFContentsPreview.swift */,
 				57784C5D8E8853A1F8453092 /* PDFCoordinator.swift */,
@@ -642,6 +646,7 @@
 				B33F321C065A57B0D5341864 /* PDFTextRepair.swift in Sources */,
 				306B8A6E3BC41CE5D50DEDA6 /* PDFVocabulary.swift in Sources */,
 				684229A93AAF45FF15580E76 /* PassageLayout.swift in Sources */,
+				67D8B8AEBC04E5D156D572E1 /* PassageTextOptions.swift in Sources */,
 				5FCAA500ADA6F736F71EABE2 /* PassageView.swift in Sources */,
 				943C1B6E9AE0DE7C0A0CB425 /* ReaderEngine.swift in Sources */,
 				DDC58D985824FD628B41725E /* ReaderPipeline.swift in Sources */,
@@ -682,6 +687,7 @@
 				2F0B105015BECF9BC6AB8E60 /* PDFTextRepair.swift in Sources */,
 				F3748C541E2F9CA711AAA58B /* PDFVocabulary.swift in Sources */,
 				B578BCF57CC2B90AEC10AF52 /* PassageLayout.swift in Sources */,
+				0354467B0F3B8867892369C4 /* PassageTextOptions.swift in Sources */,
 				C1B480D75818F944228BFD38 /* PassageView.swift in Sources */,
 				40981CA0F4A6180ACE60470B /* ReaderEngine.swift in Sources */,
 				C897FA96AFD857214DF066AC /* ReaderPipeline.swift in Sources */,

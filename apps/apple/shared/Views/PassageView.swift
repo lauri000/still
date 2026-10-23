@@ -19,8 +19,9 @@ private struct PassageFrames: PreferenceKey {
 
 struct PassageView: View {
     @ObservedObject var engine: ReaderEngine
+    var textSize = 22
     let selectWord: (Int) -> Void
-    @ScaledMetric private var baseSize: CGFloat = 24
+    @ScaledMetric private var baseSize: CGFloat = 22
     @State private var pendingIndex: Int?
     @State private var reportedIndex = -1
     @State private var positioned = false
@@ -29,8 +30,8 @@ struct PassageView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let size = geometry.size.height < 240 ? baseSize * 20 / 24 : baseSize
-            let rowHeight = max(geometry.size.height < 240 ? 44 : 56, size * 1.4 + 12)
+            let size = baseSize * CGFloat(min(32, max(16, textSize))) / 22
+            let rowHeight = size * 1.6
             let width = max(1, geometry.size.width - 48)
             ScrollViewReader { proxy in
                 ScrollView {
@@ -120,7 +121,7 @@ private struct PassageBlock: View {
                 ForEach(layout.rows.indices, id: \.self) { rowIndex in
                     let row = layout.rows[rowIndex]
                     let words = (block.id + row.words.lowerBound)..<(block.id + row.words.upperBound)
-                    Text(linked(words)).font(.custom("Georgia", fixedSize: size * (row.isHeading ? 1.2 : 1)))
+                    Text(linked(words)).font(.custom(row.isHeading ? "Georgia-Bold" : "Georgia", fixedSize: size * (row.isHeading ? 1.2 : 1)))
                         .foregroundStyle(Palette.ink).tint(Palette.ink)
                         .lineLimit(1).minimumScaleFactor(0.01)
                         .frame(width: width, height: rowHeight * row.height, alignment: .leading)
@@ -133,7 +134,7 @@ private struct PassageBlock: View {
                         .accessibilityIdentifier(words.contains(engine.index) ? "currentPassageRow" : "passageRow-\(words.lowerBound)")
                         .accessibilityValue(words.contains(engine.index) ? "Word \(engine.index + 1) of \(engine.tokens.count)" : "")
                 }
-                Color.clear.frame(height: rowHeight * (layout.rows.last?.isHeading == true ? 0.45 : 0.2))
+                Color.clear.frame(height: rowHeight * 0.6)
             } else { Color.clear.frame(height: rowHeight) }
         }
         .onChange(of: width, initial: true) { _, _ in arrange() }
@@ -166,9 +167,9 @@ private struct PassageBlock: View {
             let key = "\(heading):\(token.word.text)"
             if let cached = measured[key] { return cached }
             #if os(iOS)
-            let face = heading ? font.withSize(size * 1.2) : font
+            let face = heading ? UIFont(name: "Georgia-Bold", size: size * 1.2) ?? font.withSize(size * 1.2) : font
             #else
-            let face = heading ? NSFont(name: font.fontName, size: size * 1.2) ?? font : font
+            let face = heading ? NSFont(name: "Georgia-Bold", size: size * 1.2) ?? font : font
             #endif
             let value = ceil((token.word.text as NSString).size(withAttributes: [.font: face]).width)
             measured[key] = value

@@ -14,6 +14,9 @@ struct ReaderView: View {
     @AppStorage("activeWordSizePercent") private var savedActiveWordSizePercent = 100
     private var activeWordSizePercent: Int { min(300, max(100, savedActiveWordSizePercent)) }
     @AppStorage("animatedScrolling") private var animatedScrolling = false
+    @AppStorage("passageTextSize") private var savedPassageTextSize = 22
+    private var passageTextSize: Int { min(32, max(16, savedPassageTextSize)) }
+    @State private var showingPassageSettings = false
     @State private var showingSettings = false
     @State private var showingContents = false
     private let pdfURL: URL?
@@ -59,6 +62,9 @@ struct ReaderView: View {
         .onChange(of: engine.wordsPerMinute) { _, value in savedWPM = value }
         .onChange(of: dragInProgress) { _, dragging in if !dragging { engine.endScrubbing() } }
         .onChange(of: scenePhase) { _, phase in if phase != .active { engine.pause(); showSpeed = false } }
+        .sheet(isPresented: $showingPassageSettings) {
+            PassageTextOptions(size: Binding(get: { passageTextSize }, set: { savedPassageTextSize = $0 }), dismiss: { showingPassageSettings = false })
+        }
         .sheet(isPresented: $showingSettings) { optionsSheet }
         .sheet(isPresented: $showingContents) { ReaderContentsSheet(engine: engine, url: pdfURL) }
         .preferredColorScheme(.light)
@@ -75,6 +81,10 @@ struct ReaderView: View {
                 #endif
                 Button { engine.passageMode.toggle() } label: { Image(systemName: "text.alignleft").frame(width: 44, height: 44) }
                     .buttonStyle(.plain).accessibilityLabel(engine.passageMode ? "Single-line view" : "Passage view").accessibilityIdentifier("toggleContext")
+                if engine.passageMode {
+                    Button { showingPassageSettings = true } label: { Text("Aa").font(.custom("Georgia", size: 20)).frame(width: 44, height: 44) }
+                        .buttonStyle(.plain).accessibilityLabel("Text size").accessibilityIdentifier("passageTextOptions")
+                }
                 if !engine.passageMode {
                     Button { engine.pause(); showingSettings = true } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                         .buttonStyle(.plain).accessibilityLabel("Reading options").accessibilityIdentifier("readingOptions")
@@ -108,7 +118,7 @@ struct ReaderView: View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomTrailing) {
                 if engine.passageMode {
-                    PassageView(engine: engine) { index in
+                    PassageView(engine: engine, textSize: passageTextSize) { index in
                         engine.seek(index)
                         engine.passageMode = false
                     }

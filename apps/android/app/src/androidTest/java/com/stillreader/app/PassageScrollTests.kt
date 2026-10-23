@@ -27,6 +27,29 @@ class PassageScrollTests {
 
     @Test fun passageKeepsFlingingAcrossParagraphs() = checkMomentum(true, paragraphRepeats = 1)
 
+    @Test fun textReflowKeepsAnExactWordDeepIntoTheBook() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val size = mutableIntStateOf(22)
+        lateinit var session: ReadingSession
+        compose.runOnUiThread {
+            session = ReadingSession(Book(title = "Reflow", originalFilename = "test.pdf", pages = listOf(
+                BookPage(number = 1, extractedText = (1..100).joinToString("\n\n") { "The river runs through a quiet valley. ".repeat(4) }, isReviewed = true))), scope) { }
+            session.seek(1_003)
+            session.passageMode = true
+        }
+        compose.setContent {
+            val state by session.state.collectAsState()
+            StillTheme { PassageView(session, state, size.intValue) { session.seek(it) } }
+        }
+        try {
+            for (points in listOf(32, 16, 26, 22)) {
+                compose.runOnUiThread { size.intValue = points }
+                compose.onNodeWithTag("currentPassageRow").assertIsDisplayed()
+                compose.runOnIdle { assertEquals(1_003, session.state.value.index) }
+            }
+        } finally { scope.cancel() }
+    }
+
     @Test fun rowTapSelectsExactWordAndIgnoresBlankSpace() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         lateinit var session: ReadingSession

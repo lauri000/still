@@ -40,6 +40,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     var activeWordSizePercent: Int
         get() = preferences.getInt("activeWordSizePercent", 100).coerceIn(100, 300)
         set(value) { preferences.edit().putInt("activeWordSizePercent", value.coerceIn(100, 300)).apply() }
+    var passageTextSize: Int
+        get() = preferences.getInt("passageTextSize", 22).coerceIn(16, 32)
+        set(value) { preferences.edit().putInt("passageTextSize", value.coerceIn(16, 32)).apply() }
     var animatedScrolling: Boolean
         get() = preferences.getBoolean("animatedScrolling", false)
         set(value) { preferences.edit().putBoolean("animatedScrolling", value).apply() }

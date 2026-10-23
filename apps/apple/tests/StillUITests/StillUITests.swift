@@ -330,7 +330,7 @@ final class StillUITests: XCTestCase {
         // Select the second word by its actual font metrics, preserving punctuation.
         let words = row.label.split(separator: " ").map(String.init)
         XCTAssertGreaterThan(words.count, 1)
-        let font = UIFont(name: "Georgia", size: 24)!
+        let font = UIFont(name: "Georgia", size: 22)!
         let prefix = (words[0] + " " as NSString).size(withAttributes: [.font: font]).width
         let chosenWidth = (words[1] as NSString).size(withAttributes: [.font: font]).width
         row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: prefix + chosenWidth / 2, dy: row.frame.height / 2)).tap()
@@ -356,6 +356,58 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(wordOrdinal(in: app), selected)
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor
+    func testPassageTextSizePreservesPositionAcrossReflowRotationAndRelaunch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["Next starting page"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
+        let original = wordOrdinal(in: app)
+        app.buttons["toggleContext"].tap()
+        app.buttons["passageTextOptions"].tap()
+        XCTAssertEqual(app.staticTexts["passageTextSizeValue"].label, "22")
+        for _ in 0..<5 { app.buttons["largerPassageText"].tap() }
+        XCTAssertEqual(app.staticTexts["passageTextSizeValue"].label, "32")
+        XCTAssertFalse(app.buttons["largerPassageText"].isEnabled)
+        attachScreenshot("Scroll text size controls")
+        app.buttons["Done"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), original)
+        assertPassageRowVisible(in: app)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitForRotation(in: app, landscape: true, controlID: "currentPassageRow")
+        XCTAssertEqual(wordOrdinal(in: app), original)
+        assertPassageRowVisible(in: app)
+        XCUIDevice.shared.orientation = .portrait
+        waitForRotation(in: app, landscape: false, controlID: "currentPassageRow")
+        app.buttons["passageTextOptions"].tap()
+        app.buttons["Reset"].tap()
+        for _ in 0..<2 { app.buttons["largerPassageText"].tap() }
+        app.buttons["Done"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), original)
+        attachScreenshot("Book-like scrolling text")
+        app.buttons["toggleContext"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), original)
+        app.buttons["Close reader"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
+        app.buttons["book-The art of attention"].tap()
+        app.buttons["startReading"].tap()
+        XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
+        XCTAssertEqual(wordOrdinal(in: app), original)
+        app.buttons["toggleContext"].tap()
+        app.buttons["passageTextOptions"].tap()
+        XCTAssertEqual(app.staticTexts["passageTextSizeValue"].label, "26")
+        app.buttons["Done"].tap()
     }
 
     @MainActor

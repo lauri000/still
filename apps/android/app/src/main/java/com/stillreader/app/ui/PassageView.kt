@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stillreader.app.core.*
@@ -25,17 +25,17 @@ import kotlin.math.roundToInt
 
 /** Native scrolling; neither the word clock nor the hold-to-read surface runs here. */
 @Composable
-fun PassageView(session: ReadingSession, state: ReadingState, selectWord: (Int) -> Unit) {
+fun PassageView(session: ReadingSession, state: ReadingState, textSize: Int = 22, selectWord: (Int) -> Unit) {
     val document = session.passage
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val onSelectWord by rememberUpdatedState(selectWord)
     val list = rememberLazyListState(initialFirstVisibleItemIndex = document.blockContaining(state.index))
     BoxWithConstraints(Modifier.fillMaxSize().testTag("nearbyPassage")) {
-        val fontSize = if (maxHeight < 240.dp) 20f else 24f
-        val style = LocalTextStyle.current.copy(fontFamily = FontFamily.Serif, fontSize = fontSize.sp)
+        val fontSize = textSize.coerceIn(16, 32).toFloat()
+        val style = TextStyle(fontFamily = FontFamily.Serif, fontSize = fontSize.sp, letterSpacing = 0.sp)
         val width = with(density) { (maxWidth - 48.dp).toPx().toDouble().coerceAtLeast(1.0) }
-        val rowHeight = with(density) { maxOf((if (maxHeight < 240.dp) 44.dp else 56.dp).toPx(), fontSize.sp.toPx() * 1.4f + 12.dp.toPx()) }
+        val rowHeight = with(density) { fontSize.sp.toPx() * 1.6f }
         val layouts = remember(width, style, density) { mutableStateMapOf<Int, PassageLayout>() }
         val widths = remember(style, density) { android.util.LruCache<String, Double>(2048) }
         var positioned by remember(width, style, density) { mutableStateOf(false) }
@@ -85,7 +85,7 @@ fun PassageView(session: ReadingSession, state: ReadingState, selectWord: (Int) 
                     fun measure(text: String, heading: Boolean = false): Double {
                         val key = "$heading:$text"
                         return widths.get(key) ?: measurer.measure(AnnotatedString(text),
-                            if (heading) style.copy(fontSize = (fontSize * 1.2f).sp) else style,
+                            if (heading) style.copy(fontSize = (fontSize * 1.2f).sp, fontWeight = FontWeight.SemiBold) else style,
                             softWrap = false, maxLines = 1).size.width.toDouble().also { widths.put(key, it) }
                     }
                     PassageLayout(nearby, nearby.map { measure(it.word.text, it.id in ids) }, width, measure(" "), ids)
@@ -100,7 +100,7 @@ fun PassageView(session: ReadingSession, state: ReadingState, selectWord: (Int) 
                         PassageRow(row, nearby, style, fontSize, width, rowHeight,
                             state.index.takeIf { it - block.id in row.words }, session.tokens.size) { onSelectWord(it) }
                     }
-                    Spacer(Modifier.height(with(density) { (rowHeight * if (layout.rows.lastOrNull()?.isHeading == true) .45f else .2f).toDp() }))
+                    Spacer(Modifier.height(with(density) { (rowHeight * .6f).toDp() }))
                 }
             }
         }
@@ -125,7 +125,8 @@ private fun PassageRow(row: PassageLayout.Row, tokens: List<ReadingToken>, style
     }
     var layout by remember(text) { mutableStateOf<TextLayoutResult?>(null) }
     Text(text, color = Ink, maxLines = 1, softWrap = false,
-        style = style.copy(fontSize = (fontSize * (if (row.isHeading) 1.2 else 1.0) * (width / row.width).coerceAtMost(1.0)).sp),
+        style = style.copy(fontSize = (fontSize * (if (row.isHeading) 1.2 else 1.0) * (width / row.width).coerceAtMost(1.0)).sp,
+            fontWeight = if (row.isHeading) FontWeight.SemiBold else FontWeight.Normal),
         onTextLayout = { layout = it },
         modifier = Modifier.fillMaxWidth().height(with(density) { (rowHeight * row.height).toFloat().toDp() }).wrapContentHeight()
             .testTag(if (activeIndex != null) "currentPassageRow" else "passageRow-${tokens[row.words.first].id}")

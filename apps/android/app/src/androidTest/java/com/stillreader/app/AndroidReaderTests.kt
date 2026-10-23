@@ -48,6 +48,7 @@ class AndroidReaderTests {
     private var previousNaturalPauses = true
     private var previousStrictReview = false
     private var previousActiveWordSize: Int? = null
+    private var previousPassageTextSize: Int? = null
     private val store = ViewModelStore()
     private val application get() = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
     private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name)
@@ -61,8 +62,9 @@ class AndroidReaderTests {
         previousWPM = preferences.getInt("wpm", 250)
         previousNaturalPauses = preferences.getBoolean("naturalPauses", true)
         previousStrictReview = preferences.getBoolean("strictReview", false)
+        previousPassageTextSize = if (preferences.contains("passageTextSize")) preferences.getInt("passageTextSize", 22) else null
         previousActiveWordSize = if (preferences.contains("activeWordSizePercent")) preferences.getInt("activeWordSizePercent", 100) else null
-        preferences.edit().putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).putBoolean("strictReview", false).commit()
+        preferences.edit().putInt("passageTextSize", 22).putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).putBoolean("strictReview", false).commit()
     }
     private fun launch(seed: Boolean = true, legacy: Boolean = false, book: Book? = null) {
         if (seed) {
@@ -91,6 +93,7 @@ class AndroidReaderTests {
         application.getSharedPreferences("reading", 0).edit().apply {
             putBoolean("animatedScrolling", previousAnimatedScrolling).putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM)
             putBoolean("naturalPauses", previousNaturalPauses).putBoolean("strictReview", previousStrictReview)
+            previousPassageTextSize?.let { putInt("passageTextSize", it) } ?: remove("passageTextSize")
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
     }
@@ -501,6 +504,49 @@ class AndroidReaderTests {
         compose.onNodeWithText("Done").performClick()
     }
 
+    @Test fun passageTextSizePreservesPositionAndPersistsSeparately() {
+        launch()
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.runOnIdle { model.state.value.reader!!.seek(2) }
+        val original = model.state.value.reader!!.current!!.position
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("passageTextOptions").performClick()
+        compose.onNodeWithTag("passageTextSizeValue").assertTextEquals("22")
+        repeat(5) { compose.onNodeWithTag("largerPassageText").performScrollTo().performClick() }
+        compose.onNodeWithTag("passageTextSizeValue").assertTextEquals("32")
+        compose.onNodeWithTag("largerPassageText").assertIsNotEnabled()
+        outlineScreenshot("scroll-text-options")
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithTag("currentPassageRow").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(original, model.state.value.reader!!.current!!.position) }
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("currentPassageRow").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(32f, layouts.single().layoutInput.style.fontSize.value, .01f)
+        compose.onNodeWithTag("passageTextOptions").performClick()
+        repeat(8) { compose.onNodeWithTag("smallerPassageText").performScrollTo().performClick() }
+        compose.onNodeWithTag("smallerPassageText").assertIsNotEnabled()
+        compose.onNodeWithTag("passageTextSizeValue").assertTextEquals("16")
+        compose.onNodeWithText("Reset").performClick()
+        compose.onNodeWithTag("passageTextSizeValue").assertTextEquals("22")
+        repeat(2) { compose.onNodeWithTag("largerPassageText").performScrollTo().performClick() }
+        compose.onNodeWithText("Done").performClick()
+        compose.runOnIdle { assertEquals(original, model.state.value.reader!!.current!!.position) }
+        compose.onNodeWithTag("toggleContext").performClick()
+        val single = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(single) }
+        assertEquals(22f, single.single().layoutInput.style.fontSize.value, .01f)
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Continue reading").performClick()
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.runOnIdle { assertEquals(original, model.state.value.reader!!.current!!.position) }
+        compose.onNodeWithTag("passageTextOptions").performClick()
+        compose.onNodeWithTag("passageTextSizeValue").assertTextEquals("26")
+        assertEquals(26, application.getSharedPreferences("reading", 0).getInt("passageTextSize", -1))
+        compose.onNodeWithText("Done").performClick()
+        outlineScreenshot("scroll-text-body")
+    }
+
     @Test fun activeWordSizeOnlyAffectsSingleLineAndPersists() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
@@ -537,9 +583,7 @@ class AndroidReaderTests {
         changeSize(300)
         assertSize(66f)
         compose.onNodeWithTag("toggleContext").performClick()
-        val compact = compose.onNodeWithTag("nearbyPassage").fetchSemanticsNode().boundsInRoot.height /
-            application.resources.displayMetrics.density < 240
-        val passageSize = if (compact) 20f else 24f
+        val passageSize = 22f
         val passageLayouts = mutableListOf<TextLayoutResult>()
         compose.onNodeWithTag("currentPassageRow").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(passageLayouts) }
         assertEquals(passageSize, passageLayouts.single().layoutInput.style.fontSize.value, .01f)

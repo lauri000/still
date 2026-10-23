@@ -17,7 +17,7 @@ struct PassageLayout {
         func append(_ end: Int) {
             let heading = headingIDs[tokens[start].id]
             let previous = rows.last
-            let gap = heading != previous?.headingID && (heading != nil || previous?.isHeading == true) ? 0.45 : 0
+            let gap = heading != previous?.headingID && (heading != nil || previous?.isHeading == true) ? 0.7 : 0
             rows.append(Row(words: start..<end,
                             top: (previous.map { $0.top + $0.height } ?? 0) + gap, height: heading != nil ? 1.2 : 1, headingID: heading))
         }

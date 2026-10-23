@@ -15,7 +15,7 @@ class PassageLayout(tokens: List<ReadingToken>, measuredWidths: List<Double>, av
         fun append(end: Int) {
             val heading = headingIDs[tokens[start].id]
             val previous = result.lastOrNull()
-            val gap = if (heading != previous?.headingID && (heading != null || previous?.isHeading == true)) .45 else 0.0
+            val gap = if (heading != previous?.headingID && (heading != null || previous?.isHeading == true)) .7 else 0.0
             result += Row(start until end, used,
                 (previous?.let { it.top + it.height } ?: 0.0) + gap, if (heading != null) 1.2 else 1.0, heading)
         }
