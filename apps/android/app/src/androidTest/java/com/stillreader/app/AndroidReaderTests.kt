@@ -97,6 +97,20 @@ class AndroidReaderTests {
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
     }
+    private fun readBook() {
+        if (model.state.value.reader == null && !model.state.value.opening) {
+            if (compose.onNodeWithTag("startReading").isDisplayed()) compose.onNodeWithTag("startReading").performClick()
+            else compose.onNodeWithTag("book-${model.state.value.books.first().title}").performClick()
+        }
+        compose.waitUntil(20_000) { model.state.value.reader != null && !model.state.value.opening }
+        compose.waitForIdle()
+    }
+    private fun bookOptions() {
+        if (model.state.value.reader != null || model.state.value.opening) compose.runOnUiThread { model.select(null) }
+        val book = model.state.value.books.first()
+        compose.onNodeWithTag("bookOptions-${book.id}").performClick()
+    }
+
     @Test fun epubLongSectionStartingWordPickerKeepsExactPosition() {
         val source = runCatching { fixture("epub/hume-enquiry-epub3.epub") }.getOrNull()
         org.junit.Assume.assumeTrue("Download the optional EPUB corpus first", source != null)
@@ -105,16 +119,16 @@ class AndroidReaderTests {
         source!!.use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(30_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        val book = model.selectedBook()!!
+        val book = (model.selectedBook() ?: model.state.value.books.first())
         val page = book.pages.indices.maxBy { book.pages[it].text.length }
         val word = book.pages[page].words[10_000]
-        compose.runOnUiThread { model.updateBook(book.id) { it.withReadingStart(ReadingPosition(book.pages[page].id, word.offset)) } }
-        compose.onNodeWithTag("bookOptions").performClick()
+        compose.runOnUiThread { model.closeReader(); model.updateBook(book.id) { it.withReadingStart(ReadingPosition(book.pages[page].id, word.offset)) } }
+        bookOptions()
         compose.onNodeWithText("Choose starting word").performClick()
         compose.onNodeWithTag("startingWords").assertIsDisplayed()
         compose.onNodeWithText("Start at “${word.text}”").assertIsDisplayed()
         compose.onNodeWithText("Start here").performClick()
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle { assertEquals(word.offset, model.state.value.reader!!.current!!.word.offset) }
     }
@@ -125,7 +139,8 @@ class AndroidReaderTests {
         fixture("epub/structured.epub").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        val original = model.selectedBook()!!
+        val original = (model.selectedBook() ?: model.state.value.books.first())
+        compose.runOnUiThread { model.closeReader() }
         compose.runOnUiThread {
             model.updateBook(original.id, debounce = true) { it.editText(0, "First draft") }
             model.pause() // Queue an earlier snapshot before the final edit.
@@ -137,8 +152,8 @@ class AndroidReaderTests {
         compose.runOnIdle {
             assertNull(model.state.value.error)
             assertEquals("Final", model.state.value.reader!!.current!!.word.text)
-            assertFalse(model.selectedBook()!!.needsReprocessing)
-            assertFalse(model.selectedBook()!!.chaptersCustomized)
+            assertFalse((model.selectedBook() ?: model.state.value.books.first()).needsReprocessing)
+            assertFalse((model.selectedBook() ?: model.state.value.books.first()).chaptersCustomized)
         }
         runBlocking { withContext(Dispatchers.Main) { model.flush() } }
         val saved = model.repository.load().books.single()
@@ -149,8 +164,8 @@ class AndroidReaderTests {
         compose.waitUntil(20_000) { model.state.value.importing == null }
         runBlocking { withContext(Dispatchers.Main) { model.flush() } }
         assertNull(model.state.value.error)
-        assertEquals(original.pages[0].headings, model.selectedBook()!!.pages[0].headings)
-        assertEquals(original.chapters.map { it.utf16Offset }, model.selectedBook()!!.chapters.map { it.utf16Offset })
+        assertEquals(original.pages[0].headings, (model.selectedBook() ?: model.state.value.books.first()).pages[0].headings)
+        assertEquals(original.chapters.map { it.utf16Offset }, (model.selectedBook() ?: model.state.value.books.first()).chapters.map { it.utf16Offset })
     }
 
     @Test fun epubImportChaptersModesResumeAndBackup() {
@@ -160,16 +175,17 @@ class AndroidReaderTests {
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
         assertNull(model.state.value.error)
-        val book = model.selectedBook()!!
+        val book = (model.selectedBook() ?: model.state.value.books.first())
         assertTrue(book.isEpub)
-        compose.onNodeWithTag("epubPreview").assertIsDisplayed()
+        readBook()
+        compose.onNodeWithTag("epubPreview").assertDoesNotExist()
         // Two same-title chapters are in one source section; the second must retain its exact anchor.
         val chapter = book.chapters[2]
-        compose.onNodeWithTag("pdfContents").performClick()
+        compose.onNodeWithTag("readerContents").performClick()
         val destination = "contentsEntry-chapter-${chapter.id}"
         compose.waitUntil(5_000) { compose.onNodeWithTag(destination).isDisplayed() }
         compose.onNodeWithTag(destination).performClick()
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         val session = model.state.value.reader!!
         compose.onNodeWithTag("currentHeading").assertTextEquals("Repeat")
@@ -182,20 +198,20 @@ class AndroidReaderTests {
         compose.onNodeWithTag("readerContents").performClick()
         compose.waitUntil(5_000) { compose.onNodeWithTag(destination).isDisplayed() }
         compose.onNodeWithTag(destination).assertIsSelected()
-        compose.onNodeWithTag("contentsEntry-chapter-${book.chapters[0].id}").assertIsNotEnabled()
+        compose.onNodeWithTag("contentsEntry-chapter-${book.chapters[0].id}").assertIsEnabled()
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle { assertEquals(chapter.utf16Offset, model.state.value.reader!!.current!!.word.offset) }
         compose.onNodeWithContentDescription("Back").performClick()
-        val saved = model.selectedBook()!!
+        val saved = (model.selectedBook() ?: model.state.value.books.first())
         val backup = File(root, "epub-backup.json")
         backup.outputStream().use { model.repository.export(saved, it) }
         compose.runOnUiThread { model.importFile(Uri.fromFile(backup)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.books.size == 2 }
         assertNull(model.state.value.error)
-        val copy = model.selectedBook()!!
+        val copy = (model.selectedBook() ?: model.state.value.books.first())
         assertNotEquals(saved.id, copy.id)
         assertEquals(saved.position, copy.position)
         assertArrayEquals(file.readBytes(), model.repository.sourceFile(copy).readBytes())
@@ -207,7 +223,7 @@ class AndroidReaderTests {
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.onNodeWithTag("readerContents").performClick()
         compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-0").isDisplayed() }
@@ -235,11 +251,11 @@ class AndroidReaderTests {
         compose.waitUntil(5_000) { compose.onNodeWithTag("contentsEntry-1").isDisplayed() }
         compose.onNodeWithTag("contentsEntry-1").performClick()
         compose.onNodeWithTag("currentPassageRow").assertTextContains("Keep the meaning", substring = true)
-        compose.runOnIdle { assertFalse(session.state.value.playing); assertEquals(trim, model.selectedBook()!!.readingStart) }
+        compose.runOnIdle { assertFalse(session.state.value.playing); assertEquals(trim, (model.selectedBook() ?: model.state.value.books.first()).readingStart) }
         compose.onNodeWithTag("toggleContext").performClick()
         compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
         val savedIndex = session.state.value.index
-        compose.onNodeWithContentDescription("Back").performClick(); compose.onNodeWithTag("startReading").performClick()
+        compose.onNodeWithContentDescription("Back").performClick(); readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.onNodeWithTag("currentHeading").assertTextEquals("Keep the meaning")
         compose.runOnIdle { assertEquals(savedIndex, model.state.value.reader!!.state.value.index) }
@@ -298,67 +314,61 @@ class AndroidReaderTests {
         assertTrue(importer.contents(file).isEmpty())
     }
 
-    @Test fun contentsNavigatePreviewWithoutChangingTrimUntilRead() {
+    @Test fun contentsNavigateDirectReaderWithoutChangingTrim() {
         launch(seed = false)
         val file = File(root, "outline.pdf")
         fixture("outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
-        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.reader != null }
         compose.runOnIdle {
+            model.closeReader()
             val book = model.state.value.books.single()
             model.updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[1].id, 6)).copy(position = ReadingPosition(it.pages[2].id, 11)) }
+            model.openReader()
         }
-        compose.onNodeWithTag("pdfContents").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("contentsEntry-0.0.0").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("contentsEntry-0.0.0").assertIsSelected()
-        outlineScreenshot("android-contents-phone")
+        readBook()
+        val trim = model.state.value.books.single().readingStart
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(10_000) { compose.onNodeWithTag("contentsEntry-0.0.0").isDisplayed() }
         compose.onNodeWithTag("contentsToggle-0").performClick()
         compose.onNodeWithTag("contentsEntry-0.0.0").assertDoesNotExist()
         compose.onNodeWithTag("contentsToggle-0").performClick()
         compose.onNodeWithTag("contentsEntry-0").assertIsNotEnabled()
         compose.onNodeWithTag("contentsEntry-0.1").performClick()
-        compose.onNodeWithTag("pageNumber").assertTextEquals("2")
         compose.runOnIdle {
-            val book = model.state.value.books.single()
-            assertEquals(6, book.readingStart?.utf16Offset)
-            assertEquals(11, book.position?.utf16Offset)
-            assertNull(model.state.value.reader)
-        }
-        compose.onNodeWithTag("startReading").performClick()
-        compose.waitUntil(10_000) { model.state.value.reader != null }
-        compose.runOnIdle {
-            val book = model.state.value.books.single()
-            assertEquals(book.pages[1].id, book.readingStart?.pageID)
-            assertEquals(0, book.readingStart?.utf16Offset)
+            assertEquals(trim, model.state.value.books.single().readingStart)
+            assertEquals(1, model.state.value.reader!!.current!!.pageIndex)
             model.state.value.reader!!.seek(2)
         }
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithTag("pdfContents").performClick()
-        compose.onNodeWithTag("closeContents").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        compose.onNodeWithTag("importPDF").assertIsDisplayed()
+        readBook()
         compose.runOnIdle { assertEquals(2, model.state.value.reader!!.state.value.index) }
     }
 
-    @Test fun contentsWideSidebarRetainsPreviewAndSelection() {
-        org.junit.Assume.assumeTrue(application.resources.configuration.screenWidthDp >= 808)
-        launch(seed = false)
-        val file = File(root, "outline.pdf")
-        fixture("outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
-        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
-        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("contentsSidebar").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("contentsSidebar").assertIsDisplayed()
-        compose.onNodeWithTag("contentsEntry-0.0").performClick()
-        compose.onNodeWithTag("pageNumber").assertTextEquals("3")
-        compose.onNodeWithTag("contentsEntry-0.0").assertIsSelected()
-        compose.onNodeWithContentDescription("PDF page 3 preview").assertIsDisplayed()
-        outlineScreenshot("android-contents-wide")
-        compose.onNodeWithTag("pdfContents").performClick()
-        compose.onNodeWithTag("contentsSidebar").assertDoesNotExist()
-        compose.onNodeWithTag("pdfContents").performClick()
-        compose.onNodeWithTag("contentsEntry-0.0").assertIsSelected()
-        compose.onNodeWithContentDescription("Previous page").performClick()
-        compose.onNodeWithTag("contentsEntry-0.1").assertIsSelected()
+    @Test fun libraryMenuOpensToolsWithoutOpeningReader() {
+        launch()
+        val original = model.state.value.books.single()
+        bookOptions()
+        compose.onNodeWithText("Book details").performClick()
+        compose.runOnIdle { assertNull(model.state.value.reader) }
+        compose.onNodeWithText("Title").performTextReplacement("Renamed book")
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag("book-Renamed book").assertIsDisplayed()
+        compose.onNodeWithTag("startReading").assertDoesNotExist()
+        compose.onNodeWithTag("book-Renamed book").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.runOnIdle { assertEquals(original.position, model.state.value.books.single().position) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        bookOptions()
+        compose.onNodeWithText("Delete book").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("book-Renamed book").assertIsDisplayed()
+        bookOptions()
+        compose.onNodeWithText("Delete book").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitUntil(5_000) { model.state.value.books.isEmpty() }
+        compose.onNodeWithText("No books yet").assertIsDisplayed()
     }
 
     private fun outlineScreenshot(name: String) {
@@ -369,46 +379,68 @@ class AndroidReaderTests {
         bitmap.recycle()
     }
 
-    @Test fun emptyContentsKeepsPageSelectionAvailable() {
+    @Test fun emptyContentsKeepsReaderPageSelectionAvailable() {
         launch(seed = false)
         val file = File(root, "no-outline.pdf")
         fixture("no-outline.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
-        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.onNodeWithTag("pdfContents").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("No PDF contents").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("No PDF contents").assertIsDisplayed()
-        compose.onNodeWithTag("closeContents").performClick()
-        compose.onNodeWithContentDescription("Next page").performClick()
-        compose.onNodeWithTag("pageNumber").assertTextEquals("2")
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.reader != null }
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.waitUntil(10_000) { compose.onNodeWithText("No PDF contents").isDisplayed() }
+        compose.onNodeWithText("Go to page").performClick()
+        compose.onNodeWithTag("pageNumber").performTextReplacement("2")
+        compose.onNodeWithText("Go").performClick()
+        compose.runOnIdle { assertEquals(1, model.state.value.reader!!.current!!.pageIndex) }
     }
 
-    @Test fun emptyLibraryAndPdfImportOpenStartingPage() {
+    @Test fun emptyLibraryAndPdfImportOpenReaderDirectly() {
         launch(seed = false)
         compose.onNodeWithText("No books yet").assertIsDisplayed()
-        compose.onNodeWithTag("importPDF").assertIsDisplayed()
         val file = File(root, "sample.pdf")
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
-        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.onNodeWithTag("pageNumber").performTextReplacement("2")
-        compose.onNodeWithTag("pageNumber").performImeAction()
-        compose.waitUntil(5_000) {
-            ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) != true
-        }
-        compose.onNodeWithTag("startReading").performClick()
+        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.reader != null }
+        compose.onNodeWithTag("readingSurface").assertIsDisplayed()
+        compose.onNodeWithTag("pdfPreview").assertDoesNotExist()
+        compose.onNodeWithTag("startReading").assertDoesNotExist()
+        compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.playing) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag("importPDF").assertIsDisplayed()
+        outlineScreenshot("direct-reading-library")
+        compose.onNodeWithTag("book-The art of attention").performClick()
         compose.waitUntil(10_000) { model.state.value.reader != null }
-        compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
-        compose.onNodeWithTag("currentWord").assertIsDisplayed()
+        compose.onNodeWithTag("readingSurface").assertIsDisplayed()
+        outlineScreenshot("direct-reading-open")
+    }
+
+    @Test fun directOpenSkipsABlankCover() {
+        val source = backup().book
+        launch(book = source.editText(0, "").copy(position = null, readingStart = null))
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
+        compose.runOnIdle { assertEquals(1, model.state.value.reader!!.current!!.pageIndex) }
+        compose.onNodeWithTag("pdfPreview").assertDoesNotExist()
+    }
+
+    @Test fun directOpenKeepsTrimWithoutASavedPositionAndCanBeCancelled() {
+        val source = backup().book
+        val trim = ReadingPosition(source.pages[1].id, source.pages[1].words[1].offset)
+        launch(book = source.withReadingStart(trim).copy(position = null))
+        compose.runOnUiThread { model.readBook(source.id); model.select(null) }
+        compose.waitForIdle()
+        compose.runOnIdle { assertNull(model.state.value.reader); assertFalse(model.state.value.opening) }
+        compose.onNodeWithTag("book-The art of attention").performClick()
+        compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle {
-            assertEquals(1, model.state.value.reader!!.current!!.pageIndex)
-            assertFalse(model.state.value.reader!!.state.value.playing)
+            assertEquals(trim, model.state.value.books.single().readingStart)
+            assertEquals(trim.utf16Offset, model.state.value.reader!!.current!!.word.offset)
         }
     }
+
     @Test fun swipePauseAndResumeKeepExactWord() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.onNodeWithTag("currentWord").assertTextEquals("the")
         compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
         compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
@@ -427,7 +459,7 @@ class AndroidReaderTests {
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
         compose.onNodeWithTag("currentPassageRow").assertTextContains("story.", substring = true)
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.onNodeWithTag("currentWord").assertTextEquals("story.")
         runBlocking { withContext(Dispatchers.Main) { model.pause(); model.flush() } }
         val persisted = BookRepository(File(root, "books")).load().books.single()
@@ -440,7 +472,7 @@ class AndroidReaderTests {
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.waitUntil(5_000) { compose.onNodeWithTag("currentWord").isDisplayed() }
         compose.onNodeWithTag("readingOptions").performClick()
@@ -496,7 +528,7 @@ class AndroidReaderTests {
             compose.runOnIdle { assertEquals(selected, model.state.value.reader!!.state.value.index) }
         }
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { assertEquals(selected, model.state.value.reader!!.state.value.index) }
         compose.onNodeWithTag("readingOptions").performClick()
         compose.onNodeWithContentDescription("Animated scrolling").assertIsOn()
@@ -507,7 +539,7 @@ class AndroidReaderTests {
     @Test fun passageTextSizePreservesPositionAndPersistsSeparately() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
         val original = model.state.value.reader!!.current!!.position
         compose.onNodeWithTag("toggleContext").performClick()
@@ -537,7 +569,7 @@ class AndroidReaderTests {
         compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(single) }
         assertEquals(22f, single.single().layoutInput.style.fontSize.value, .01f)
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.onNodeWithTag("toggleContext").performClick()
         compose.runOnIdle { assertEquals(original, model.state.value.reader!!.current!!.position) }
         compose.onNodeWithTag("passageTextOptions").performClick()
@@ -550,7 +582,7 @@ class AndroidReaderTests {
     @Test fun activeWordSizeOnlyAffectsSingleLineAndPersists() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
         val index = model.state.value.reader!!.state.value.index
         fun assertSize(size: Float) {
@@ -592,7 +624,7 @@ class AndroidReaderTests {
         assertSize(66f)
         changeSize(200)
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         assertSize(44f)
         assertEquals(200, application.getSharedPreferences("reading", 0).getInt("activeWordSizePercent", -1))
         compose.onNodeWithTag("readingOptions").performClick()
@@ -608,7 +640,7 @@ class AndroidReaderTests {
     @Test fun focusLetterToggleAlignsAndPersistsWithoutMovingPosition() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
         compose.onNodeWithTag("currentWord").assertTextEquals("story.")
         val index = model.state.value.reader!!.state.value.index
@@ -623,7 +655,7 @@ class AndroidReaderTests {
         compose.runOnIdle { assertEquals(index, model.state.value.reader!!.state.value.index) }
         assertTrue(application.getSharedPreferences("reading", 0).getBoolean("focusLetter", false))
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         assertFocusedCharacterCentered()
         compose.onNodeWithTag("readingOptions").performClick()
         compose.onNodeWithContentDescription("Focus letter").assertIsOn().performClick()
@@ -643,7 +675,7 @@ class AndroidReaderTests {
             position = ReadingPosition(page.id, 200), readingStart = null)
         launch(book = book)
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         assertEquals(root.left, surface.left, 1f)
@@ -689,8 +721,7 @@ class AndroidReaderTests {
 
     @Test fun textCorrectionsRemainOptionalAndPersist() {
         launch()
-        compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithTag("bookOptions").performClick()
+        bookOptions()
         compose.onNodeWithText("Edit text").performClick()
         compose.onNodeWithTag("pageText").performScrollTo().performTextReplacement("Heading 🌿 Begin a corrected story.")
         compose.onNodeWithContentDescription("Back").performClick()
@@ -699,7 +730,7 @@ class AndroidReaderTests {
         assertTrue(loaded.pages[1].text.contains("corrected story"))
         assertFalse(loaded.pages[1].isReviewed)
         assertFalse(loaded.pages[1].extractedText.contains("corrected story"))
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.onNodeWithTag("holdToRead").performTouchInput { down(center) }
         compose.runOnIdle { assertTrue(model.state.value.reader!!.state.value.playing) }
         compose.onNodeWithTag("holdToRead").performTouchInput { up() }
@@ -708,7 +739,7 @@ class AndroidReaderTests {
     @Test fun holdControlsSpeedRelativelyAndReleaseOrCancelPauses() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val corner = compose.onNodeWithTag("holdToRead")
         compose.onNodeWithTag("playPause").assertDoesNotExist()
         compose.onNodeWithContentDescription("Words per minute").assertDoesNotExist()
@@ -738,14 +769,14 @@ class AndroidReaderTests {
             assertFalse(model.state.value.reader!!.state.value.playing)
         }
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { assertEquals(speed.toInt().toDouble(), model.state.value.reader!!.wordsPerMinute, .01) }
     }
 
     @Test fun cornerRetainsTouchOutsideBoundsAndReversesImmediatelyAtSpeedLimit() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val corner = compose.onNodeWithTag("holdToRead")
         corner.performTouchInput {
             down(center)
@@ -764,7 +795,7 @@ class AndroidReaderTests {
     @Test fun headerAndQuarterZoneLeaveAllRemainingSpaceForText() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val header = compose.onNodeWithTag("readerHeader").fetchSemanticsNode().boundsInRoot
         val surface = compose.onNodeWithTag("readingSurface").fetchSemanticsNode().boundsInRoot
         val corner = compose.onNodeWithTag("holdToRead").fetchSemanticsNode().boundsInRoot
@@ -794,7 +825,7 @@ class AndroidReaderTests {
     @Test fun gestureKeepsStartingRoleAcrossZonesAndIgnoresSecondFinger() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val surface = compose.onNodeWithTag("readingSurface")
         run {
             compose.runOnIdle { model.state.value.reader!!.seek(4) }
@@ -849,7 +880,7 @@ class AndroidReaderTests {
     @Test fun wordTapsDoNotSeekAndAccessibleNavigationStillWorks() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         compose.runOnIdle { model.state.value.reader!!.seek(2) }
         run {
             val neighbor = compose.onNodeWithTag("nearbyWord-1")
@@ -872,7 +903,7 @@ class AndroidReaderTests {
     @Test fun wpmAppearsOnlyAfterSpeedChangesAndFadesWhileStillHeld() {
         launch()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithText("Continue reading").performClick()
+        readBook()
         val corner = compose.onNodeWithTag("holdToRead")
         compose.onNodeWithTag("speedOverlay").assertDoesNotExist()
         corner.performTouchInput { down(center) }
@@ -894,7 +925,7 @@ class AndroidReaderTests {
         fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
         compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
         compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         compose.runOnIdle { model.options(true, true) }
         val corner = compose.onNodeWithTag("holdToRead")
@@ -968,15 +999,16 @@ class AndroidReaderTests {
         val original = model.state.value.books.single()
         val pdf = model.repository.pdfFile(original.id).readBytes()
         compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithTag("startReading").assertTextContains("Reprocess book")
+        compose.waitUntil(10_000) { model.state.value.preparationID != null }
+        compose.onNodeWithTag("prepareBook").assertIsDisplayed()
         assertNull(model.state.value.reader)
-        compose.onNodeWithTag("startReading").performClick()
+        compose.onNodeWithTag("prepareBook").performClick()
         compose.waitUntil(20_000) { model.state.value.importing == null && model.selectedBook()?.needsReprocessing == false }
         assertNull(model.state.value.error)
         assertArrayEquals(pdf, model.repository.pdfFile(original.id).readBytes())
         val stored = File(model.repository.directory(original.id), "book.json").readText()
         assertFalse(stored.contains("extractedText")); assertFalse(stored.contains("processedText"))
-        compose.onNodeWithTag("startReading").performClick()
+        readBook()
         compose.waitUntil(10_000) { model.state.value.reader != null }
         assertEquals("the", model.state.value.reader!!.current!!.word.text)
     }
@@ -984,20 +1016,19 @@ class AndroidReaderTests {
     @Test fun reprocessingLegacyBookPreservesCorrectionsAndCanBeUndone() {
         launch(legacy = true)
         val original = model.state.value.books.single()
-        compose.onNodeWithTag("book-The art of attention").performClick()
-        compose.onNodeWithTag("bookOptions").performClick()
+        bookOptions()
         compose.onNodeWithTag("reprocessBook").performClick()
         compose.waitUntil(20_000) { model.state.value.importing == null }
         compose.runOnIdle {
             assertNull(model.state.value.error)
-            val improved = model.selectedBook()!!
+            val improved = (model.selectedBook() ?: model.state.value.books.first())
             assertEquals(PdfTextRepair.VERSION, improved.pages[0].textProcessingVersion)
             assertEquals(original.pages[1].text, improved.pages[1].text) // manually corrected
             assertFalse(improved.pages[2].isIncluded) // excluded
             assertFalse(improved.needsReprocessing)
             assertEquals(original.position, improved.position)
         }
-        compose.onNodeWithTag("bookOptions").performClick()
+        bookOptions()
         compose.onNodeWithText("Undo reprocessing").performClick()
         runBlocking { withContext(Dispatchers.Main) { model.flush() } }
         assertEquals(original, BookRepository(File(root, "books")).load().books.single())

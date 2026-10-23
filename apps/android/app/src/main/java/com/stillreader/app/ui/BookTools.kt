@@ -34,7 +34,9 @@ fun BookTools(book: Book, tool: String, initialPage: Int, model: LibraryViewMode
     var page by rememberSaveable(book.id, tool) { mutableIntStateOf(initialPage.coerceIn(book.pages.indices)) }
     val close = { model.pause(); onClose() }
     Column(Modifier.fillMaxSize().imePadding()) {
-        Header(tool, close)
+        Header(tool, close) {
+            TextButton(onClick = { model.openReader(); onClose() }, modifier = Modifier.testTag("startReading")) { Text("Read") }
+        }
         when (tool) {
             "Edit text" -> {
                 Column(Modifier.padding(20.dp)) { PageSelector(page, book.pages.size, book.unitName) { model.pause(); page = it } }

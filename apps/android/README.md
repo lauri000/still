@@ -2,9 +2,11 @@
 
 **Discover** sits beside **Import file** in the library. Browse Project Gutenberg, search by title or author, filter languages, and download individual EPUBs for offline reading. See [discovery](../../docs/discovery.md).
 
+Tap a library book to open the reader immediately. Imports and downloads do the same. Closing the reader returns to the library; each book’s **…** menu contains editing, chapters, starting-word selection, details, backups, and deletion.
+
 The scrolling reader uses serif text with distinct paragraph and heading spacing. Tap **Aa** to adjust its saved text size (16–32 points) independently of single-line reading. Resizing and rotating preserve the selected word.
 
-Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview through PdfiumAndroidKt. The Apple app remains SwiftUI/PDFKit. There is no Rust core, account, network permission, or server dependency.
+Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview through PdfiumAndroidKt. The Apple app remains SwiftUI/PDFKit. Saved books and reading work offline; discovery uses the network.
 
 ## Build and run
 
@@ -24,7 +26,7 @@ Release keys stay outside the repository; the release helper builds a committed 
 
 ## Reading
 
-Import a PDF or EPUB, choose the starting page or section using the preview, and tap **Read**. The compact header contains page navigation and progress; text fills the remaining screen in portrait and landscape. Hold anywhere in the invisible bottom-right quarter of the reading area to begin; release to pause. While holding, move right to increase the current speed or left to decrease it. Each touch starts at the saved speed, from 60 to 900 WPM. A floating WPM label appears only when speed changes and fades after adjustments stop.
+Import a PDF or EPUB to open the reader immediately. Tap a library book to resume it; use the reader header for contents and page navigation. The compact header contains page navigation and progress; text fills the remaining screen in portrait and landscape. Hold anywhere in the invisible bottom-right quarter of the reading area to begin; release to pause. While holding, move right to increase the current speed or left to decrease it. Each touch starts at the saved speed, from 60 to 900 WPM. A floating WPM label appears only when speed changes and fades after adjustments stop.
 
 Start a horizontal swipe anywhere outside that corner to move forward/backward through the text. The starting zone determines the entire gesture: crossing into or out of the corner never switches between scrubbing and speed control. Additional fingers cannot take over. Scrubbing pauses playback without changing speed; hold the corner again to resume from the selected word. Tapping words in single-line mode does not jump to them. Screen readers retain start/pause, speed adjustments, and next/previous word actions.
 
@@ -89,11 +91,7 @@ The bundled SCOWL vocabulary and its full license are in `shared/resources/` and
 
 Plain-passage verification on 19 October 2026: all 31 JVM tests and 17 emulator scenarios pass; lint has zero errors and 18 existing warnings. An opt-in test with the local 284-page, 104,789-word 1984 PDF opened multiline in 160–230 ms across the former size/focus/natural-pause combinations, compared with about 5.8 seconds with natural pauses in 0.1.8. The PDF is not bundled or committed. Multiline now lays out nearby text and does not calculate natural-pause durations for the book. Physical GrapheneOS testing remains outstanding.
 
-PDF contents navigation: the starting-page chooser reads the original PDF's embedded
-outline with PDFBox-Android, preserving source order, nested groups, and duplicate
-destinations. PDFium continues to extract text and render pages. Wide
-screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
-changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).
+PDF contents navigation is available from the reader header. It preserves the original outline's source order, nested groups, and duplicate destinations. Choosing an entry seeks to that section without changing the beginning trim; **Go to page** remains available for books without an outline.
 
 Book typography and reader Contents: matched headings use larger text in multiline
 and appear together in single-line reading. Tap the chapter/page header to browse

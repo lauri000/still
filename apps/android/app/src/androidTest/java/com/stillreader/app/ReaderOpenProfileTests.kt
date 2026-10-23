@@ -97,11 +97,10 @@ class ReaderOpenProfileTests {
             }
             compose.setContent { StillTheme { StillApp(model) } }
             compose.waitUntil(20_000) { !model.state.value.loading }
-            compose.runOnUiThread { model.select(book.id) }
             compose.waitForIdle()
             repeat(3) { iteration ->
                 val before = SystemClock.elapsedRealtimeNanos()
-                compose.onNodeWithTag("startReading").performClick()
+                compose.onNodeWithTag("book-${book.title}").performClick()
                 compose.waitUntil(20_000) { model.state.value.reader != null }
                 compose.waitForIdle()
                 Log.i("StillOpenProfile", "continue_to_idle_$iteration ms=${(SystemClock.elapsedRealtimeNanos() - before) / 1e6}")

@@ -47,6 +47,7 @@ final class LibraryStore: ObservableObject {
                     sample.book.pages[index].isReviewed = true
                 }
                 sample.book = ReaderPipeline.prepare(sample.book)
+                if ProcessInfo.processInfo.arguments.contains("--legacy-sample") { sample.book.pipelineVersion = nil }
                 try repository.insert(sample.book, sourceData: sample.sourceData)
                 books = [sample.book]
                 try Data().write(to: marker)
@@ -178,7 +179,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func cancelImport() { importTask?.cancel() }
-    func reprocess(_ id: UUID) {
+    func reprocess(_ id: UUID, completion: (() -> Void)? = nil) {
         guard !isImporting else { return }
         performImport(message: "Reprocessing original book…") {
             await self.waitForSaves()
@@ -194,6 +195,7 @@ final class LibraryStore: ObservableObject {
             try self.repository.save(updated)
             self.books[index] = updated; self.beforeReprocess = original
             self.savedMessage = "Book reprocessed"
+            completion?()
         }
     }
 

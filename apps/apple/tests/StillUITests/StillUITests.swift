@@ -31,7 +31,7 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         editor.tap()
         editor.typeText(String(repeating: "i ", count: 120))
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         let surface = app.otherElements["readingSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 5))
         for _ in 0..<10 where wordOrdinal(in: app) < 40 {
@@ -69,7 +69,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         let heading = app.staticTexts["currentHeading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 5))
         XCTAssertEqual(heading.label, "A place to begin")
@@ -90,7 +90,7 @@ final class StillUITests: XCTestCase {
         XCTAssertEqual(heading.label, "Keep the meaning")
         attachScreenshot("Book typography single line")
         let selected = wordOrdinal(in: app)
-        app.buttons["Close reader"].tap(); app.buttons["startReading"].tap()
+        app.buttons["Close reader"].tap(); readBook(in: app)
         XCTAssertTrue(heading.waitForExistence(timeout: 5)); XCTAssertEqual(wordOrdinal(in: app), selected)
         // Reader contents seeks; it must not replace the book's starting trim.
         app.buttons["readerPage"].tap()
@@ -111,98 +111,98 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
-    func testChooseStartingPageReadAndResume() throws {
+    func testLibraryOpensReaderDirectlyAndResumesAfterRelaunch() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]
-        XCUIDevice.shared.orientation = .portrait
         app.launch()
-        let open = app.buttons["book-The art of attention"]
-        XCTAssertTrue(open.waitForExistence(timeout: 15))
-        attachScreenshot("Simple library")
-        open.tap()
-        XCTAssertTrue(app.textFields["readingPageNumber"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.textViews["pageTextEditor"].exists)
-        app.buttons["Next starting page"].tap()
-        XCTAssertEqual(app.textFields["readingPageNumber"].value as? String, "2")
-        attachScreenshot("Choose starting page")
-        XCUIDevice.shared.orientation = .landscapeLeft
-        waitForRotation(in: app, landscape: true)
-        attachScreenshot("Starting page in landscape")
-        XCUIDevice.shared.orientation = .portrait
-        waitForRotation(in: app, landscape: false)
-        app.buttons["startReading"].tap()
-        let play = corner(in: app)
-        XCTAssertTrue(play.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["currentWord"].label, "A") // First word of page two.
-        app.descendants(matching: .any).matching(identifier: "readingSurface").firstMatch.swipeRight()
-        XCTAssertEqual(app.staticTexts["currentWord"].label, "A") // Earlier pages remain skipped.
+        let book = app.buttons["book-The art of attention"]
+        XCTAssertTrue(book.waitForExistence(timeout: 15))
+        attachScreenshot("Direct reading library")
+        book.tap()
+        XCTAssertTrue(app.buttons["toggleContext"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["startReading"].exists)
+        XCTAssertFalse(app.textFields["readingPageNumber"].exists)
+        XCTAssertFalse(app.buttons["pdfContents"].exists)
         stepForward(in: app)
-        XCTAssertEqual(app.staticTexts["currentWord"].label, "book")
-        attachScreenshot("Simple reader")
-        play.press(forDuration: 0.8)
-        XCTAssertNotEqual(app.staticTexts["currentWord"].label, "book")
-        XCTAssertTrue((play.value as? String ?? "").contains("paused"))
-        let paused = app.staticTexts["currentWord"].label
+        let position = wordOrdinal(in: app)
         app.buttons["Close reader"].tap()
-        app.buttons["startReading"].tap()
-        XCTAssertTrue(play.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["currentWord"].label, paused)
-        app.buttons["toggleContext"].tap()
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "readingSurface").firstMatch.value as? String, "Passage view")
-        app.buttons["Close reader"].tap()
+        XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 5))
+        XCTAssertTrue(book.exists)
         app.terminate()
         app.launchArguments = ["--ui-testing"]
         app.launch()
-        XCTAssertTrue(open.waitForExistence(timeout: 15))
-        open.tap()
-        XCTAssertEqual(app.textFields["readingPageNumber"].value as? String, "2")
-        app.buttons["startReading"].tap()
-        XCTAssertTrue(play.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["currentWord"].label, paused)
-        app.buttons["Close reader"].tap()
-        app.buttons["Previous starting page"].tap()
-        openTextEditor(in: app)
-        app.buttons["startReading"].tap()
-        XCTAssertTrue(play.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["currentWord"].label, "There")
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        XCTAssertTrue(app.buttons["toggleContext"].waitForExistence(timeout: 10))
+        XCTAssertEqual(wordOrdinal(in: app), position)
+        attachScreenshot("Direct reading resumed")
     }
 
     @MainActor
-    func testContentsChoosesPreviewAndPreservesExactResume() throws {
+    func testReaderContentsPreserveExactResume() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]
-        XCUIDevice.shared.orientation = .portrait
         app.launch()
-        XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
-        app.buttons["book-The art of attention"].tap()
-        let contents = app.buttons["pdfContents"]
-        XCTAssertTrue(contents.waitForExistence(timeout: 5))
-        // iPhone presents a sheet; wide iPad/Mac layouts already show the sidebar.
-        if !app.buttons["contentsEntry-1"].waitForExistence(timeout: 2) { contents.tap() }
-        let chapter = app.buttons["contentsEntry-1"]
-        XCTAssertTrue(chapter.waitForExistence(timeout: 5), app.debugDescription)
-        attachScreenshot("PDF contents")
-        chapter.tap()
-        XCTAssertEqual(app.textFields["readingPageNumber"].value as? String, "2")
-        attachScreenshot("PDF contents selection")
-        app.buttons["startReading"].tap()
-        XCTAssertTrue(app.staticTexts["currentWord"].waitForExistence(timeout: 5))
+        readBook(in: app)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5))
+        app.buttons["contentsEntry-1"].tap()
         XCTAssertEqual(app.staticTexts["currentWord"].label, "A")
         stepForward(in: app)
-        let word = app.staticTexts["currentWord"].label
-        let position = app.staticTexts["currentWord"].value as? String
+        let position = wordOrdinal(in: app)
+        app.buttons["readerPage"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertEqual(wordOrdinal(in: app), position)
         app.buttons["Close reader"].tap()
-        // Opening/closing contents must not turn Continue reading into a new start.
-        contents.tap()
-        if app.buttons["closeContents"].waitForExistence(timeout: 1) { app.buttons["closeContents"].tap() }
-        app.buttons["startReading"].tap()
-        XCTAssertTrue(app.staticTexts["currentWord"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["currentWord"].label, word)
-        XCTAssertEqual(app.staticTexts["currentWord"].value as? String, position)
+        readBook(in: app)
+        XCTAssertEqual(wordOrdinal(in: app), position)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-0"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["contentsEntry-0"].isEnabled)
+    }
+
+    @MainActor
+    func testLegacyPreparationAndLibraryDeletion() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library", "--legacy-sample"]
+        app.launch()
+        let book = app.buttons["book-The art of attention"]
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "prepareBook").firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["importPDF"].exists)
+        book.tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "prepareBook").firstMatch.waitForExistence(timeout: 5)); app.buttons.matching(identifier: "prepareBook").firstMatch.tap()
+        XCTAssertTrue(app.buttons["Close reader"].waitForExistence(timeout: 20))
         app.buttons["Close reader"].tap()
-        XCUIDevice.shared.orientation = .landscapeLeft
-        waitForRotation(in: app, landscape: true)
-        attachScreenshot("PDF contents in landscape")
+        openBookOptions(in: app)
+        app.buttons["Delete book…"].tap()
+        XCTAssertTrue(app.buttons["Delete book and corrections"].waitForExistence(timeout: 5))
+        if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.9)).tap() }
+        XCTAssertTrue(book.exists)
+        openBookOptions(in: app)
+        app.buttons["Delete book…"].tap()
+        app.buttons["Delete book and corrections"].tap()
+        XCTAssertTrue(app.staticTexts["No books yet"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testLibraryBookMenuEditsWithoutOpeningReader() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library"]
+        app.launch()
+        openBookOptions(in: app)
+        app.buttons["Book details"].tap()
+        XCTAssertFalse(app.buttons["Close reader"].exists)
+        let title = app.textFields["Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        // Saving unchanged metadata still exercises the library tool route.
+        app.buttons["Save details"].tap()
+        XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 5))
+        openTextEditor(in: app)
+        XCTAssertTrue(app.textViews["pageTextEditor"].waitForExistence(timeout: 5))
+        app.buttons["closeBookTools"].tap()
+        XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -228,7 +228,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         stepForward(in: app)
@@ -265,7 +265,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertEqual(word.label, nextText)
         XCTAssertEqual(word.value as? String, chosenPosition)
@@ -295,8 +295,11 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["Next starting page"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5))
+        app.buttons["contentsEntry-1"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         app.buttons["readingOptions"].tap()
         let animation = app.switches["animatedScrolling"]
@@ -352,7 +355,7 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(animation.waitForExistence(timeout: 5))
         XCTAssertEqual(animation.value as? String, "1")
         app.buttons["Done"].tap()
-        app.buttons["Close reader"].tap(); app.buttons["startReading"].tap()
+        app.buttons["Close reader"].tap(); readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(wordOrdinal(in: app), selected)
         XCUIDevice.shared.orientation = .portrait
@@ -367,8 +370,11 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["Next starting page"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5))
+        app.buttons["contentsEntry-1"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         let original = wordOrdinal(in: app)
         app.buttons["toggleContext"].tap()
@@ -401,7 +407,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(wordOrdinal(in: app), original)
         app.buttons["toggleContext"].tap()
@@ -418,7 +424,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         let word = app.staticTexts["currentWord"]
         let ordinal = wordOrdinal(in: app)
@@ -474,7 +480,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(word.frame.width / baseWidth, 3, accuracy: 0.08)
         assertCentered()
@@ -493,7 +499,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         let word = app.staticTexts["currentWord"]
         // Choose a word whose focus is visibly left of its midpoint.
@@ -528,7 +534,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(word.label, text)
         XCTAssertEqual(wordOrdinal(in: app), ordinal)
@@ -572,8 +578,11 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["Next starting page"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5))
+        app.buttons["contentsEntry-1"].tap()
+        readBook(in: app)
         let hold = corner(in: app)
         XCTAssertTrue(hold.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["playPause"].exists)
@@ -609,7 +618,7 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(corner(in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(speed(in: app), slowed)
     }
@@ -622,8 +631,11 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["Next starting page"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
+        app.buttons["readerPage"].tap()
+        XCTAssertTrue(app.buttons["contentsEntry-1"].waitForExistence(timeout: 5))
+        app.buttons["contentsEntry-1"].tap()
+        readBook(in: app)
         let hold = corner(in: app)
         XCTAssertTrue(hold.waitForExistence(timeout: 5))
         let surface = app.descendants(matching: .any).matching(identifier: "readingSurface").firstMatch
@@ -699,7 +711,7 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         editor.tap()
         editor.typeText("A corrected introduction. ")
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         corner(in: app).press(forDuration: 0.3)
         XCTAssertTrue(app.buttons["Review this page"].waitForExistence(timeout: 5))
         app.buttons["Review this page"].tap()
@@ -728,7 +740,7 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         editor.tap()
         editor.typeText("A correction. ")
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         play.press(forDuration: 0.5)
@@ -736,8 +748,8 @@ final class StillUITests: XCTestCase {
         XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         app.buttons["Close reader"].tap()
 
-        app.buttons["bookOptions"].tap()
-        app.buttons["trimBeginning"].tap()
+        openBookOptions(in: app)
+        app.buttons["Choose starting word"].tap()
         XCTAssertTrue(app.buttons["Next start page"].waitForExistence(timeout: 5))
         app.buttons["Next start page"].tap()
         let startWord = app.buttons["startWord-2"] // "book" in "A book is more..."
@@ -745,7 +757,7 @@ final class StillUITests: XCTestCase {
         startWord.tap()
         attachScreenshot("Choose the book beginning")
         app.buttons["saveReadingStart"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["currentWord"].label, "book")
         app.buttons["Close reader"].tap()
@@ -755,25 +767,41 @@ final class StillUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["currentWord"].label, "book")
         app.buttons["Close reader"].tap()
-        app.buttons["bookOptions"].tap()
-        app.buttons["trimBeginning"].tap()
+        openBookOptions(in: app)
+        app.buttons["Choose starting word"].tap()
         XCTAssertTrue(app.buttons["restoreBeginning"].waitForExistence(timeout: 5))
         app.buttons["restoreBeginning"].tap()
-        app.buttons["startReading"].tap()
+        readBook(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         XCTAssertNotEqual(app.staticTexts["currentWord"].label, "book")
     }
 
-    @MainActor private func openTextEditor(in app: XCUIApplication) {
-        app.buttons["bookOptions"].tap()
-        app.buttons["editBookText"].tap()
+    @MainActor private func readBook(in app: XCUIApplication) {
+        if app.buttons["toggleContext"].waitForExistence(timeout: 1) { return }
+        if app.buttons["startReading"].exists { app.buttons["startReading"].tap() }
+        else {
+            let book = app.buttons["book-The art of attention"]
+            XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        }
+        XCTAssertTrue(app.buttons["toggleContext"].waitForExistence(timeout: 10))
     }
 
-    @MainActor private func waitForRotation(in app: XCUIApplication, landscape: Bool, controlID: String = "startReading") {
+    @MainActor private func openBookOptions(in app: XCUIApplication) {
+        if app.buttons["Close reader"].waitForExistence(timeout: 1) { app.buttons["Close reader"].tap() }
+        let menu = app.buttons["Book options for The art of attention"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 15)); menu.tap()
+    }
+
+    @MainActor private func openTextEditor(in app: XCUIApplication) {
+        openBookOptions(in: app)
+        app.buttons["Edit text"].tap()
+    }
+
+    @MainActor private func waitForRotation(in app: XCUIApplication, landscape: Bool, controlID: String = "toggleContext") {
         var previousFrame = CGRect.zero
         var stableChecks = 0
         let settled = NSPredicate { _, _ in

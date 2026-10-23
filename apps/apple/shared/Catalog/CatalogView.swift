@@ -123,7 +123,7 @@ struct CatalogView: View {
                 Text(book.authors.joined(separator: ", ")).foregroundStyle(Palette.muted)
                 if !book.languages.isEmpty { Text(book.languages.map { Locale.current.localizedString(forLanguageCode: $0) ?? $0 }.joined(separator: ", ")).font(.callout) }
                 let existing = library.books.first { $0.catalogID == book.id }
-                Button(existing == nil ? "Download EPUB" : "Open in library") {
+                Button(existing == nil ? "Download EPUB" : "Read book") {
                     if let existing { onImported(existing.id) }
                     else { library.download(book, provider: catalog.provider, completion: onImported) }
                 }.buttonStyle(PrimaryButton()).disabled(library.isImporting || (book.epubURL == nil && existing == nil)).accessibilityIdentifier("downloadEPUB")

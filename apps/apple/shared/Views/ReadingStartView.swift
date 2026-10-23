@@ -1,19 +1,20 @@
 import SwiftUI
 
 struct ReadingStartView: View {
-    @Environment(\.dismiss) private var dismiss
     let book: Book
     let pdfURL: URL
+    let onCancel: () -> Void
     let onSave: (ReadingPosition?) -> Void
     @State private var pageIndex: Int
     @State private var selectedOffset: Int
     @State private var words: [TextWord]
     @State private var scrollRequest = 0
 
-    init(book: Book, pdfURL: URL, initialPage: Int, onSave: @escaping (ReadingPosition?) -> Void) {
+    init(book: Book, pdfURL: URL, initialPage: Int, onCancel: @escaping () -> Void, onSave: @escaping (ReadingPosition?) -> Void) {
         self.book = book
         self.pdfURL = pdfURL
         self.onSave = onSave
+        self.onCancel = onCancel
         let index = min(max(0, initialPage), book.pages.count - 1)
         _pageIndex = State(initialValue: index)
         _words = State(initialValue: book.pages[index].words)
@@ -31,7 +32,7 @@ struct ReadingStartView: View {
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 40, height: 40) }
+                Button { onCancel() } label: { Image(systemName: "xmark").frame(width: 40, height: 40) }
                     .buttonStyle(.plain).accessibilityLabel("Cancel trimming")
             }
             HStack(spacing: 12) {
@@ -69,13 +70,12 @@ struct ReadingStartView: View {
             }
             HStack {
                 if book.readingStart != nil {
-                    Button("Restore beginning") { onSave(nil); dismiss() }.buttonStyle(SecondaryButton()).accessibilityIdentifier("restoreBeginning")
+                    Button("Restore beginning") { onSave(nil) }.buttonStyle(SecondaryButton()).accessibilityIdentifier("restoreBeginning")
                 }
                 Spacer()
                 Button("Start book here") {
                     guard let word = selectedWord else { return }
                     onSave(ReadingPosition(pageID: book.pages[pageIndex].id, utf16Offset: word.offset))
-                    dismiss()
                 }.buttonStyle(PrimaryButton()).disabled(selectedWord == nil).accessibilityIdentifier("saveReadingStart")
             }
         }.padding(28).background(Palette.paper).foregroundStyle(Palette.ink)

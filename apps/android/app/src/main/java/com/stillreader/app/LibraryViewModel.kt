@@ -25,6 +25,7 @@ data class LibraryState(
     val error: String? = null,
     val saving: Boolean = false,
     val opening: Boolean = false,
+    val preparationID: String? = null,
     val undoReprocessID: String? = null,
 )
 
@@ -50,7 +51,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var importJob: Job? = null
     private var openJob: Job? = null
-    private var warmJob: Job? = null
+    private var openRequest = 0
     private var pendingWrites = 0
     private val pendingEdits = mutableMapOf<String, Job>()
     private val preparationBases = mutableMapOf<String, Book>()
@@ -70,17 +71,14 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     fun selectedBook(): Book? = state.value.books.firstOrNull { it.id == state.value.selectedID }
-    fun isPreparing(id: String) = id in preparationBases
     fun select(id: String?) {
         closeReader()
-        warmJob?.cancel()
         selectedBook()?.readerCache?.clear()
         saved["selectedID"] = id
-        mutable.update { it.copy(selectedID = id) }
-        selectedBook()?.takeUnless { it.needsReprocessing }?.let { book ->
-            warmJob = viewModelScope.launch(Dispatchers.Default) { book.readerCache.get(book) }
-        }
+        mutable.update { it.copy(selectedID = id, preparationID = null) }
     }
+    fun readBook(id: String) { select(id); openReader() }
+    fun dismissPreparation() { select(null) }
     fun dismissError() { mutable.update { it.copy(error = null) } }
     private fun report(error: Throwable) {
         val message = if (error is OutOfMemoryError) "This document needs more memory than is available. Try a smaller book or backup."
@@ -166,7 +164,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     fun importFile(uri: Uri) = beginImport { progress -> importer.import(uri, progress) }
 
     fun download(entry: CatalogBook, provider: CatalogProvider) {
-        state.value.books.firstOrNull { it.catalogID == entry.id }?.let { select(it.id); return }
+        state.value.books.firstOrNull { it.catalogID == entry.id }?.let { readBook(it.id); return }
         beginImport { progress ->
             val data = provider.download(entry) { fraction ->
                 progress(ImportProgress(fraction?.let { "Downloading EPUB… ${(it * 100).toInt()}%" } ?: "Downloading EPUB…", fraction ?: -1f))
@@ -199,13 +197,15 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                 val book = repositoryOperation { repository.insert(source.book, source.source, source.deduplicate) }
                 saved["selectedID"] = book.id
                 mutable.update { it.copy(books = listOf(book) + it.books.filterNot { existing -> existing.id == book.id }, selectedID = book.id) }
+                openReader()
             }
         } finally { imported?.source?.delete() }
     }
     fun cancelImport() { importJob?.cancel() }
 
-    fun reprocess(bookID: String) = prepareBook("Reprocessing original book…") {
+    fun reprocess(bookID: String, openAfter: Boolean = false) = prepareBook("Reprocessing original book…") {
         closeReader()
+        mutable.update { it.copy(preparationID = null) }
         flush()
         val original = state.value.books.firstOrNull { it.id == bookID } ?: return@prepareBook
         val updated = importer.reprocess(repository.sourceFile(original), original) { progress -> mutable.update { it.copy(importing = progress) } }
@@ -215,6 +215,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
             repositoryOperation { repository.save(updated) }
             beforeReprocess = original
             mutable.update { it.copy(books = it.books.map { book -> if (book.id == bookID) updated else book }, undoReprocessID = bookID) }
+            if (openAfter && state.value.selectedID == bookID) openReader()
         }
     }
 
@@ -236,6 +237,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
 
     fun openReader(startPage: Int? = null, seekPage: Int? = null, startOffset: Int = 0, seekOffset: Int? = null) {
         openJob?.cancel()
+        val request = ++openRequest
         val id = selectedBook()?.id ?: return
         state.value.reader?.pause()
         mutable.update { it.copy(opening = true) }
@@ -244,11 +246,11 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                 flush()
                 val book = selectedBook()?.takeIf { it.id == id } ?: return@launch
                 if (book.needsReprocessing) {
-                    mutable.update { it.copy(error = "Reprocess this book from its original file before reading.") }
+                    mutable.update { it.copy(preparationID = id) }
                     return@launch
                 }
-                if (startPage != null || book.position == null) {
-                    val index = (startPage ?: 0).coerceIn(book.pages.indices)
+                if (startPage != null) {
+                    val index = startPage.coerceIn(book.pages.indices)
                     updateBook(book.id) { it.withReadingStart(ReadingPosition(it.pages[index].id, startOffset)) }
                 }
                 val sessionBook = selectedBook() ?: return@launch
@@ -267,10 +269,11 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                 if (session.tokens.isEmpty()) session.play()
             } catch (_: CancellationException) { }
             catch (error: Exception) { report(error) }
-            finally { mutable.update { it.copy(opening = false) } }
+            finally { if (request == openRequest) mutable.update { it.copy(opening = false) } }
         }
     }
     fun closeReader() {
+        openRequest++
         openJob?.cancel(); openJob = null
         state.value.reader?.pause()
         mutable.update { it.copy(reader = null, opening = false) }

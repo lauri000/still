@@ -1,91 +1,5 @@
 import SwiftUI
 
-struct PDFContentsPreview: View {
-    let book: Book
-    let url: URL
-    let page: Int
-    var startOffset: Int = 0
-    let choosePage: (Int) -> Void
-    var chooseOffset: (Int?) -> Void = { _ in }
-    @State private var entries: [PDFContentsEntry] = []
-    @State private var loading = true
-    @State private var failed = false
-    @State private var panelOpen: Bool?
-    @State private var sheetOpen = false
-    @State private var collapsed: Set<String> = []
-    @State private var selectedID: String?
-
-    private var current: PDFContentsEntry? { PDFContents.current(in: entries, page: page, selectedID: selectedID, utf16Offset: book.isEpub ? startOffset : nil) }
-
-    var body: some View {
-        // Observe loading state here even when the compact layout has no inline list.
-        // Otherwise a sheet can capture the initial, still-loading view value.
-        let hasOutline = !entries.isEmpty
-        let isLoading = loading
-        return GeometryReader { geometry in
-            let wide = geometry.size.width >= 760
-            let visible = wide && (panelOpen ?? hasOutline)
-            VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    if wide { panelOpen = !visible } else { sheetOpen = true }
-                } label: { Label("Contents", systemImage: "list.bullet.indent").frame(minHeight: 36) }
-                    .buttonStyle(.plain).foregroundStyle(Palette.forest)
-                    .accessibilityIdentifier("pdfContents")
-                    .accessibilityValue(isLoading ? "Loading" : (visible ? "Shown" : "Hidden"))
-                HStack(spacing: 16) {
-                    if visible { contents.frame(width: 280).accessibilityIdentifier("contentsSidebar") }
-                    BookPreview(book: book, url: url, page: page, startOffset: startOffset)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line))
-                        .accessibilityLabel("\(book.unitName) \(page + 1) preview")
-                }
-            }
-        }
-        .sheet(isPresented: $sheetOpen) {
-            VStack(spacing: 12) {
-                HStack {
-                    Text("Contents").font(.headline)
-                    Spacer()
-                    Button("Done") { sheetOpen = false }.accessibilityIdentifier("closeContents")
-                }
-                contents
-            }.padding(20).background(Palette.paper)
-                .presentationDetents([.large]).frame(idealWidth: 400, idealHeight: 600)
-        }
-        .task(id: url) {
-            loading = true; failed = false; entries = []; collapsed = []; selectedID = nil
-            let source = url
-            do {
-                let result = try await Task.detached(priority: .userInitiated) { book.isEpub ? PDFContents.fromChapters(book) : try PDFContents.read(url: source) }.value
-                guard !Task.isCancelled else { return }
-                entries = result
-            } catch { failed = true }
-            loading = false
-            revealCurrent()
-        }
-        .onChange(of: page) { _, _ in
-            if !entries.contains(where: { $0.id == selectedID && $0.pageIndex == page }) { selectedID = nil }
-            revealCurrent()
-        }
-    }
-
-    private var contents: some View {
-        PDFContentsList(book: book, entries: entries, loading: loading, failed: failed,
-                        selectedID: current?.id, collapsed: $collapsed) { entry in
-            guard let destination = entry.pageIndex, book.pages.indices.contains(destination) else { return }
-            selectedID = entry.id
-            choosePage(destination)
-            chooseOffset(entry.utf16Offset)
-            sheetOpen = false
-        }
-    }
-
-    private func revealCurrent() {
-        if let current { collapsed.subtract(current.ancestors) }
-    }
-}
-
-
 struct PDFContentsList: View {
     let book: Book
     let entries: [PDFContentsEntry]
@@ -214,23 +128,5 @@ struct ReaderContentsSheet: View {
                 if !entries.isEmpty { failed = false }
                 loading = false
             }
-    }
-}
-
-struct BookPreview: View {
-    let book: Book
-    let url: URL
-    let page: Int
-    var startOffset: Int = 0
-    var body: some View {
-        if book.isEpub {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(String((book.pages[page].text as NSString).substring(from: min(max(0, startOffset), book.pages[page].text.utf16.count)).prefix(6000)).components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
-                        Text(paragraph).font(.custom("Georgia", size: 18)).lineSpacing(6).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }.padding(20)
-            }.background(Palette.surface).accessibilityIdentifier("epubPreview")
-        } else { PDFPageView(url: url, pageIndex: page) }
     }
 }

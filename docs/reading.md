@@ -1,17 +1,17 @@
 # Reading with Still
 
 
-1. Choose **Import PDF**. The imported book opens at its page selector with a PDF preview.
-2. Enter a **Start page**, use the arrows, or choose a section from **Contents**, then choose **Read**. Earlier pages are skipped. New libraries start empty; no demo book is added automatically.
+1. Tap a book in the library to read immediately at your saved position. New imports and Gutenberg downloads also open directly in the reader; there is no preview or setup screen.
+2. Tap the chapter/page area in the reader header for **Contents** or **Go to page**. Navigation preserves your chosen beginning. To exclude front matter, use **… → Choose starting word** beside the book in the library.
 3. In single-line view on iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
 
-**Contents** uses the PDF’s embedded outline, with expandable groups and the current section highlighted. It appears beside the preview on wide screens and opens in a sheet on phones. Choosing a section previews its page; **Read** confirms that page as the beginning. Opening or closing Contents alone preserves **Continue reading** and the exact saved word. Entries without a local page remain visible but cannot navigate. PDFs without an outline still use the page controls; Still does not infer headings from page text.
+Closing the reader returns directly to the library. The **…** menu beside each book contains text editing, chapters, beginning trim, title/author, reprocessing, export, and deletion. Original PDF previews remain available in **Edit text** for comparison.
 
 In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. On mobile, the invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over. On Mac, drag anywhere in the text to scrub and use the header buttons to change speed in 10 WPM steps.
 
 In single-line view, WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again on mobile, or press Play on Mac, to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
 
-Open a book again and choose **Continue reading** to keep your exact word position. Selecting another starting page explicitly starts from that page instead. On Mac, Space plays/pauses and the arrow keys step one word in single-line mode; Escape closes either view.
+Open a book again to resume at the exact saved word. New books begin at the first readable text, respecting any saved beginning trim. On Mac, Space plays/pauses and the arrow keys step one word in single-line mode; Escape closes either view.
 
 The text icon switches between single-line reading and a manually scrollable passage. Passage view shows plain, left-aligned rows with natural word spacing and no highlighted word or letter. Scroll normally with a finger, mouse, or trackpad. Tap or click any word to open single-line mode paused at that exact word, ready to continue reading. The mode toggle also preserves the current word; after browsing, it uses the first word of the top visible row. Returning to passage view brings the selected word into view. Paragraph and page boundaries start new rows. Body text uses 22-point serif type by default, compact line spacing within each paragraph, and distinct space between paragraphs. Matched headings use larger, heavier text with space around them. Paragraph blocks are laid out as they appear, without measuring the whole book. Tap **Aa** in the scrolling reader to change text size from 16 to 32 points with **A−** and **A+**, or choose **Reset** for the default. Text size is saved on this device and follows system font scaling. Reflow and rotation keep the selected word in view. Hold-to-read, WPM controls, horizontal scrubbing, and single-line options belong to single-line mode. Passage view runs no playback timer.
 
@@ -21,7 +21,7 @@ The text icon switches between single-line reading and a manually scrollable pas
 
 **Focus letter** in reading options highlights one letter of the current word in red. Single-line view holds that letter at the center as words advance. Passage view has no focus-letter treatment. It is off by default and remembered on this device across books and app launches. In single-line view, turn it off to center the whole word again. The cue uses a simple word-length rule, ignores punctuation when choosing a letter, and preserves accents and complete characters. Words without letters or numbers stay centered without a highlight. This is an optional visual aid, not a promise of faster reading or better comprehension.
 
-Optional tools live in the book’s **…** menu: **Edit text**, **Chapters**, **Choose starting word…**, book metadata, backups, and deletion. Choose starting word supports a start midway through a page and **Restore beginning**. The PDF and full page text are always retained. Review and approval are optional; **Pause at unchecked pages** in single-line options enables the stricter workflow for that mode. Passage view reads unchecked text and skips empty pages regardless of that preference. By default, unchecked text plays immediately and pages with no selectable text are skipped.
+Optional tools live in the **…** menu beside the book in the library: **Edit text**, **Chapters**, **Choose starting word…**, book metadata, backups, and deletion. Choose starting word supports a start midway through a page and **Restore beginning**. The PDF and full page text are always retained. Review and approval are optional; **Pause at unchecked pages** in single-line options enables the stricter workflow for that mode. Passage view reads unchecked text and skips empty pages regardless of that preference. By default, unchecked text plays immediately and pages with no selectable text are skipped.
 
 ## Book typography and contents
 
@@ -86,12 +86,20 @@ For a previously imported book, choose **… → Reprocess book**. Your manual c
 
 ## Prepared books and reprocessing
 
-PDF import prepares the word index and heading matches once. Continue reading uses that saved output and restores your position. The original PDF remains available for preview and reprocessing.
+PDF import prepares the word index and heading matches once. Opening the book uses that saved output and restores your position. The original PDF remains available for preview and reprocessing.
 
-Older books show **Reprocess book** before reading. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.
+Opening an older book asks to **Reprocess and read**, then opens the prepared text automatically. Cancelling returns to the library. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.
 
 ## Scrolling reader verification (23 October 2026)
 
 The typography and text-size update passes 72 Android JVM tests (3 optional corpus tests skipped), 95 Apple unit/integration tests (2 optional corpus tests skipped), and 35 Android reader/scrolling scenarios (2 optional corpus tests skipped). Three focused iPhone UI scenarios and two iPad scenarios pass. Reflow preserves exact words deep into a book, rotation and relaunch retain position and size, and native fling momentum remains intact. The size controls also pass on Android in landscape with 130% system text size. Final control-layout checks were repeated after visual polish. Android lint reports zero errors; the macOS target builds.
 
 Native previews: [Android reading](screenshots/scroll-reading/android-reading.png), [Android text size](screenshots/scroll-reading/android-text-size.png), [iPhone reading](screenshots/scroll-reading/iphone-reading.png), [iPhone text size](screenshots/scroll-reading/iphone-text-size.png), [iPad reading](screenshots/scroll-reading/ipad-reading.png), [iPad text size](screenshots/scroll-reading/ipad-text-size.png). Screenshots use original sample prose. Physical devices were not exercised.
+
+## Direct reading verification (23 October 2026)
+
+The preview/setup landing page has been removed on Android and Apple. Library taps, local imports, and Gutenberg downloads open the existing reader directly. Closing returns to Books; optional tools are available from each library row’s menu. Older books retain an explicit reprocessing choice and open automatically after preparation. Normal opening preserves beginning trims even when no position has been saved. Reader Contents observes loading completion even when a PDF has no outline.
+
+Verified with 72 Android JVM tests (3 optional corpus tests skipped), 95 Apple unit/integration tests (2 optional corpus tests skipped), and 41 Android reader/scrolling/catalog scenarios (2 optional tests skipped). All 17 iPhone UI scenarios and four focused iPad scenarios pass after adapting the former preview-navigation tests to the new flow. A targeted Android rerun covers the empty-outline fix, PDF contents, and EPUB chapter navigation. Android lint reports zero errors and 23 existing warnings; the macOS target builds. Physical devices were not exercised.
+
+Reviewed native library previews: [Android](screenshots/direct-reading/android-library.png) and [iPhone](screenshots/direct-reading/iphone-library.png).

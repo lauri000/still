@@ -45,7 +45,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stillreader.app.LibraryViewModel
 import com.stillreader.app.core.Book
-import com.stillreader.app.core.PdfTextRepair
 import com.stillreader.app.data.PdfImporter
 import com.stillreader.app.data.BookImporter
 import kotlinx.coroutines.CancellationException
@@ -72,11 +71,11 @@ fun StillApp(model: LibraryViewModel) {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     val book = state.books.firstOrNull { it.id == state.selectedID }
-    BackHandler(enabled = state.importing != null || state.reader != null || tool != null || book != null) {
+    BackHandler(enabled = state.importing != null || state.opening || state.reader != null || tool != null) {
         when {
             state.importing != null -> model.cancelImport()
-            state.reader != null -> model.closeReader()
-            tool != null -> tool = null
+            state.reader != null || state.opening -> model.select(null)
+            tool != null -> { tool = null; model.select(null) }
             else -> model.select(null)
         }
     }
@@ -87,14 +86,32 @@ fun StillApp(model: LibraryViewModel) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             state.reader != null -> ReaderScreen(state.reader!!, model,
-                onClose = model::closeReader,
+                onClose = { model.select(null) },
                 onReview = { page -> model.closeReader(); toolPage = page; tool = "Edit text" })
-            book != null && tool != null -> BookTools(book, tool!!, toolPage, model, onClose = { tool = null })
-            book != null -> BookScreen(book, model, canUndoImprovement = state.undoReprocessID == book.id, onBack = { model.select(null) },
-                onTool = { name, page -> toolPage = page; tool = name },
-                onExport = { exportID = book.id; exporter.launch("${book.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json") })
+            book != null && tool != null -> BookTools(book, tool!!, toolPage, model, onClose = { tool = null; if (model.state.value.reader == null && !model.state.value.opening) model.select(null) })
             discovering -> CatalogScreen(model, back = { discovering = false })
-            else -> LibraryScreen(state.books, model::select, discover = { discovering = true }) { picker.launch(arrayOf("application/pdf", "application/epub+zip", "application/json", "application/octet-stream")) }
+            else -> LibraryScreen(state.books, model::readBook, discover = { discovering = true },
+                options = { item -> BookOptions(item, model, onTool = { name ->
+                    model.select(item.id)
+                    toolPage = item.pages.indexOfFirst { it.id == item.position?.pageID }.coerceAtLeast(item.readingStartPageIndex)
+                    tool = name
+                }, onExport = {
+                    exportID = item.id
+                    exporter.launch("${item.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json")
+                }) }) { picker.launch(arrayOf("application/pdf", "application/epub+zip", "application/json", "application/octet-stream")) }
+        }
+        if (state.opening && state.importing == null) Dialog(onDismissRequest = { model.select(null) }) {
+            Column(Modifier.clip(RoundedCornerShape(20.dp)).background(Surface).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text("Opening book…", fontSize = 20.sp)
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                TextButton(onClick = { model.select(null) }, modifier = Modifier.align(Alignment.End)) { Text("Cancel") }
+            }
+        }
+        state.preparationID?.let { id ->
+            AlertDialog(onDismissRequest = model::dismissPreparation, title = { Text("Prepare this book?") },
+                text = { Text("This older book needs to be reprocessed before reading. Your corrections and page choices are kept.") },
+                confirmButton = { TextButton(onClick = { model.reprocess(id, openAfter = true) }, modifier = Modifier.testTag("prepareBook")) { Text("Reprocess and read") } },
+                dismissButton = { TextButton(onClick = model::dismissPreparation) { Text("Cancel") } })
         }
         state.importing?.let { progress ->
             Dialog(onDismissRequest = model::cancelImport) {
@@ -115,7 +132,7 @@ fun StillApp(model: LibraryViewModel) {
 }
 
 @Composable
-private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover: () -> Unit, import: () -> Unit) {
+private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover: () -> Unit, options: @Composable (Book) -> Unit, import: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).widthIn(max = 900.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -149,7 +166,7 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover:
                             page >= 0 -> "${book.unitName} ${page + 1} of ${book.pages.size}"
                             else -> "${book.pages.size} ${book.unitPlural}" }, color = Muted, fontSize = 12.sp)
                     }
-                    Icon(Icons.AutoMirrored.Default.KeyboardArrowRight, null, tint = Muted)
+                    options(book)
                 }
                 HorizontalDivider(color = Line)
             }
@@ -168,46 +185,24 @@ fun Header(title: String, back: () -> Unit, actions: @Composable RowScope.() -> 
 }
 
 @Composable
-private fun BookScreen(book: Book, model: LibraryViewModel, canUndoImprovement: Boolean, onBack: () -> Unit, onTool: (String, Int) -> Unit, onExport: () -> Unit) {
-    var page by rememberSaveable(book.id) { mutableIntStateOf(book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(book.readingStartPageIndex)) }
-    val opening by model.state.collectAsState()
-    var startOffset by rememberSaveable(book.id) { mutableIntStateOf(0) }
-    var changed by rememberSaveable(book.id) { mutableStateOf(false) }
+private fun BookOptions(book: Book, model: LibraryViewModel, onTool: (String) -> Unit, onExport: () -> Unit) {
+    val state by model.state.collectAsStateWithLifecycle()
     var menu by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
-    LaunchedEffect(book.readingStart) {
-        page = book.pages.indexOfFirst { it.id == book.position?.pageID }.coerceAtLeast(book.readingStartPageIndex)
-        changed = false
-    }
-    Column(Modifier.fillMaxSize()) {
-        Header(book.title, onBack) {
-            Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("bookOptions")) { Icon(Icons.Default.MoreHoriz, "Book options") }
-                DropdownMenu(menu, { menu = false }) {
-                    listOf("Edit text", "Chapters", "Choose starting word", "Book details").forEach { name ->
-                        DropdownMenuItem(text = { Text(name) }, onClick = { menu = false; onTool(name, page) })
-                    }
-                    DropdownMenuItem(text = { Text("Reprocess book") }, modifier = Modifier.testTag("reprocessBook"),
-                        onClick = { menu = false; model.reprocess(book.id) })
-                    if (canUndoImprovement) {
-                        DropdownMenuItem(text = { Text("Undo reprocessing") },
-                            onClick = { menu = false; model.undoReprocess(book.id) })
-                    }
-                    DropdownMenuItem(text = { Text("Export book backup") }, onClick = { menu = false; onExport() })
-                    DropdownMenuItem(text = { Text("Delete book", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })
-                }
-            }
+    Box {
+        IconButton(onClick = { menu = true }, modifier = Modifier.testTag("bookOptions-${book.id}")) {
+            Icon(Icons.Default.MoreHoriz, "Book options for ${book.title}")
         }
-        Column(Modifier.weight(1f).widthIn(max = 1200.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            PageSelector(page, book.pages.size, if (book.position != null && !changed) book.unitName else "Start ${book.unitName.lowercase()}") { page = it; startOffset = 0; changed = true }
-            PdfContentsPreview(book, model.importer, model.repository.sourceFile(book), page, Modifier.weight(1f).fillMaxWidth(), startOffset = startOffset, chooseOffset = { startOffset = it ?: 0 }) { page = it; changed = true }
-            if (book.pages[page].hasNoText) Text("No selectable text on this page. Choose another page or use Edit text.", fontSize = 12.sp, color = Muted)
-            if (book.needsReprocessing && !model.isPreparing(book.id)) Text("This book needs reader preparation. Reprocess the original file to read it. Your corrections and page choices are kept.", fontSize = 13.sp, color = Muted)
-            Button(onClick = { if (book.needsReprocessing && !model.isPreparing(book.id)) model.reprocess(book.id) else model.openReader(if (changed || book.position == null) page else null, startOffset = startOffset); changed = false },
-                enabled = !opening.opening && (book.needsReprocessing || !(book.pages[page].hasNoText && (changed || book.position == null))),
-                modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp).testTag("startReading"), shape = RoundedCornerShape(12.dp)) {
-                Text(if (opening.opening) "Opening…" else if (book.needsReprocessing && !model.isPreparing(book.id)) "Reprocess book" else if (book.position != null && !changed) { if (book.position.finished) "Read again" else "Continue reading" } else "Read")
+        DropdownMenu(menu, { menu = false }) {
+            listOf("Edit text", "Chapters", "Choose starting word", "Book details").forEach { name ->
+                DropdownMenuItem(text = { Text(name) }, onClick = { menu = false; onTool(name) })
             }
+            DropdownMenuItem(text = { Text("Reprocess book") }, modifier = Modifier.testTag("reprocessBook"),
+                onClick = { menu = false; model.reprocess(book.id) })
+            if (state.undoReprocessID == book.id) DropdownMenuItem(text = { Text("Undo reprocessing") },
+                onClick = { menu = false; model.undoReprocess(book.id) })
+            DropdownMenuItem(text = { Text("Export book backup") }, onClick = { menu = false; onExport() })
+            DropdownMenuItem(text = { Text("Delete book", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })
         }
     }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Delete this book?") },

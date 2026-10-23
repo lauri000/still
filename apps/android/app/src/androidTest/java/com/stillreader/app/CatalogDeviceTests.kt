@@ -23,7 +23,7 @@ class CatalogDeviceTests {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val application get() = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
     private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name).use { it.readBytes() }
-    @Test fun searchDownloadImportPreviewReadOfflineAndDeduplicate() {
+    @Test fun searchDownloadOpensReaderOfflineAndDeduplicates() {
         val root = File(application.cacheDir, "catalog-test-${java.util.UUID.randomUUID()}")
         val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
         val client = object : CatalogClient() {
@@ -60,7 +60,7 @@ class CatalogDeviceTests {
             assertTrue(book.pages.joinToString("") { it.text }.contains("Café, naïve, and 世界"))
             assertEquals(1, library.repository.load().books.size)
             assertTrue(File(library.repository.directory(book.id), "original.epub").isFile)
-            compose.onNodeWithTag("startReading").performClick()
+            compose.onNodeWithTag("startReading").assertDoesNotExist()
             compose.waitUntil(5_000) { library.state.value.reader != null }
             assertTrue(library.state.value.reader!!.tokens.isNotEmpty())
             compose.runOnUiThread {

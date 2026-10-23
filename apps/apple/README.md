@@ -2,6 +2,8 @@
 
 **Discover** sits beside **Import file** in the library. Browse Project Gutenberg, search by title or author, filter languages, and download individual EPUBs for offline reading. See [discovery](../../docs/discovery.md).
 
+Tap a library book to open the reader immediately. Imports and downloads do the same. Closing the reader returns to the library; each book’s **…** menu contains editing, chapters, starting-word selection, details, backups, and deletion.
+
 The scrolling reader uses serif text with distinct paragraph and heading spacing. Tap **Aa** to adjust its saved text size (16–32 points) independently of single-line reading. Resizing and rotating preserve the selected word.
 
 The two native Apple targets share SwiftUI views, PDFKit services, reader logic, and resources. Each target has its own platform directory and build settings. EPUB archives use ZIPFoundation 0.9.20 (MIT), pinned in Swift Package Manager. Its license is bundled with the app.
@@ -70,10 +72,7 @@ The scrolling-passage update was checked on 17 October 2026: all 47 unit/layout 
 
 Plain-passage verification on 19 October 2026: all 52 unit tests and 10 iPhone UI scenarios pass, including independent single-line preferences, plain scrolling rows, rotation, gestures, and saved positions. The macOS target builds. Large-book layout tests verify matching rows across nearby-page windows.
 
-PDF contents navigation: the starting-page chooser reads the original PDF's embedded
-outline, preserving source order, nested groups, and duplicate destinations. Wide
-screens show a collapsible sidebar; phones use a Contents sheet. Browsing only
-changes the preview until Read is chosen. See [the specification](../../docs/pdf-outline.md).
+PDF contents navigation is available from the reader header. It preserves the original outline's source order, nested groups, and duplicate destinations. Choosing an entry seeks to that section without changing the beginning trim; **Go to page** remains available for books without an outline.
 
 Book typography and reader Contents: matched headings use larger text in multiline
 and appear together in single-line reading. Tap the chapter/page header to browse

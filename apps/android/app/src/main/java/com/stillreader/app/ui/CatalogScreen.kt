@@ -74,9 +74,9 @@ fun CatalogScreen(library: LibraryViewModel, back: () -> Unit, catalog: CatalogV
                 Text(selected.authors.joinToString(", "), color = Muted)
                 Text(selected.languages.joinToString(", ") { Locale.forLanguageTag(it).displayLanguage }, color = Muted)
                 val existing = books.books.firstOrNull { it.catalogID == selected.id }
-                Button(onClick = { if (existing != null) library.select(existing.id) else library.download(selected, catalog.provider) },
+                Button(onClick = { if (existing != null) library.readBook(existing.id) else library.download(selected, catalog.provider) },
                     enabled = books.importing == null && (existing != null || selected.epubURL != null), modifier = Modifier.testTag("downloadEPUB")) {
-                    Text(if (existing != null) "Open in library" else "Download EPUB")
+                    Text(if (existing != null) "Read book" else "Download EPUB")
                 }
                 if (selected.summary.isNotEmpty()) Text(selected.summary)
                 if (selected.subjects.isNotEmpty()) Text(selected.subjects.joinToString(" · "), color = Muted)
