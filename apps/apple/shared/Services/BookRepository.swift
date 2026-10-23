@@ -27,7 +27,10 @@ struct BookRepository: Sendable {
                 if book.isEpub && book.contentHash == nil {
                     book.contentHash = SHA256.hash(data: try Data(contentsOf: sourceURL(for: book), options: .mappedIfSafe)).map { String(format: "%02x", $0) }.joined()
                 }
-                books.append(ReaderPipeline.loaded(book))
+                let updated = ReaderPipeline.loaded(book)
+                // Persist the one-time index upgrade without replacing the original file.
+                if updated.pipelineVersion != book.pipelineVersion && !updated.needsReprocessing { try save(updated) }
+                books.append(updated)
             } catch { unreadable += 1 }
         }
         return (books.sorted { $0.importedAt > $1.importedAt }, unreadable)

@@ -192,21 +192,38 @@ struct ReadingToken: Identifiable, Equatable, Sendable {
     var pageIndex: Int
     var word: TextWord
     var position: ReadingPosition { ReadingPosition(pageID: pageID, utf16Offset: word.offset) }
+    // Preserve unspaced punctuation when separately readable words share a source span.
+    func separator(to next: ReadingToken) -> String {
+        pageID == next.pageID && word.offset + word.length == next.word.offset ? "" : " "
+    }
 }
 
 enum Tokenizer {
+    private static let wordPattern = try! NSRegularExpression(pattern: "\\S+")
+    private static let dashBoundary = try! NSRegularExpression(pattern: "—+(?=[\"'“”‘’(\\[]*[\\p{L}\\p{N}])")
+    private static let letterOrNumber = try! NSRegularExpression(pattern: "[\\p{L}\\p{N}]")
     // Preserve punctuation and exact UTF-16 source offsets. Never rewrite the reviewed text.
     static func words(in text: String, preserveLineBreaks: Bool = false) -> [TextWord] {
         let source = text as NSString
-        let matches = try! NSRegularExpression(pattern: "\\S+").matches(in: text, range: NSRange(location: 0, length: source.length))
-        return matches.enumerated().map { index, match in
+        let matches = wordPattern.matches(in: text, range: NSRange(location: 0, length: source.length))
+        return matches.enumerated().flatMap { index, match -> [TextWord] in
             let end = NSMaxRange(match.range)
             let next = index + 1 < matches.count ? matches[index + 1].range.location : source.length
             let gap = source.substring(with: NSRange(location: end, length: next - end))
             let paragraph = gap.contains("\n\n") || gap.contains("\r\n\r\n")
-            return TextWord(text: source.substring(with: match.range), offset: match.range.location,
-                            length: match.range.length, endsParagraph: paragraph,
-                            endsLine: preserveLineBreaks && !paragraph && gap.contains("\n"))
+            var result: [TextWord] = [], part = match.range.location
+            // Keep the dash with the preceding word, without making leading or trailing
+            // punctuation into an extra reading unit. Hyphens and ranges stay intact.
+            for dash in dashBoundary.matches(in: text, range: match.range) {
+                guard letterOrNumber.firstMatch(in: text, range: NSRange(location: part, length: dash.range.location - part)) != nil else { continue }
+                let range = NSRange(location: part, length: NSMaxRange(dash.range) - part)
+                result.append(TextWord(text: source.substring(with: range), offset: part, length: range.length, endsParagraph: false))
+                part = NSMaxRange(dash.range)
+            }
+            let range = NSRange(location: part, length: end - part)
+            result.append(TextWord(text: source.substring(with: range), offset: part, length: range.length,
+                                   endsParagraph: paragraph, endsLine: preserveLineBreaks && !paragraph && gap.contains("\n")))
+            return result
         }
     }
 

@@ -6,6 +6,63 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReaderPipelineTests {
+
+    private fun legacyDashBook(epub: Boolean): Book {
+        val text = "Head—Contrasted\n\n🌿 Usher—threadbare\nthere—there—thar"
+        val raw = book(text, "Excluded—text").copy(schemaVersion = if (epub) 3 else 2, sourceFormat = if (epub) "epub" else "pdf", chaptersCustomized = true,
+            chapters = listOf(BookChapter(title = "Head—Contrasted", pageIndex = 0, utf16Offset = 0, sourceAnchor = "chapter")))
+        val prepared = ReaderPipeline.prepare(raw.copy(pages = raw.pages.mapIndexed { i, p -> p.copy(
+            edited = true, isIncluded = i == 0, sourceHref = if (epub) "chapter$i.xhtml" else null,
+            headings = if (i == 0 && epub) listOf(TextHeading(0, "Head—Contrasted".length, 0)) else null) }))
+        return prepared.copy(pipelineVersion = if (epub) 2 else 1,
+            position = ReadingPosition(raw.pages[0].id, text.indexOf("threadbare")),
+            readingStart = ReadingPosition(raw.pages[0].id, text.indexOf("Usher")),
+            pages = prepared.pages.map { page -> page.copy(wordIndex = Regex("\\S+").findAll(page.text).flatMap { match ->
+                listOf(match.range.first, match.value.length, 0)
+            }.toList()) })
+    }
+
+    @Test fun oldSavedIndexesUpgradeWithoutReextractingOrChangingUserState() {
+        for (epub in listOf(false, true)) {
+            val old = legacyDashBook(epub)
+            assertEquals("Usher—threadbare", old.pages[0].words[2].text)
+            val updated = BookCodec.decode(BookCodec.json.encodeToString(old))
+            assertFalse(updated.needsReprocessing)
+            assertEquals(old.id, updated.id); assertEquals(old.chapters, updated.chapters)
+            assertEquals(old.position, updated.position); assertEquals(old.readingStart, updated.readingStart)
+            assertTrue(updated.chaptersCustomized)
+            assertEquals(old.pages, updated.pages.zip(old.pages).map { (new, previous) -> new.copy(wordIndex = previous.wordIndex) })
+            val document = updated.readerCache.get(updated)
+            assertEquals("threadbare", document.tokens[document.index(updated.position)].word.text)
+            assertEquals(listOf("Usher—", "threadbare", "there—", "there—", "thar"), document.tokens.map { it.word.text })
+            assertEquals(BookCodec.encode(updated), BookCodec.encode(BookCodec.decode(BookCodec.encode(updated))))
+            assertEquals(old.pages.map { it.text }, updated.pages.map { it.text })
+        }
+    }
+
+    @Test fun openingExistingLibraryPersistsUpgradeAndKeepsOriginalEpub() {
+        val root = java.nio.file.Files.createTempDirectory("still-dash-migration").toFile()
+        try {
+            val repository = com.stillreader.app.data.BookRepository(root)
+            val old = legacyDashBook(true)
+            val folder = repository.directory(old.id); folder.mkdirs()
+            val source = javaClass.classLoader!!.getResourceAsStream("sample.epub")!!.use { it.readBytes() }
+            repository.sourceFile(old).writeBytes(source)
+            val stored = java.io.File(folder, "book.json")
+            stored.writeText(BookCodec.json.encodeToString(old))
+            val loaded = repository.load()
+            assertEquals(0, loaded.unreadableCount)
+            val updated = loaded.books.single()
+            assertFalse(updated.needsReprocessing)
+            assertEquals(ReaderPipeline.VERSION, BookCodec.json.decodeFromString<Book>(stored.readText()).pipelineVersion)
+            assertArrayEquals(source, repository.sourceFile(updated).readBytes())
+            assertEquals(old.position, updated.position)
+            val saved = stored.readText()
+            assertEquals(BookCodec.encode(updated), BookCodec.encode(repository.load().books.single()))
+            assertEquals(saved, stored.readText())
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun sharedPreparedFormatFromAppleKeepsExactOffsetsAndHeadings() {
         val book = BookCodec.decode(fixture("prepared-book.json"))
         assertFalse(book.needsReprocessing)

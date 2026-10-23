@@ -75,3 +75,9 @@ EPUB pipeline version 2 preserves hard line breaks through the scrolling layout 
 Text edits calculate one offset mapping for all headings and chapters. Reader preparation is debounced off the UI thread; ordered background saves reject stale results in memory, and reading/export/reprocessing wait for pending edits. Regression cases include rapid edits, immediate reading, reversing an edit back to the original text, and restoring damaged structure.
 
 The review fixes pass 59 Android JVM tests and 85 Apple unit/layout tests, five focused Android device scenarios, and three iPhone UI scenarios covering editing, resume and passage scrolling. The macOS build and seven-book native compatibility checks pass. In an optimized Swift probe on the development Mac, relocating anchors for one character inserted into Hume's largest EPUB section fell from about 217 ms to 7 ms; the roughly 72 ms reader preparation now runs in the background. This is not a phone benchmark.
+
+## Em-dash word boundaries (23 October 2026)
+
+Pipeline 3 separates unspaced em-dash words while keeping original text and UTF-16 anchors. Valid pipeline 2 EPUBs upgrade their saved indexes automatically and atomically on library load; backup imports also upgrade. Neither action re-extracts or replaces the original EPUB. The same index-only upgrade covers pipeline 1 PDFs. Passage typography, semantic headings, trims and chapter destinations use the same source positions.
+
+A Gutenberg Moby-Dick imported by 0.1.22 was reopened by both native implementations: all 976 tokens containing letter–em-dash–letter sequences were split. Native output agrees on every word index, heading span, chapter anchor and saved position; text and original bytes are unchanged, and a second reopen leaves the saved index untouched.

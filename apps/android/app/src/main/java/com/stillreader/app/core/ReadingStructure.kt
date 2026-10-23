@@ -58,7 +58,12 @@ class ReadingStructure(book: Book, tokens: List<ReadingToken>) {
             if (firstIndex >= ends[page] || lastIndex < firstIndex) return null
             val first = tokens[firstIndex]; val last = tokens[lastIndex]
             if (book.readingStart?.let { it.pageID == first.pageID && it.utf16Offset > first.word.offset } == true) return null
-            val actual = tokens.subList(first.id, last.id + 1).joinToString(" ") { it.word.text }
+            val actual = buildString {
+                for (index in first.id..last.id) {
+                    if (index > first.id) append(tokens[index - 1].separatorTo(tokens[index]))
+                    append(tokens[index].word.text)
+                }
+            }
             // Partial trims never turn the rest of a heading into a new opening.
             if (normalize(actual) != normalized) return null
             return Heading(actual, first.id..last.id, level, page)

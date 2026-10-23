@@ -83,7 +83,10 @@ struct ReadingStructure: Sendable {
             guard firstIndex < ends[page], lastIndex >= firstIndex else { return nil }
             let first = tokens[firstIndex], last = tokens[lastIndex]
             if let start = book.readingStart, start.pageID == first.pageID, start.utf16Offset > first.word.offset { return nil }
-            let actual = tokens[first.id...last.id].map { $0.word.text }.joined(separator: " ")
+            var actual = first.word.text
+            for index in (first.id + 1)..<(last.id + 1) {
+                actual += tokens[index - 1].separator(to: tokens[index]) + tokens[index].word.text
+            }
             guard Self.normalize(actual) == normalized else { return nil }
             return Heading(title: actual, words: first.id..<(last.id + 1), level: level, pageIndex: page)
         }

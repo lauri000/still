@@ -117,7 +117,7 @@ private fun PassageRow(row: PassageLayout.Row, tokens: List<ReadingToken>, style
     val text = remember(row, tokens) {
         buildAnnotatedString {
             row.words.forEach { local ->
-                if (local != row.words.first) append(" ")
+                if (local != row.words.first) append(tokens[local - 1].separatorTo(tokens[local]))
                 val token = tokens[local]
                 withAnnotation("word", token.id.toString()) { append(token.word.text) }
             }

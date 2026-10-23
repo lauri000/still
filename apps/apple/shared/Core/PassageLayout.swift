@@ -22,7 +22,8 @@ struct PassageLayout {
                             top: (previous.map { $0.top + $0.height } ?? 0) + gap, height: heading != nil ? 1.2 : 1, headingID: heading))
         }
         for index in tokens.indices {
-            let gap = spacing * (headingIDs[tokens[index].id] != nil ? 1.2 : 1)
+            let gap = index > 0 && tokens[index - 1].separator(to: tokens[index]).isEmpty ? 0
+                : spacing * (headingIDs[tokens[index].id] != nil ? 1.2 : 1)
             let newParagraph = index > 0 && (headingIDs[tokens[index - 1].id] != headingIDs[tokens[index].id] || tokens[index - 1].word.endsParagraph || tokens[index - 1].word.endsLine || tokens[index - 1].pageID != tokens[index].pageID)
             if index > start && (newParagraph || used + gap + widths[index] > max(1, availableWidth)) {
                 append(index); start = index; used = 0

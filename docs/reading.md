@@ -94,7 +94,7 @@ For a previously imported book, choose **… → Reprocess book**. Your manual c
 
 PDF import prepares the word index and heading matches once. Opening the book uses that saved output and restores your position. The original PDF remains available for preview and reprocessing.
 
-Opening an older book asks to **Reprocess and read**, then opens the prepared text automatically. Cancelling returns to the library. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.
+Updating to 0.1.23 automatically refreshes valid saved PDF/EPUB word indexes from local text, fixing words joined by em dashes in already-imported books without a reimport. Your text, corrections, chapters, and saved position are retained. Books with older or incompatible extraction output still ask to **Reprocess and read**, then open the prepared text automatically. Cancelling returns to the library. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.
 
 ## Scrolling reader verification (23 October 2026)
 

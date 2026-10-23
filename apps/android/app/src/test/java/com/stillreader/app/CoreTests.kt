@@ -21,6 +21,19 @@ fun book(vararg texts: String) = Book(title = "Test", originalFilename = "test.p
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoreTests {
+
+    @Test fun emDashesSeparateReadingWordsWithoutChangingSourceSpansOrOtherPunctuation() {
+        val text = "🌿 Usher—threadbare there—there—thar a——b—“c” —leading trailing—” well-known 10–20 don’t\nline—break\n\nend"
+        val words = Tokenizer.words(text, preserveLineBreaks = true)
+        assertEquals(listOf("🌿", "Usher—", "threadbare", "there—", "there—", "thar", "a——", "b—", "“c”", "—leading", "trailing—”", "well-known", "10–20", "don’t", "line—", "break", "end"), words.map { it.text })
+        words.forEach { assertEquals(it.text, text.substring(it.offset, it.offset + it.length)) }
+        assertEquals(text.indexOf("threadbare"), words[2].offset)
+        assertEquals(listOf("don’t"), words.filter { it.endsLine }.map { it.text })
+        assertEquals(listOf("break"), words.filter { it.endsParagraph }.map { it.text })
+        assertEquals(.27, Tokenizer.duration(words[1], 300.0, true), .000001)
+        assertEquals(.2, Tokenizer.duration(words[1], 300.0, false), .000001)
+    }
+
     @Test fun sharedSwiftTokenizerContracts() {
         val cases = BookCodec.json.decodeFromString<List<TokenCase>>(fixture("tokenization.json"))
         cases.forEach { case ->

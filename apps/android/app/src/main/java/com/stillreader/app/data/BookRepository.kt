@@ -49,7 +49,7 @@ object BookCodec {
         } && normalized.headingMatches?.all { match ->
             match.pageIndex in normalized.pages.indices && match.start >= 0 && match.end > match.start && match.end <= normalized.pages[match.pageIndex].text.length
         } == true
-        return if (validIndex) normalized else normalized.copy(pipelineVersion = null, headingMatches = null,
+        return if (validIndex) ReaderPipeline.upgradeWordBoundaries(normalized) else normalized.copy(pipelineVersion = null, headingMatches = null,
             pages = normalized.pages.map { it.copy(wordIndex = null) })
     }
     fun decode(text: String): Book = validate(json.decodeFromString<Book>(text))
@@ -85,9 +85,13 @@ class BookRepository(val root: File) {
         var unreadable = 0
         val books = root.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith('.') }.mapNotNull { folder ->
             try {
-                val book = BookCodec.decode(File(folder, "book.json").readText())
+                val stored = BookCodec.json.decodeFromString<Book>(File(folder, "book.json").readText())
+                var book = BookCodec.validate(stored)
                 require(book.id == folder.name && sourceFile(book).isFile)
-                if (book.isEpub && book.contentHash == null) book.copy(contentHash = EpubImporter.sha256(sourceFile(book))) else book
+                if (book.isEpub && book.contentHash == null) book = book.copy(contentHash = EpubImporter.sha256(sourceFile(book)))
+                // Persist the one-time index upgrade atomically; never touch the original file.
+                if (book.pipelineVersion != stored.pipelineVersion && !book.needsReprocessing) save(book)
+                book
             } catch (_: Exception) { unreadable++; null }
         }
         return LibraryResult(books.sortedByDescending { it.importedAt }, unreadable)

@@ -3,6 +3,19 @@ import PDFKit
 @testable import Still
 
 final class ModelTests: XCTestCase {
+
+    func testEmDashesSeparateWordsWithoutChangingSourceSpansOrOtherPunctuation() {
+        let text = "🌿 Usher—threadbare there—there—thar a——b—“c” —leading trailing—” well-known 10–20 don’t\nline—break\n\nend"
+        let words = Tokenizer.words(in: text, preserveLineBreaks: true)
+        XCTAssertEqual(words.map(\.text), ["🌿", "Usher—", "threadbare", "there—", "there—", "thar", "a——", "b—", "“c”", "—leading", "trailing—”", "well-known", "10–20", "don’t", "line—", "break", "end"])
+        for word in words { XCTAssertEqual(word.text, (text as NSString).substring(with: NSRange(location: word.offset, length: word.length))) }
+        XCTAssertEqual(words[2].offset, (text as NSString).range(of: "threadbare").location)
+        XCTAssertEqual(words.filter(\.endsLine).map(\.text), ["don’t"])
+        XCTAssertEqual(words.filter(\.endsParagraph).map(\.text), ["break"])
+        XCTAssertEqual(Tokenizer.duration(for: words[1], wordsPerMinute: 300, naturalPauses: true), 0.27, accuracy: 0.000001)
+        XCTAssertEqual(Tokenizer.duration(for: words[1], wordsPerMinute: 300, naturalPauses: false), 0.2, accuracy: 0.000001)
+    }
+
     func testTokenizationPreservesUnicodePunctuationAndSourceOffsets() {
         let text = "Hello,  naïve 🌿\n\n世界!"
         let words = Tokenizer.words(in: text)

@@ -111,6 +111,48 @@ class AndroidReaderTests {
         compose.onNodeWithTag("bookOptions-${book.id}").performClick()
     }
 
+    @Test fun existingEpubDashIndexesUpgradeAndReaderKeepsTypographyAndResume() {
+        val text = "Head—Contrasted\n\nUsher—threadbare there—there—thar"
+        val page = BookPage(number = 1, text = text, isReviewed = true, edited = true,
+            sourceHref = "chapter.xhtml", headings = listOf(TextHeading(0, "Head—Contrasted".length, 0)))
+        val chapter = BookChapter(title = "Head—Contrasted", pageIndex = 0, utf16Offset = 0, sourceAnchor = "chapter")
+        val prepared = ReaderPipeline.prepare(Book(schemaVersion = 3, sourceFormat = "epub", title = "Moby Dick dash regression",
+            originalFilename = "moby-dick.epub", pages = listOf(page), chapters = listOf(chapter),
+            position = ReadingPosition(page.id, text.indexOf("Usher"))))
+        val old = prepared.copy(pipelineVersion = 2, pages = listOf(prepared.pages[0].copy(
+            wordIndex = Regex("\\S+").findAll(text).flatMap { listOf(it.range.first, it.value.length, 0) }.toList())))
+        val repository = BookRepository(File(root, "books"))
+        repository.directory(old.id).mkdirs()
+        val source = fixture("sample.epub").use { it.readBytes() }
+        repository.sourceFile(old).writeBytes(source)
+        File(repository.directory(old.id), "book.json").writeText(BookCodec.json.encodeToString(old))
+        launch(seed = false)
+        readBook()
+        compose.onNodeWithTag("currentWord").assertTextEquals("Usher—")
+        val session = model.state.value.reader!!
+        compose.runOnIdle { assertEquals(old.position, session.current!!.position) }
+        compose.runOnUiThread { session.seek(session.state.value.index + 1) }
+        compose.onNodeWithTag("currentWord").assertTextEquals("threadbare")
+        val position = session.current!!.position
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("currentPassageRow").assertTextContains("Usher—threadbare", substring = true)
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("currentWord").assertTextEquals("threadbare")
+        compose.onNodeWithTag("readerContents").performClick()
+        compose.onNodeWithTag("contentsEntry-chapter-${chapter.id}").performClick()
+        compose.onNodeWithTag("currentHeading").assertTextEquals("Head—Contrasted")
+        compose.runOnUiThread { session.seekPosition(position) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        readBook()
+        compose.onNodeWithTag("currentWord").assertTextEquals("threadbare")
+        compose.runOnIdle { assertEquals(position, model.state.value.reader!!.current!!.position) }
+        val saved = repository.load().books.single()
+        assertFalse(saved.needsReprocessing)
+        assertEquals(text, saved.pages[0].text)
+        assertArrayEquals(source, repository.sourceFile(saved).readBytes())
+        outlineScreenshot("moby-dick-dash-fix")
+    }
+
     @Test fun epubLongSectionStartingWordPickerKeepsExactPosition() {
         val source = runCatching { fixture("epub/hume-enquiry-epub3.epub") }.getOrNull()
         org.junit.Assume.assumeTrue("Download the optional EPUB corpus first", source != null)

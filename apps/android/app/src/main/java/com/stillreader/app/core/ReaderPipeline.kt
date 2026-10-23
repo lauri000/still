@@ -51,8 +51,13 @@ class ReaderCache {
 
 object ReaderPipeline {
     // Bump for changes to extraction, repair, word boundaries, or heading recognition.
-    const val VERSION = 1
-    fun version(book: Book) = if (book.isEpub) 2 else VERSION
+    const val VERSION = 3
+    fun version(book: Book) = VERSION
+
+    /** Version 1 PDFs and version 2 EPUBs need only new word boundaries, not extraction.
+     * Call after validating indexes. Source text, edits, IDs and UTF-16 positions stay intact. */
+    fun upgradeWordBoundaries(book: Book): Book =
+        if (book.pipelineVersion == (if (book.isEpub) 2 else 1)) prepare(book) else book
 
     fun prepare(book: Book, reuseIndexes: Boolean = false): Book {
         val pages = book.pages.map { page ->

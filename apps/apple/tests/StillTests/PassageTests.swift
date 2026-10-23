@@ -2,6 +2,24 @@ import XCTest
 @testable import Still
 
 final class PassageLayoutTests: XCTestCase {
+
+    func testUnspacedDashesKeepPassageTypographyAndHeadingDestinations() {
+        var source = makeBook(["Head—Contrasted\nUsher—threadbare\n\nNext chapter\nbody"])
+        source.chapters = [BookChapter(id: UUID(), title: "Head—Contrasted", pageIndex: 0, level: 0, source: "Manual"),
+                           BookChapter(id: UUID(), title: "Next chapter", pageIndex: 0, level: 0, source: "Manual")]
+        let prepared = ReaderPipeline.prepare(source), document = prepared.readerCache.get(prepared)
+        XCTAssertEqual(document.structure.headings.map(\.title), ["Head—Contrasted", "Next chapter"])
+        XCTAssertEqual(document.structure.headings.first?.words, 0..<2)
+        XCTAssertEqual(document.structure.chapterEnds, [3])
+        let tokens = Array(document.tokens[2..<4])
+        XCTAssertEqual(tokens[0].word.text + tokens[0].separator(to: tokens[1]) + tokens[1].word.text, "Usher—threadbare")
+        let layout = PassageLayout(tokens: tokens, widths: [40, 40], availableWidth: 80, spacing: 8)
+        XCTAssertEqual(layout.rows.map(\.words), [0..<2])
+        let spaced = Tokenizer.tokens(for: makeBook(["Usher— threadbare"]))
+        XCTAssertEqual(spaced[0].separator(to: spaced[1]), " ")
+        XCTAssertEqual(PassageLayout(tokens: spaced, widths: [40, 40], availableWidth: 80).rows.count, 2)
+    }
+
     func testWrappingPreservesWordsParagraphsPagesAndNarrowLayouts() {
         let tokens = Tokenizer.tokens(for: makeBook(["one two three four.\n\nfive six", "seven"]))
         let layout = PassageLayout(tokens: tokens, widths: Array(repeating: 40, count: tokens.count), availableWidth: 160)

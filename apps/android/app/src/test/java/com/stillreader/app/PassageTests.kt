@@ -8,6 +8,25 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PassageTests {
+
+    @Test fun unspacedDashesKeepPassageTypographyAndHeadingDestinations() {
+        val source = book("Head—Contrasted\nUsher—threadbare\n\nNext chapter\nbody").copy(chapters = listOf(
+            BookChapter(title = "Head—Contrasted", pageIndex = 0), BookChapter(title = "Next chapter", pageIndex = 0)))
+        val prepared = ReaderPipeline.prepare(source)
+        val document = prepared.readerCache.get(prepared)
+        assertEquals(listOf("Head—Contrasted", "Next chapter"), document.structure.headings.map { it.title })
+        assertEquals(0..1, document.structure.headings.first().words)
+        assertEquals(setOf(3), document.structure.chapterEnds)
+        val tokens = document.tokens.subList(2, 4)
+        assertEquals("Usher—threadbare", tokens[0].word.text + tokens[0].separatorTo(tokens[1]) + tokens[1].word.text)
+        val layout = PassageLayout(tokens, listOf(40.0, 40.0), 80.0, spacing = 8.0)
+        assertEquals(listOf(0..1), layout.rows.map { it.words })
+        assertEquals(80.0, layout.rows.single().width, .001)
+        val spaced = Tokenizer.tokens(book("Usher— threadbare"))
+        assertEquals(" ", spaced[0].separatorTo(spaced[1]))
+        assertEquals(2, PassageLayout(spaced, listOf(40.0, 40.0), 80.0).rows.size)
+    }
+
     @Test fun stableRowsPreserveAllWordsIncludingNarrowAndEmptyLayouts() {
         val tokens = Tokenizer.tokens(book("one two three four.\n\nfive six", "seven"))
         val layout = PassageLayout(tokens, List(tokens.size) { 40.0 }, 160.0)

@@ -58,8 +58,13 @@ final class ReaderCache: @unchecked Sendable, Equatable {
 
 enum ReaderPipeline {
     // Bump for extraction, repair, tokenization, or heading-recognition changes.
-    static let version = 1
-    static func version(for book: Book) -> Int { book.isEpub ? 2 : version }
+    static let version = 3
+    static func version(for book: Book) -> Int { version }
+
+    /// Only upgrade known, validated indexes. Retain text, edits, IDs and source positions.
+    private static func upgradeWordBoundaries(_ book: Book) -> Book {
+        book.pipelineVersion == (book.isEpub ? 2 : 1) ? prepare(book) : book
+    }
     static func prepare(_ book: Book, reuseIndexes: Bool = false) -> Book {
         var updated = book
         for index in updated.pages.indices {
@@ -185,6 +190,6 @@ enum ReaderPipeline {
             book.pipelineVersion = nil; book.headingMatches = nil
             for index in book.pages.indices { book.pages[index].wordIndex = nil }
         }
-        return book
+        return valid ? upgradeWordBoundaries(book) : book
     }
 }

@@ -144,7 +144,7 @@ private struct PassageBlock: View {
     private func linked(_ words: Range<Int>) -> AttributedString {
         var result = AttributedString()
         for index in words {
-            if index != words.lowerBound { result += AttributedString(" ") }
+            if index != words.lowerBound { result += AttributedString(engine.tokens[index - 1].separator(to: engine.tokens[index])) }
             var word = AttributedString(engine.tokens[index].word.text)
             word.link = URL(string: "still-word://\(index)")
             word.foregroundColor = Palette.ink

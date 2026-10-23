@@ -128,6 +128,8 @@ data class ReadingPosition(val pageID: String, val utf16Offset: Int, val finishe
 data class TextWord(val text: String, val offset: Int, val length: Int, val endsParagraph: Boolean, val endsLine: Boolean = false)
 data class ReadingToken(val id: Int, val pageID: String, val pageIndex: Int, val word: TextWord) {
     val position get() = ReadingPosition(pageID, word.offset)
+    // Adjacent source spans (e.g. Usher—threadbare) have no space in passage mode.
+    fun separatorTo(next: ReadingToken) = if (pageID == next.pageID && word.offset + word.length == next.word.offset) "" else " "
 }
 
 object Tokenizer {
@@ -136,6 +138,8 @@ object Tokenizer {
     // so both engines match Foundation without changing source text or its offsets.
     private val wordPattern = Pattern.compile("[^\\p{Z}\\u0009-\\u000D\\u0085]+")
     private val graphemePattern = Regex("\\X")
+    private val dashBoundary = Pattern.compile("—+(?=[\"'“”‘’(\\[]*[\\p{L}\\p{N}])")
+    private val letterOrNumber = Pattern.compile("[\\p{L}\\p{N}]")
 
     fun words(text: String, preserveLineBreaks: Boolean = false): List<TextWord> {
         val matcher = wordPattern.matcher(text)
@@ -147,7 +151,16 @@ object Tokenizer {
                 val next = matcher.find()
                 val gap = text.substring(end, if (next) matcher.start() else text.length)
                 val paragraph = "\n\n" in gap || "\r\n\r\n" in gap
-                add(TextWord(word, start, end - start, paragraph, preserveLineBreaks && !paragraph && '\n' in gap))
+                // Keep dash runs on the preceding word; leading/trailing dashes and quotes
+                // stay attached. Never rewrite text or split ordinary hyphens/ranges.
+                var part = 0
+                val dashes = dashBoundary.matcher(word)
+                while (dashes.find()) {
+                    if (!letterOrNumber.matcher(word).region(part, dashes.start()).find()) continue
+                    add(TextWord(word.substring(part, dashes.end()), start + part, dashes.end() - part, false))
+                    part = dashes.end()
+                }
+                add(TextWord(word.substring(part), start + part, end - start - part, paragraph, preserveLineBreaks && !paragraph && '\n' in gap))
             } while (next)
         }
     }
