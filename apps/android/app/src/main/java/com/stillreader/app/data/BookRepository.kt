@@ -87,7 +87,7 @@ class BookRepository(val root: File) {
             try {
                 val book = BookCodec.decode(File(folder, "book.json").readText())
                 require(book.id == folder.name && sourceFile(book).isFile)
-                book
+                if (book.isEpub && book.contentHash == null) book.copy(contentHash = EpubImporter.sha256(sourceFile(book))) else book
             } catch (_: Exception) { unreadable++; null }
         }
         return LibraryResult(books.sortedByDescending { it.importedAt }, unreadable)
@@ -97,8 +97,13 @@ class BookRepository(val root: File) {
         require(sourceFile(book).isFile) { "The original file is missing. Your existing files have been kept." }
         atomicWrite(target, BookCodec.encode(book))
     }
-    fun insert(source: Book, original: File): Book {
+    fun insert(source: Book, original: File, deduplicate: Boolean = false): Book {
         var book = BookCodec.validate(source)
+        if (deduplicate) load().books.firstOrNull { existing ->
+            (book.catalogID != null && book.catalogID == existing.catalogID) ||
+            (book.contentHash != null && book.contentHash == existing.contentHash) ||
+            (book.epubIdentifier != null && book.epubIdentifier == existing.epubIdentifier)
+        }?.let { return it }
         if (directory(book.id).exists()) book = book.copy(id = newID(), importedAt = appleTimestamp())
         check(root.isDirectory || root.mkdirs())
         val staging = File(root, ".import-${newID()}")

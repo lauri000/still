@@ -133,11 +133,48 @@ final class LibraryStore: ObservableObject {
             }
         } completion: { imported in
             var book = imported.book
+            if !["json", "stillbook"].contains(url.pathExtension.lowercased()), let existing = self.duplicate(of: book) { completion(existing.id); return }
             if self.books.contains(where: { $0.id == book.id }) { book.id = UUID(); book.importedAt = Date() }
             try self.repository.insert(book, sourceData: imported.sourceData)
             self.books.insert(book, at: 0)
             completion(book.id)
         }
+    }
+
+    private func duplicate(of book: Book) -> Book? {
+        books.first { existing in
+            (book.catalogID != nil && book.catalogID == existing.catalogID) ||
+            (book.contentHash != nil && book.contentHash == existing.contentHash) ||
+            (book.epubIdentifier != nil && book.epubIdentifier == existing.epubIdentifier)
+        }
+    }
+
+    func download(_ entry: CatalogBook, provider: any CatalogProvider, completion: @escaping (UUID) -> Void) {
+        if let existing = books.first(where: { $0.catalogID == entry.id }) { completion(existing.id); return }
+        performImport(message: "Downloading EPUB…") {
+            let data = try await provider.download(entry) { fraction in await self.downloadProgress(fraction) }
+            var imported = try await EPUBImporter.extract(data: data, filename: "download.epub") { current, total in await self.reportProgress(current, total) }
+            let original = imported.book
+            imported.book.catalogID = entry.id
+            imported.book.title = entry.title
+            if !entry.authors.isEmpty { imported.book.author = entry.authors.joined(separator: ", ") }
+            if !entry.languages.isEmpty { imported.book.languageCodes = entry.languages }
+            imported.book.synopsis = entry.summary
+            imported.book.sourceURL = entry.webURL?.absoluteString ?? entry.epubURL?.absoluteString
+            if imported.book.coverData == nil, let cover = entry.coverURL { imported.book.coverData = try? await provider.client.get(cover, limit: 2 * 1024 * 1024) }
+            try Task.checkCancellation()
+            imported.book = ReaderPipeline.update(from: original, to: imported.book)
+            return imported
+        } completion: { imported in
+            if let existing = self.duplicate(of: imported.book) { completion(existing.id); return }
+            try self.repository.insert(imported.book, sourceData: imported.sourceData)
+            self.books.insert(imported.book, at: 0)
+            completion(imported.book.id)
+        }
+    }
+    private func downloadProgress(_ fraction: Double?) {
+        importProgress = fraction ?? -1
+        importMessage = fraction.map { "Downloading EPUB… \(Int($0 * 100))%" } ?? "Downloading EPUB…"
     }
 
     func cancelImport() { importTask?.cancel() }

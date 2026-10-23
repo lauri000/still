@@ -3,6 +3,20 @@ import UIKit
 
 final class StillUITests: XCTestCase {
     @MainActor
+    func testDiscoveryIsParallelToFileImport() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-library", "--empty-library"]
+        app.launch()
+        XCTAssertTrue(app.buttons["discoverBooks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["importPDF"].exists)
+        app.buttons["discoverBooks"].tap()
+        XCTAssertTrue(app.textFields["catalogSearch"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Catalog settings"].exists)
+        app.buttons["Books"].tap()
+        XCTAssertTrue(app.buttons["importPDF"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testReaderUsesFullWidthAcrossRotation() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-library"]

@@ -39,6 +39,10 @@ Tokenization preserves whitespace-delimited tokens and attached punctuation. Par
 
 Unknown JSON keys can be ignored. Missing optional positions decode as null. Future schema/backup versions are rejected rather than silently interpreted. Validation must reject invalid UUIDs, duplicate page IDs, and chapter destinations outside the book. Do not change the timestamp epoch, text normalization, or offset units without a versioned migration.
 
+## Catalog metadata
+
+Optional book fields `catalogID`, `contentHash` (SHA-256 of the original EPUB), `epubIdentifier`, `languageCodes`, `synopsis`, `sourceURL`, and `coverData` (base64 image, at most 2 MiB) preserve discovery metadata. They do not change the book schema or backup envelope. Missing fields decode on existing libraries. Both platforms deduplicate ordinary EPUB imports by identity/hash while explicit backup imports retain the ability to restore another copy.
+
 ## EPUB sections and backups
 
 `sourceFormat: "epub"` requires schema 3 so older apps reject it clearly. Each record under the legacy `pages` key is a nonempty, linear spine XHTML section. Its `sourceHref` is the normalized archive-relative content path. Its optional `headings` list holds explicit XHTML heading spans `{start, end, level}` (UTF-16, end-exclusive, levels 0–5). Those semantic spans feed prepared `headingMatches`; EPUB headings do not depend on TOC labels matching the text. Chapters resolve EPUB 3 navigation or EPUB 2 NCX links into `pageIndex` plus `utf16Offset`, retaining distinct anchors within a section and repeated titles. `number` and `label` enumerate retained sections, not print page numbers.

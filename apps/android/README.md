@@ -1,5 +1,7 @@
 # Still for Android
 
+**Discover** sits beside **Import file** in the library. Browse Project Gutenberg, search by title or author, filter languages, and download individual EPUBs for offline reading. Catalog settings support authorized Standard Ebooks access and additional OPDS providers. See [discovery](../../docs/discovery.md).
+
 Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview through PdfiumAndroidKt. The Apple app remains SwiftUI/PDFKit. There is no Rust core, account, network permission, or server dependency.
 
 ## Build and run

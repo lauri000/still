@@ -1,6 +1,6 @@
 # Still
 
-A native PDF and EPUB speed reader for **iPad, macOS, and Android**. Import a PDF or DRM-free EPUB, choose a starting page, section, or chapter, then read in a centered single line or a manually scrollable passage. Tap a passage word to continue in single-line mode, with your position saved across views.
+A native PDF and EPUB speed reader for **iPad, macOS, and Android**. Discover public-domain ebooks, or import a PDF or DRM-free EPUB, choose a starting page, section, or chapter, then read in a centered single line or a manually scrollable passage. Tap a passage word to continue in single-line mode, with your position saved across views.
 
 ## Apps
 
@@ -33,7 +33,7 @@ docs/                   Reading guide and screenshots
 scripts/                Repository maintenance and verification tools
 ```
 
-[EPUB support and test fixtures](docs/epub.md) · [Reading, corrections, storage, and extraction limits](docs/reading.md) · [PDF repair and evaluation](docs/pdf-repair.md) · [Compatibility checks](shared/FORMAT.md#verify-both-implementations)
+[Discover public-domain ebooks](docs/discovery.md) · [EPUB support and test fixtures](docs/epub.md) · [Reading, corrections, storage, and extraction limits](docs/reading.md) · [PDF repair and evaluation](docs/pdf-repair.md) · [Compatibility checks](shared/FORMAT.md#verify-both-implementations)
 
 Books stay on the device. Backups can be exported and imported across platforms; accounts, server components, automatic sync, and OCR are not included.
 

@@ -54,6 +54,8 @@ import java.io.File
 @Composable
 fun StillApp(model: LibraryViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
+    var discovering by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.selectedID) { if (state.selectedID != null) discovering = false }
     var tool by rememberSaveable { mutableStateOf<String?>(null) }
     var toolPage by rememberSaveable { mutableIntStateOf(0) }
     var exportID by rememberSaveable { mutableStateOf<String?>(null) }
@@ -91,14 +93,16 @@ fun StillApp(model: LibraryViewModel) {
             book != null -> BookScreen(book, model, canUndoImprovement = state.undoReprocessID == book.id, onBack = { model.select(null) },
                 onTool = { name, page -> toolPage = page; tool = name },
                 onExport = { exportID = book.id; exporter.launch("${book.title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.stillbook.json") })
-            else -> LibraryScreen(state.books, model::select) { picker.launch(arrayOf("application/pdf", "application/epub+zip", "application/json", "application/octet-stream")) }
+            discovering -> CatalogScreen(model, back = { discovering = false })
+            else -> LibraryScreen(state.books, model::select, discover = { discovering = true }) { picker.launch(arrayOf("application/pdf", "application/epub+zip", "application/json", "application/octet-stream")) }
         }
         state.importing?.let { progress ->
             Dialog(onDismissRequest = model::cancelImport) {
                 Column(Modifier.clip(RoundedCornerShape(20.dp)).background(Surface).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     Text("Preparing book", fontSize = 22.sp, fontWeight = FontWeight.Medium)
                     Text(progress.message, color = Muted)
-                    LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
+                    if (progress.fraction < 0) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
                     TextButton(onClick = model::cancelImport, modifier = Modifier.align(Alignment.End)) { Text("Cancel") }
                 }
             }
@@ -111,13 +115,14 @@ fun StillApp(model: LibraryViewModel) {
 }
 
 @Composable
-private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, import: () -> Unit) {
+private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover: () -> Unit, import: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).widthIn(max = 900.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Books", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            TextButton(onClick = discover, modifier = Modifier.testTag("discoverBooks")) { Text("Discover") }
             Button(onClick = import, modifier = Modifier.testTag("importPDF"), shape = RoundedCornerShape(12.dp)) {
-                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import book")
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import file")
             }
         }
         if (books.size > 5) OutlinedTextField(search, { search = it }, label = { Text("Search books") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -128,12 +133,14 @@ private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, import: (
                 Spacer(Modifier.height(18.dp))
                 Text(if (books.isEmpty()) "No books yet" else "No matching books", fontSize = 20.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(if (books.isEmpty()) "Import a PDF or EPUB to start reading." else "Try another title.", color = Muted)
+                Text(if (books.isEmpty()) "Import a PDF or EPUB, or discover a book to read." else "Try another title.", color = Muted)
             }
         } else LazyColumn {
             items(filtered, key = { it.id }) { book ->
                 Row(Modifier.fillMaxWidth().clickable { select(book.id) }.testTag("book-${book.title}").padding(vertical = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Description, null, tint = Muted)
+                    val cover = remember(book.coverData) { book.coverData?.let { runCatching { decodeCover(java.util.Base64.getDecoder().decode(it)) }.getOrNull() } }
+                    if (cover != null) Image(cover.asImageBitmap(), null, Modifier.size(42.dp, 60.dp), contentScale = ContentScale.Fit)
+                    else Icon(Icons.Outlined.Description, null, tint = Muted)
                     Spacer(Modifier.width(18.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(book.title, fontSize = 17.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)

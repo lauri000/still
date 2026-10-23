@@ -13,6 +13,13 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
     var isSample = false
     // Optional so libraries and backups from the first version still decode.
     var readingStart: ReadingPosition? = nil
+    var catalogID: String? = nil
+    var contentHash: String? = nil
+    var epubIdentifier: String? = nil
+    var languageCodes: [String]? = nil
+    var synopsis: String? = nil
+    var sourceURL: String? = nil
+    var coverData: Data? = nil
     var pipelineVersion: Int? = nil
     var chaptersCustomized: Bool? = nil
     var headingMatches: [HeadingMatch]? = nil
@@ -23,7 +30,7 @@ struct Book: Codable, Identifiable, Equatable, Sendable {
     var sourceFilename: String { isEpub ? "original.epub" : "original.pdf" }
     var readerCache = ReaderCache()
     enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, title, author, originalFilename, importedAt, pages, chapters, position, isSample, readingStart, pipelineVersion, headingMatches, chaptersCustomized, sourceFormat
+        case schemaVersion, id, title, author, originalFilename, importedAt, pages, chapters, position, isSample, readingStart, pipelineVersion, headingMatches, chaptersCustomized, sourceFormat, catalogID, contentHash, epubIdentifier, languageCodes, synopsis, sourceURL, coverData
     }
     var needsReprocessing: Bool { pipelineVersion != ReaderPipeline.version(for: self) || pages.contains { $0.wordIndex == nil } || headingMatches == nil }
 

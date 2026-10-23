@@ -1,0 +1,46 @@
+{
+  "count": 3,
+  "next": "https://gutendex.com/books?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "title": "A quiet test",
+      "authors": [
+        {
+          "name": "Reader, Still"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "copyright": false,
+      "summaries": [
+        "An original test story."
+      ],
+      "subjects": [
+        "Testing"
+      ],
+      "formats": {
+        "application/epub+zip": "https://books.example/test.epub",
+        "image/jpeg": "https://books.example/cover.jpg"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Restricted",
+      "copyright": true,
+      "formats": {
+        "application/epub+zip": "https://books.example/restricted.epub"
+      }
+    },
+    {
+      "id": 3,
+      "title": "No EPUB",
+      "copyright": false,
+      "formats": {
+        "text/html": "https://books.example/read"
+      }
+    }
+  ]
+}

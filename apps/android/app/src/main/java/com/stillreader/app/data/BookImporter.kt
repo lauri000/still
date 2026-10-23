@@ -11,7 +11,7 @@ import java.io.File
 import java.util.Base64
 
 data class ImportProgress(val message: String, val fraction: Float)
-data class ImportedBook(val book: Book, val source: File)
+data class ImportedBook(val book: Book, val source: File, val deduplicate: Boolean = false)
 
 /** Owns file picking and source dispatch; format parsers produce the same prepared reader data. */
 class BookImporter(private val context: Context) {
@@ -44,7 +44,7 @@ class BookImporter(private val context: Context) {
                 ImportedBook(pdf.extract(file, name, progress), file)
             } else if (name.endsWith(".epub", true) || context.contentResolver.getType(uri) == "application/epub+zip" || file.inputStream().use { it.read() == 0x50 && it.read() == 0x4b }) {
                 val job = currentCoroutineContext()
-                ImportedBook(EpubImporter.extract(file, name, entities, { job.ensureActive() }, progress), file)
+                ImportedBook(EpubImporter.extract(file, name, entities, { job.ensureActive() }, progress), file, deduplicate = true)
             } else {
                 progress(ImportProgress("Opening book backup…", 0f))
                 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -65,6 +65,15 @@ class BookImporter(private val context: Context) {
                     ImportedBook(book, original)
                 } catch (error: Throwable) { original.delete(); throw error }
             }
+        } catch (error: Throwable) { file.delete(); throw error }
+    }
+
+    suspend fun importEpub(data: ByteArray, progress: (ImportProgress) -> Unit): ImportedBook = withContext(Dispatchers.IO) {
+        val file = File.createTempFile("still-download-", ".epub", context.cacheDir)
+        try {
+            file.writeBytes(data)
+            val job = currentCoroutineContext()
+            ImportedBook(EpubImporter.extract(file, "download.epub", entities, { job.ensureActive() }, progress), file, deduplicate = true)
         } catch (error: Throwable) { file.delete(); throw error }
     }
 

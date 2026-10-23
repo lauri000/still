@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import ZIPFoundation
 
 /// A bounded, non-rendering EPUB reader. Sources remain in the archive; book scripts are never run.
@@ -126,9 +127,20 @@ enum EPUBImporter {
             } }
         }
         let title = compact(metadata.child("title")?.text ?? "")
-        let book = Book(id: UUID(), title: title.isEmpty ? (filename as NSString).deletingPathExtension : title,
+        let coverID = metadata.children.first { $0.name == "meta" && $0.attributes["name"] == "cover" }?.attributes["content"]
+        let coverItem = manifest.first { $0.properties.contains("cover-image") } ?? coverID.flatMap { items[$0] }
+        var cover: Data?
+        if let item = coverItem, ["image/jpeg", "image/png", "image/webp"].contains(item.type),
+           let entry = archive[item.path], entry.uncompressedSize <= 2 * 1024 * 1024 { cover = try read(item.path) }
+        let identifiers = metadata.children.filter { $0.name == "identifier" }
+        let identifier = (identifiers.first { $0.attributes["id"] == pkg.attributes["unique-identifier"] } ?? identifiers.first)?.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var book = Book(id: UUID(), title: title.isEmpty ? (filename as NSString).deletingPathExtension : title,
             author: metadata.children.filter { $0.name == "creator" }.map { compact($0.text) }.joined(separator: ", "),
             originalFilename: filename, importedAt: Date(), pages: pages, chapters: chapters, sourceFormat: "epub")
+        book.contentHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        book.epubIdentifier = identifier.flatMap { $0.isEmpty ? nil : $0 }
+        book.coverData = cover
+        book.languageCodes = metadata.children.filter { $0.name == "language" }.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         try Task.checkCancellation()
         return ImportedBook(book: ReaderPipeline.prepare(book), sourceData: data)
     }

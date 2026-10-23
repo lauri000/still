@@ -7,6 +7,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.stillreader.app.core.*
 import com.stillreader.app.data.*
+import com.stillreader.app.catalog.*
+import java.util.Base64
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -158,17 +160,42 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         }
     }
 
-    fun importFile(uri: Uri) = prepareBook("Opening file…") {
+    fun importFile(uri: Uri) = beginImport { progress -> importer.import(uri, progress) }
+
+    fun download(entry: CatalogBook, provider: CatalogProvider) {
+        state.value.books.firstOrNull { it.catalogID == entry.id }?.let { select(it.id); return }
+        beginImport { progress ->
+            val data = provider.download(entry) { fraction ->
+                progress(ImportProgress(fraction?.let { "Downloading EPUB… ${(it * 100).toInt()}%" } ?: "Downloading EPUB…", fraction ?: -1f))
+            }
+            progress(ImportProgress("Preparing book…", 0f))
+            val result = importer.importEpub(data, progress)
+            try {
+                val cover = if (result.book.coverData == null && entry.coverURL != null) {
+                    try { Base64.getEncoder().encodeToString(provider.client.get(entry.coverURL, 2 * 1024 * 1024)) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+                } else result.book.coverData
+                val metadata = result.book.copy(catalogID = entry.id, title = entry.title,
+                    author = entry.authors.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: result.book.author,
+                    languageCodes = entry.languages.takeIf { it.isNotEmpty() } ?: result.book.languageCodes,
+                    synopsis = entry.summary, sourceURL = entry.webURL ?: entry.epubURL, coverData = cover)
+                result.copy(book = withContext(Dispatchers.Default) { ReaderPipeline.update(result.book, metadata) })
+            } catch (error: Throwable) { result.source.delete(); throw error }
+        }
+    }
+
+    private fun beginImport(load: suspend ((ImportProgress) -> Unit) -> ImportedBook) = prepareBook("Opening book…") {
         var imported: ImportedBook? = null
         try {
-            imported = importer.import(uri) { progress -> mutable.update { it.copy(importing = progress) } }
+            imported = load { progress -> mutable.update { it.copy(importing = progress) } }
             ensureActive()
             // Once the commit begins, complete it and publish the saved book even if Cancel was tapped.
             withContext(NonCancellable) {
                 val source = imported
-                val book = repositoryOperation { repository.insert(source.book, source.source) }
+                val book = repositoryOperation { repository.insert(source.book, source.source, source.deduplicate) }
                 saved["selectedID"] = book.id
-                mutable.update { it.copy(books = listOf(book) + it.books, selectedID = book.id) }
+                mutable.update { it.copy(books = listOf(book) + it.books.filterNot { existing -> existing.id == book.id }, selectedID = book.id) }
             }
         } finally { imported?.source?.delete() }
     }

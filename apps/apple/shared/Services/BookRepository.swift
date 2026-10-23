@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct BookRepository: Sendable {
     let root: URL
@@ -18,11 +19,14 @@ struct BookRepository: Sendable {
         var unreadable = 0
         for folder in folders where UUID(uuidString: folder.lastPathComponent) != nil {
             do {
-                let book = try JSONDecoder().decode(Book.self, from: Data(contentsOf: folder.appendingPathComponent("book.json")))
+                var book = try JSONDecoder().decode(Book.self, from: Data(contentsOf: folder.appendingPathComponent("book.json")))
                 guard book.hasValidStructure,
                       book.id.uuidString == folder.lastPathComponent,
                       FileManager.default.fileExists(atPath: sourceURL(for: book).path)
                 else { throw RepositoryError.invalidBook }
+                if book.isEpub && book.contentHash == nil {
+                    book.contentHash = SHA256.hash(data: try Data(contentsOf: sourceURL(for: book), options: .mappedIfSafe)).map { String(format: "%02x", $0) }.joined()
+                }
                 books.append(ReaderPipeline.loaded(book))
             } catch { unreadable += 1 }
         }

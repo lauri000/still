@@ -1,5 +1,7 @@
 # Still for iOS, iPadOS, and macOS
 
+**Discover** sits beside **Import file** in the library. Browse Project Gutenberg, search by title or author, filter languages, and download individual EPUBs for offline reading. Catalog settings support authorized Standard Ebooks access and additional OPDS providers. See [discovery](../../docs/discovery.md).
+
 The two native Apple targets share SwiftUI views, PDFKit services, reader logic, and resources. Each target has its own platform directory and build settings. EPUB archives use ZIPFoundation 0.9.20 (MIT), pinned in Swift Package Manager. Its license is bundled with the app.
 
 ## Build and run

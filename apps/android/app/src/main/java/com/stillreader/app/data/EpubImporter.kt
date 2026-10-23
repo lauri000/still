@@ -5,6 +5,8 @@ import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.xml.sax.InputSource
 import java.io.File
+import java.security.MessageDigest
+import java.util.Base64
 import java.io.StringReader
 import java.net.URLDecoder
 import java.util.zip.ZipFile
@@ -131,13 +133,31 @@ object EpubImporter {
             }.ifEmpty {
                 pages.flatMapIndexed { index, page -> page.headings.orEmpty().mapIndexed { ordinal, h -> BookChapter(title = page.text.substring(h.start, h.end), pageIndex = index, level = h.level, source = "EPUB heading", utf16Offset = h.start, sourceAnchor = "${page.sourceHref}#heading-$ordinal") } }
             }
+            val coverID = metadata.children().firstOrNull { it.localName == "meta" && it.getAttribute("name") == "cover" }?.getAttribute("content")
+            val coverItem = manifest.firstOrNull { "cover-image" in it.properties } ?: items[coverID]
+            val cover = coverItem?.takeIf { it.type in setOf("image/jpeg", "image/png", "image/webp") && (zip.getEntry(it.path)?.size ?: Long.MAX_VALUE) <= 2 * 1024 * 1024 }
+                ?.let { Base64.getEncoder().encodeToString(read(it.path)) }
+            val identifierID = pkg.getAttribute("unique-identifier")
+            val identifiers = metadata.children().filter { it.localName == "identifier" }
+            val identifier = (identifiers.firstOrNull { it.getAttribute("id") == identifierID } ?: identifiers.firstOrNull())?.textContent?.trim()?.takeIf { it.isNotEmpty() }
             val book = Book(title = metadata.child("title")?.textContent?.trim()?.takeIf { it.isNotEmpty() } ?: filename.substringBeforeLast('.'),
                 author = metadata.children().filter { it.localName == "creator" }.joinToString(", ") { it.textContent.trim() },
-                originalFilename = filename, pages = pages, chapters = chapters, sourceFormat = "epub")
+                originalFilename = filename, pages = pages, chapters = chapters, sourceFormat = "epub",
+                contentHash = sha256(file), epubIdentifier = identifier, coverData = cover,
+                languageCodes = metadata.children().filter { it.localName == "language" }.map { it.textContent.trim() }.filter { it.isNotEmpty() })
             checkpoint()
             progress(ImportProgress("Preparing reader…", .95f))
             return ReaderPipeline.prepare(book)
         }
+    }
+
+    fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun Element.children(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }

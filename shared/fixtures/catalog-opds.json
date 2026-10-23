@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "title": "Test catalog",
+    "numberOfItems": 4
+  },
+  "links": [
+    {
+      "rel": [
+        "next"
+      ],
+      "href": "?page=2"
+    },
+    {
+      "rel": [
+        "first",
+        "previous"
+      ],
+      "href": "?page=1"
+    },
+    {
+      "rel": "search",
+      "href": "search{?query,title,author}",
+      "type": "application/opds+json",
+      "templated": true
+    }
+  ],
+  "navigation": [
+    {
+      "title": "All books",
+      "href": "/all",
+      "type": "application/opds+json"
+    }
+  ],
+  "publications": [
+    {
+      "metadata": {
+        "identifier": "urn:still:test",
+        "title": "A quiet test",
+        "author": [
+          {
+            "name": "Still Reader"
+          },
+          "Another Author"
+        ],
+        "language": [
+          "en",
+          "fi"
+        ],
+        "description": "<p>Original &amp; readable.</p>"
+      },
+      "links": [
+        {
+          "rel": [
+            "download"
+          ],
+          "type": "application/epub+zip",
+          "href": "/test.epub"
+        }
+      ],
+      "images": [
+        {
+          "href": "/cover.png"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "identifier": "urn:still:paid",
+        "title": "Not a free download",
+        "author": "Writer",
+        "language": "fr"
+      },
+      "links": [
+        {
+          "rel": "buy",
+          "type": "application/epub+zip",
+          "href": "/buy.epub"
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "metadata": {
+        "title": "More"
+      },
+      "publications": [
+        {
+          "metadata": {
+            "identifier": "urn:still:group",
+            "title": "Grouped book",
+            "author": {
+              "name": "Group Author"
+            },
+            "language": "sv"
+          },
+          "links": [
+            {
+              "rel": "http://opds-spec.org/acquisition/open-access",
+              "type": "application/epub+zip",
+              "href": "group.epub"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
