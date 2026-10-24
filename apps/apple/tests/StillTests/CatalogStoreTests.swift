@@ -11,6 +11,24 @@ final class CatalogStoreTests: XCTestCase {
         XCTFail("Catalog state did not settle")
     }
     @MainActor
+    func testColdSearchCanFinishAfterFortySecondsWithoutRestarting() async throws {
+        let provider = PendingSearchProvider()
+        // Use the production deadline; this reproduces a server that sends no headers for 40s.
+        let slow = CatalogStore(provider: provider)
+        slow.query = "anarchy"; slow.load()
+        try await eventually { await provider.count == 1 }
+        try await Task.sleep(for: .seconds(40))
+        XCTAssertTrue(slow.loading); XCTAssertTrue(slow.waiting); XCTAssertNil(slow.error)
+        let count = await provider.count
+        XCTAssertEqual(count, 1)
+        await provider.finish(0, .success(CatalogPage(books: [CatalogBook(id: "gutenberg:4212", title: "Culture and Anarchy")])))
+        try await eventually { !slow.loading }
+        XCTAssertEqual(slow.page?.books.first?.title, "Culture and Anarchy")
+        XCTAssertFalse(slow.waiting); XCTAssertNil(slow.error)
+        slow.cancel()
+    }
+
+    @MainActor
     func testDeadlineEndsSpinnerAndRetryIgnoresOldResponse() async throws {
         let provider = PendingSearchProvider()
         let store = CatalogStore(provider: provider, requestTimeoutNanoseconds: 100_000_000)

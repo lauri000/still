@@ -5,6 +5,7 @@ import ImageIO
 final class CatalogStore: ObservableObject {
     @Published var page: CatalogPage?
     @Published var loading = false
+    @Published var waiting = false
     @Published var error: String?
     @Published var query = ""
     @Published var language = ""
@@ -14,7 +15,7 @@ final class CatalogStore: ObservableObject {
     private let requestTimeoutNanoseconds: UInt64
     private var generation = UUID()
     private var lastURL: URL?
-    init(provider: any CatalogProvider = GutendexProvider(), requestTimeoutNanoseconds: UInt64 = 20_000_000_000) {
+    init(provider: any CatalogProvider = GutendexProvider(), requestTimeoutNanoseconds: UInt64 = UInt64(catalogRequestTimeout * 1_000_000_000)) {
         self.provider = provider
         self.requestTimeoutNanoseconds = requestTimeoutNanoseconds
     }
@@ -23,13 +24,18 @@ final class CatalogStore: ObservableObject {
         lastURL = url; loading = true; error = nil
         let provider = provider, query = query, language = language
         deadline = Task {
-            do { try await Task.sleep(nanoseconds: requestTimeoutNanoseconds) } catch { return }
+            let noticeDelay = min(8_000_000_000, requestTimeoutNanoseconds)
+            do {
+                try await Task.sleep(nanoseconds: noticeDelay)
+                if generation == token, loading, requestTimeoutNanoseconds > noticeDelay { waiting = true }
+                try await Task.sleep(nanoseconds: requestTimeoutNanoseconds - noticeDelay)
+            } catch { return }
             guard generation == token, loading else { return }
             cancel()
             error = "\(provider.name) took too long to respond. Please try again."
         }
         task = Task {
-            defer { if token == generation { loading = false; deadline?.cancel(); deadline = nil } }
+            defer { if token == generation { loading = false; waiting = false; deadline?.cancel(); deadline = nil } }
             do {
                 let result = try await provider.search(query: query, language: language, page: url)
                 guard !Task.isCancelled, token == generation else { return }
@@ -41,7 +47,7 @@ final class CatalogStore: ObservableObject {
         }
     }
     func retry() { load(lastURL) }
-    func cancel() { generation = UUID(); deadline?.cancel(); deadline = nil; task?.cancel(); task = nil; loading = false }
+    func cancel() { generation = UUID(); deadline?.cancel(); deadline = nil; task?.cancel(); task = nil; loading = false; waiting = false }
     func stopLoading() { cancel(); if page == nil { error = "Loading stopped. Tap Try again when you’re ready." } }
 
 }
@@ -78,6 +84,7 @@ struct CatalogView: View {
             if catalog.loading {
                 VStack(spacing: 16) {
                     ProgressView("Loading books…")
+                    if catalog.waiting { Text("The catalog is responding slowly. You can keep waiting or cancel.").foregroundStyle(Palette.muted) }
                     Button("Cancel") { catalog.stopLoading() }.buttonStyle(SecondaryButton())
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }

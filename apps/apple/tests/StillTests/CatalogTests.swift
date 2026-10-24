@@ -17,7 +17,7 @@ final class CatalogTests: XCTestCase {
         let provider = GutendexProvider()
         let url = try provider.requestURL(query: "Austen & Brontë", language: "en,fr", page: nil)
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
-        XCTAssertEqual(query.first { $0.name == "search" }?.value, "Austen & Brontë")
+        XCTAssertEqual(query.first { $0.name == "search" }?.value, "austen & brontë")
         XCTAssertEqual(query.first { $0.name == "languages" }?.value, "en,fr")
         XCTAssertNil(query.first { $0.name == "copyright" }); XCTAssertNil(query.first { $0.name == "mime_type" })
         XCTAssertEqual(try provider.requestURL(query: "", language: "", page: nil).absoluteString, "https://gutendex.com/books/")
@@ -25,6 +25,21 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(try provider.requestURL(query: "different", language: "fr", page: next), next)
         XCTAssertThrowsError(try provider.requestURL(query: "", language: "", page: URL(string: "https://other.example/feed")!))
     }
+    func testEquivalentSearchesShareOneCachedRequestAndRetainLanguageFilter() async throws {
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [CatalogURLProtocol.self]
+        let client = CatalogClient(session: URLSession(configuration: config))
+        CatalogURLProtocol.status = 200
+        CatalogURLProtocol.body = try catalogFixture("catalog-gutendex", "json")
+        let before = CatalogURLProtocol.requests
+        let provider = GutendexProvider(client: client)
+        _ = try await provider.search(query: " Anarchy ", language: "en", page: nil)
+        _ = try await provider.search(query: "ANARCHY", language: "en", page: nil)
+        XCTAssertEqual(CatalogURLProtocol.requests - before, 1)
+        _ = try await provider.search(query: "anarchy", language: "", page: nil)
+        XCTAssertEqual(CatalogURLProtocol.requests - before, 2)
+        XCTAssertEqual(try provider.requestURL(query: " Anarchy ", language: "", page: nil).absoluteString, "https://gutendex.com/books/?search=anarchy")
+    }
+
     func testInvalidResponsesAndUnsafeURLsAreRejected() throws {
         for response in ["{}", "<html/>", #"{"count":1,"results":{}}"#] {
             XCTAssertThrowsError(try GutendexProvider.parse(Data(response.utf8), base: URL(string: "https://gutendex.com/books/")!))

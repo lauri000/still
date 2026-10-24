@@ -14,6 +14,39 @@ class CatalogViewModelTests {
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() { Dispatchers.resetMain() }
 
+    @Test fun coldSearchCanFinishAfterFortySecondsWithoutRestartingTheRequest() = runTest(dispatcher) {
+        var requests = 0
+        val expected = CatalogPage(listOf(CatalogBook("gutenberg:4212", "Culture and Anarchy")))
+        val catalog = CatalogViewModel(initialProvider = SearchProvider { _, _, _ ->
+            requests++; delay(40_000); expected
+        })
+        catalog.query("anarchy"); catalog.load(); runCurrent()
+        advanceTimeBy(8_000); runCurrent()
+        assertTrue(catalog.state.value.waiting)
+        advanceTimeBy(22_000); runCurrent()
+        assertTrue(catalog.state.value.loading); assertNull(catalog.state.value.error)
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(1, requests); assertEquals(expected, catalog.state.value.page)
+        assertFalse(catalog.state.value.loading); assertFalse(catalog.state.value.waiting)
+        advanceTimeBy(20_000); runCurrent()
+        assertNull(catalog.state.value.error)
+        catalog.cancel()
+    }
+    @Test fun defaultDeadlineStillStopsAnUnresponsiveSearchAndCancelClearsSlowState() = runTest(dispatcher) {
+        var requests = 0
+        val catalog = CatalogViewModel(initialProvider = SearchProvider { _, _, _ -> requests++; awaitCancellation() })
+        catalog.load(); runCurrent(); advanceTimeBy(59_999); runCurrent()
+        assertTrue(catalog.state.value.loading); assertTrue(catalog.state.value.waiting)
+        advanceTimeBy(1); runCurrent()
+        assertFalse(catalog.state.value.loading); assertFalse(catalog.state.value.waiting)
+        assertTrue(catalog.state.value.error!!.contains("took too long")); assertEquals(1, requests)
+        catalog.retry(); runCurrent(); advanceTimeBy(8_000); runCurrent()
+        assertTrue(catalog.state.value.waiting)
+        catalog.stopLoading(); runCurrent()
+        assertFalse(catalog.state.value.waiting); assertFalse(catalog.state.value.loading)
+        assertEquals(2, requests)
+    }
+
     @Test fun timeoutEndsLoadingEvenWhenCancelledRequestIsStillBlockedAndRetryWins() = runTest(dispatcher) {
         val blocked = CompletableDeferred<CatalogPage>()
         val requests = mutableListOf<String?>()
@@ -22,7 +55,7 @@ class CatalogViewModelTests {
             requests += page
             if (requests.size == 1) withContext(NonCancellable) { blocked.await() } else expected
         }
-        val catalog = CatalogViewModel(initialProvider = provider)
+        val catalog = CatalogViewModel(requestTimeoutMillis = 20_000, initialProvider = provider)
         val next = "https://gutendex.com/books/?page=2"
         try {
             catalog.load(next); runCurrent()

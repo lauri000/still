@@ -25,12 +25,37 @@ class CatalogTests {
         val provider = GutendexProvider(client)
         val page = provider.search("Austen & Brontë", "en,fr")
         provider.search("different", "de", page.next)
-        assertTrue(requests[0].contains("search=Austen+%26+Bront%C3%AB"))
+        assertTrue(requests[0].contains("search=austen+%26+bront%C3%AB"))
         assertTrue(requests[0].contains("languages=en%2Cfr")); assertFalse(requests[0].contains("copyright=")); assertFalse(requests[0].contains("mime_type="))
         assertEquals("https://gutendex.com/books/", provider.requestURL("", "", null))
         assertEquals(page.next, requests[1])
         assertThrows(IllegalArgumentException::class.java) { provider.requestURL("", "", "https://other.example/page") }
     }
+    @Test fun equivalentSearchesShareOneCachedRequestWithoutChangingTheLanguageFilter() = runTest {
+        var requests = 0
+        val client = CatalogClient { url ->
+            object : java.net.HttpURLConnection(java.net.URL(url)) {
+                override fun connect() { }
+                override fun disconnect() { }
+                override fun usingProxy() = false
+                override fun getResponseCode(): Int {
+                    requests++
+                    // A cold query returned headers after 39.9s in the live reproduction.
+                    assertTrue("Socket timeout would kill a legitimate cold search", readTimeout > 40_000)
+                    return 200
+                }
+                override fun getInputStream() = fixture("catalog-gutendex.json").byteInputStream()
+            }
+        }
+        val provider = GutendexProvider(client)
+        provider.search(" Anarchy ", "en")
+        provider.search("ANARCHY", "en")
+        assertEquals(1, requests)
+        provider.search("anarchy", "")
+        assertEquals(2, requests)
+        assertEquals("https://gutendex.com/books/?search=anarchy", provider.requestURL(" Anarchy ", "", null))
+    }
+
     @Test fun invalidResponsesAndUnsafeURLsAreRejected() {
         for (response in listOf("{}", "<html/>", "{\"count\":1,\"results\":{}}")) {
             assertThrows(Exception::class.java) { GutendexProvider.parse(response.toByteArray(), "https://gutendex.com/books/") }

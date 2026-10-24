@@ -102,6 +102,7 @@ fun CatalogScreen(library: LibraryViewModel, back: () -> Unit, catalog: CatalogV
                 state.loading -> Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     CircularProgressIndicator()
                     Text("Loading books…", Modifier.padding(top = 16.dp), color = Muted)
+                    if (state.waiting) Text("The catalog is responding slowly. You can keep waiting or cancel.", color = Muted)
                     TextButton(onClick = catalog::stopLoading) { Text("Cancel") }
                 }
                 state.error != null -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {

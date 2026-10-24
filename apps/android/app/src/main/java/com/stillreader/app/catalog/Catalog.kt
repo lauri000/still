@@ -15,6 +15,9 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+// Fresh Gutendex searches can take 30–40 seconds before sending response headers.
+const val CATALOG_REQUEST_TIMEOUT_MILLIS = 60_000L
+
 data class CatalogBook(val id: String, val title: String, val authors: List<String> = emptyList(), val languages: List<String> = emptyList(),
     val summary: String = "", val subjects: List<String> = emptyList(), val coverURL: String? = null, val epubURL: String? = null, val webURL: String? = null)
 data class CatalogPage(val books: List<CatalogBook>, val next: String? = null, val previous: String? = null, val total: Int? = null)
@@ -66,7 +69,7 @@ open class CatalogClient(private val connect: (String) -> HttpURLConnection = { 
                 try {
                     ensureActive()
                     connection.instanceFollowRedirects = false
-                    connection.connectTimeout = 15_000; connection.readTimeout = 30_000
+                    connection.connectTimeout = 15_000; connection.readTimeout = CATALOG_REQUEST_TIMEOUT_MILLIS.toInt()
                     connection.setRequestProperty("Accept", "application/json, application/epub+zip, image/*")
                     connection.setRequestProperty("User-Agent", "Still/0.1 (personal ebook reader)")
                     val code = connection.responseCode
@@ -141,7 +144,9 @@ class GutendexProvider(override val client: CatalogClient = CatalogClient(), val
         if (page != null) { require(sameOrigin(page, endpoint)); return page }
         // Filter safety/format locally. These extra server-side joins can stall the public instance.
         val parameters = mutableListOf<String>()
-        if (query.isNotBlank()) parameters += "search=" + URLEncoder.encode(query.trim(), "UTF-8")
+        // Gutendex search is case-insensitive, but its HTTP cache keys are not.
+        val normalized = query.trim().lowercase(Locale.ROOT)
+        if (normalized.isNotEmpty()) parameters += "search=" + URLEncoder.encode(normalized, "UTF-8")
         if (language.isNotEmpty()) parameters += "languages=" + URLEncoder.encode(language, "UTF-8")
         return if (parameters.isEmpty()) endpoint else endpoint + "?" + parameters.joinToString("&")
     }

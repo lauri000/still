@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-data class CatalogState(val page: CatalogPage? = null, val loading: Boolean = false, val error: String? = null,
+data class CatalogState(val page: CatalogPage? = null, val loading: Boolean = false, val waiting: Boolean = false, val error: String? = null,
     val query: String = "", val language: String = "", val selected: CatalogBook? = null)
-class CatalogViewModel(private val requestTimeoutMillis: Long = 20_000, initialProvider: CatalogProvider = GutendexProvider()) : ViewModel() {
+class CatalogViewModel(private val requestTimeoutMillis: Long = CATALOG_REQUEST_TIMEOUT_MILLIS, initialProvider: CatalogProvider = GutendexProvider()) : ViewModel() {
     val provider: CatalogProvider = initialProvider
     private val mutable = MutableStateFlow(CatalogState())
     val state = mutable.asStateFlow()
@@ -28,7 +28,12 @@ class CatalogViewModel(private val requestTimeoutMillis: Long = 20_000, initialP
         mutable.update { it.copy(loading = true, error = null) }
         // Independent of socket cleanup: a stalled DNS lookup/read must not own the spinner.
         deadline = viewModelScope.launch {
-            delay(requestTimeoutMillis)
+            val noticeDelay = minOf(8_000, requestTimeoutMillis)
+            delay(noticeDelay)
+            if (generation == token && state.value.loading && requestTimeoutMillis > noticeDelay) {
+                mutable.update { it.copy(waiting = true) }
+            }
+            delay(requestTimeoutMillis - noticeDelay)
             if (generation == token && state.value.loading) {
                 this@CatalogViewModel.cancel()
                 mutable.update { it.copy(error = "${source.name} took too long to respond. Please try again.") }
@@ -44,7 +49,7 @@ class CatalogViewModel(private val requestTimeoutMillis: Long = 20_000, initialP
             } finally {
                 if (generation == token) {
                     deadline?.cancel(); deadline = null
-                    mutable.update { it.copy(loading = false) }
+                    mutable.update { it.copy(loading = false, waiting = false) }
                 }
             }
         }
@@ -53,7 +58,7 @@ class CatalogViewModel(private val requestTimeoutMillis: Long = 20_000, initialP
         generation++
         deadline?.cancel(); deadline = null
         job?.cancel(); job = null
-        mutable.update { it.copy(loading = false) }
+        mutable.update { it.copy(loading = false, waiting = false) }
     }
     fun stopLoading() {
         cancel()

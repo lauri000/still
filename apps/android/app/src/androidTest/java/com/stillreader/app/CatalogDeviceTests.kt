@@ -49,7 +49,7 @@ class CatalogDeviceTests {
             compose.waitUntil(10_000) { !library.state.value.loading && catalog.state.value.page != null }
             compose.onNodeWithTag("catalogSearch").performTextInput("Austen")
             compose.onNodeWithTag("catalogSearch").performImeAction()
-            compose.waitUntil(5_000) { requests.any { "search=Austen" in it } }
+            compose.waitUntil(5_000) { requests.any { "search=austen" in it } }
             compose.onNodeWithText("A quiet test").performClick()
             compose.onNodeWithTag("downloadEPUB").performClick()
             compose.waitUntil(20_000) { library.state.value.books.isNotEmpty() && library.state.value.importing == null }
@@ -79,11 +79,23 @@ class CatalogDeviceTests {
     }
     @Test fun liveGutenbergBrowse() = runBlocking {
         org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("liveCatalog") == "true")
-        val page = withTimeout(20_000) { GutendexProvider().search("", "") }
+        val page = withTimeout(CATALOG_REQUEST_TIMEOUT_MILLIS) { GutendexProvider().search("", "") }
         assertTrue("Live Gutenberg returned no downloadable books", page.books.isNotEmpty())
         assertTrue(page.books.all { it.id.startsWith("gutenberg:") && it.epubURL != null })
         assertNotNull(page.next)
     }
+    @Test fun liveGutenbergAnarchySearch() = runBlocking {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("liveCatalog") == "true")
+        val provider = GutendexProvider()
+        for (language in listOf("", "en")) {
+            val start = System.nanoTime()
+            val page = withTimeout(CATALOG_REQUEST_TIMEOUT_MILLIS) { provider.search("Anarchy", language) }
+            assertTrue("Live anarchy search returned no matching EPUBs", page.books.any { it.title.contains("anarchy", ignoreCase = true) })
+            assertTrue(page.books.all { it.id.startsWith("gutenberg:") && it.epubURL != null })
+            android.util.Log.i("CatalogSearchTest", "anarchy / $language: ${page.books.size} books in ${(System.nanoTime() - start) / 1_000_000}ms")
+        }
+    }
+
     @Test fun networkPermissionAndCancelRetryStates() {
         val root = File(application.cacheDir, "catalog-permission-${java.util.UUID.randomUUID()}")
         val allowed = mutableStateOf(false)

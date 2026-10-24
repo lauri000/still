@@ -1,5 +1,8 @@
 import Foundation
 
+// One request gets enough time for a cold Gutendex search; the UI enforces the same deadline.
+let catalogRequestTimeout: TimeInterval = 60
+
 struct CatalogBook: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
@@ -62,7 +65,7 @@ actor CatalogClient {
     private let redirects = CatalogRedirects()
     init(session: URLSession? = nil) {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForRequest = catalogRequestTimeout
         config.timeoutIntervalForResource = 180
         config.httpMaximumConnectionsPerHost = 3
         config.urlCredentialStorage = nil
@@ -122,7 +125,9 @@ struct GutendexProvider: CatalogProvider {
         var url = URLComponents(url: endpoint, resolvingAgainstBaseURL: true)!
         // Keep public-domain and EPUB validation in parse; redundant server filters stall public queries.
         url.queryItems = []
-        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { url.queryItems?.append(URLQueryItem(name: "search", value: query.trimmingCharacters(in: .whitespacesAndNewlines))) }
+        // Share cache entries for case-insensitive searches without changing the user's text.
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !normalized.isEmpty { url.queryItems?.append(URLQueryItem(name: "search", value: normalized)) }
         if !language.isEmpty { url.queryItems?.append(URLQueryItem(name: "languages", value: language)) }
         if url.queryItems?.isEmpty == true { url.queryItems = nil }
         return url.url!
