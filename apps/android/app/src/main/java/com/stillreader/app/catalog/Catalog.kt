@@ -4,6 +4,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import kotlinx.serialization.SerializationException
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -37,10 +38,14 @@ interface CatalogProvider {
     val name: String
     val client: CatalogClient
     suspend fun search(query: String, language: String, page: String? = null): CatalogPage
-    suspend fun download(book: CatalogBook, progress: (Float?) -> Unit): ByteArray {
-        val data = client.get(book.epubURL ?: error("This edition has no supported EPUB download."), 80 * 1024 * 1024, progress)
-        require(data.take(4) == listOf<Byte>(0x50, 0x4b, 0x03, 0x04)) { "The provider did not return an EPUB file." }
-        return data
+    suspend fun download(book: CatalogBook, destination: File, progress: (Float?) -> Unit) {
+        try {
+            client.getToFile(book.epubURL ?: error("This edition has no supported EPUB download."), destination, 80 * 1024 * 1024, progress)
+            val validHeader = destination.inputStream().use { input ->
+                input.read() == 0x50 && input.read() == 0x4b && input.read() == 0x03 && input.read() == 0x04
+            }
+            require(validHeader) { "The provider did not return an EPUB file." }
+        } catch (error: Throwable) { destination.delete(); throw error }
     }
 }
 // A socket disconnect can wait for its reader; cancellation must not block the UI.
@@ -51,9 +56,18 @@ open class CatalogClient(private val connect: (String) -> HttpURLConnection = { 
     private val cooldown = ConcurrentHashMap<String, Long>()
     private val cache = linkedMapOf<String, Pair<Long, ByteArray>>()
     private var cacheBytes = 0
-    open suspend fun get(url: String, limit: Int = 8 * 1024 * 1024, progress: (Float?) -> Unit = {}): ByteArray = withContext(Dispatchers.IO) {
+    open suspend fun get(url: String, limit: Int = 8 * 1024 * 1024, progress: (Float?) -> Unit = {}): ByteArray =
+        transfer(url, limit, progress, null)!!
+
+    /** Downloads share the same transport but never keep a whole EPUB in the response cache or heap. */
+    open suspend fun getToFile(url: String, destination: File, limit: Int, progress: (Float?) -> Unit = {}) {
+        try { transfer(url, limit, progress, destination) }
+        catch (error: Throwable) { destination.delete(); throw error }
+    }
+
+    private suspend fun transfer(url: String, limit: Int, progress: (Float?) -> Unit, destination: File?): ByteArray? = withContext(Dispatchers.IO) {
         val active = AtomicReference<HttpURLConnection?>()
-        fun receive(): ByteArray {
+        fun receive(): ByteArray? {
             val deadline = System.nanoTime() + 180_000_000_000L
             var target = url
             repeat(6) { redirect ->
@@ -61,7 +75,7 @@ open class CatalogClient(private val connect: (String) -> HttpURLConnection = { 
                 require(catalogURL(target) != null) { "Catalogs and downloads must use HTTPS." }
                 val host = URI(target).host
                 check((cooldown[host] ?: 0) <= System.currentTimeMillis()) { "This provider asked us to wait. Please try again later." }
-                synchronized(cache) { cache[target]?.let { (time, bytes) ->
+                if (destination == null) synchronized(cache) { cache[target]?.let { (time, bytes) ->
                     if (System.currentTimeMillis() - time < 300_000 && bytes.size <= limit) return bytes
                 } }
                 val connection = connect(target)
@@ -88,21 +102,25 @@ open class CatalogClient(private val connect: (String) -> HttpURLConnection = { 
                     check(code in 200..299) { "The provider could not complete this request (HTTP $code). Try again later." }
                     val expected = connection.contentLengthLong
                     require(expected <= limit) { "This download is too large." }
-                    val result = ByteArrayOutputStream()
-                    connection.inputStream.use { input ->
-                        val buffer = ByteArray(65_536)
-                        while (true) {
-                            ensureActive()
-                            check(System.nanoTime() < deadline) { "This download timed out. Please try again." }
-                            val n = input.read(buffer); if (n < 0) break
-                            require(result.size().toLong() + n <= limit) { "This download is too large." }
-                            result.write(buffer, 0, n)
-                            progress(if (expected > 0) (result.size().toFloat() / expected).coerceAtMost(1f) else null)
+                    val result = if (destination == null) ByteArrayOutputStream() else null
+                    (destination?.outputStream() ?: result!!).use { output ->
+                        connection.inputStream.use { input ->
+                            val buffer = ByteArray(65_536)
+                            var received = 0L
+                            while (true) {
+                                ensureActive()
+                                check(System.nanoTime() < deadline) { "This download timed out. Please try again." }
+                                val n = input.read(buffer); if (n < 0) break
+                                received += n
+                                require(received <= limit) { "This download is too large." }
+                                output.write(buffer, 0, n)
+                                progress(if (expected > 0) (received.toFloat() / expected).coerceAtMost(1f) else null)
+                            }
                         }
                     }
                     ensureActive(); progress(1f)
-                    val bytes = result.toByteArray()
-                    if (bytes.size <= 2 * 1024 * 1024) synchronized(cache) {
+                    val bytes = result?.toByteArray()
+                    if (bytes != null && bytes.size <= 2 * 1024 * 1024) synchronized(cache) {
                         if (cacheBytes + bytes.size > 16 * 1024 * 1024) { cache.clear(); cacheBytes = 0 }
                         cache.remove(target)?.let { cacheBytes -= it.second.size }
                         cache[target] = System.currentTimeMillis() to bytes; cacheBytes += bytes.size

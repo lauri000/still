@@ -1,6 +1,8 @@
 package com.stillreader.app.core
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Transient
 import java.util.regex.Pattern
 import java.util.Locale
@@ -78,17 +80,18 @@ data class Book(
     }
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class BookPage(
     val id: String = newID(),
     val number: Int,
     val label: String = number.toString(),
-    val extractedText: String = "",
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val extractedText: String = "",
     val text: String = extractedText,
     val isReviewed: Boolean = false,
     val isIncluded: Boolean = true,
-    val processedText: String? = null,
-    val textProcessingVersion: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val processedText: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val textProcessingVersion: Int? = null,
     val edited: Boolean? = null,
     val wordIndex: List<Int>? = null,
     val sourceHref: String? = null,

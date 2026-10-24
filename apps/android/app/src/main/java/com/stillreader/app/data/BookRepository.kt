@@ -2,6 +2,7 @@ package com.stillreader.app.data
 
 import com.stillreader.app.core.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.*
 import java.io.File
 import java.io.FilterOutputStream
@@ -16,6 +17,7 @@ fun File.hasPdfHeader(): Boolean = inputStream().use { input ->
     input.read(header) == 5 && header.contentEquals("%PDF-".toByteArray())
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 object BookCodec {
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -53,17 +55,16 @@ object BookCodec {
             pages = normalized.pages.map { it.copy(wordIndex = null) })
     }
     fun decode(text: String): Book = validate(json.decodeFromString<Book>(text))
-    fun encode(book: Book): String {
+    private fun persisted(book: Book): Book {
         val valid = validate(book)
-        val objectValue = json.encodeToJsonElement(valid).jsonObject.toMutableMap()
-        if (!valid.needsReprocessing) {
-            // The PDF is the retained source. Do not persist intermediate extraction/repair copies.
-            objectValue["pages"] = JsonArray(objectValue.getValue("pages").jsonArray.map { page ->
-                JsonObject(page.jsonObject.filterKeys { it !in setOf("extractedText", "processedText", "textProcessingVersion") })
-            })
-        }
-        return JsonObject(objectValue).toString()
+        // Shallow page copies retain the same text/index arrays. No intermediate JSON object tree.
+        return if (valid.needsReprocessing) valid else valid.copy(pages = valid.pages.map {
+            it.copy(extractedText = "", processedText = null, textProcessingVersion = null)
+        })
     }
+    fun encode(book: Book): String = json.encodeToString(persisted(book))
+    fun write(book: Book, output: OutputStream) = json.encodeToStream(persisted(book), output)
+    fun read(input: java.io.InputStream): Book = json.decodeFromStream<Book>(input)
 }
 
 @Serializable
@@ -72,7 +73,31 @@ data class BookBackup(val format: String = "still-book", val version: Int = 1, v
 data class LibraryResult(val books: List<Book>, val unreadableCount: Int)
 
 /** Call from the repository's serial IO queue. All book files are replaced atomically. */
+@OptIn(ExperimentalSerializationApi::class)
 class BookRepository(val root: File) {
+    @Serializable
+    private data class Identity(val id: String, val sourceFormat: String = "pdf", val catalogID: String? = null,
+        val contentHash: String? = null, val epubIdentifier: String? = null)
+    private fun matches(book: Book, catalogID: String?, contentHash: String?, epubIdentifier: String?) =
+        (book.catalogID != null && book.catalogID == catalogID) ||
+        (book.contentHash != null && book.contentHash == contentHash) ||
+        (book.epubIdentifier != null && book.epubIdentifier == epubIdentifier)
+
+    // Standalone repository callers need only identities; never deserialize every book for a lookup.
+    private fun findDuplicate(book: Book): Book? {
+        for (folder in root.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith('.') }) {
+            try {
+                val file = File(folder, "book.json")
+                val identity = file.inputStream().use { BookCodec.json.decodeFromStream<Identity>(it) }
+                if (identity.id == folder.name && identity.sourceFormat in setOf("pdf", "epub") &&
+                    File(folder, "original.${identity.sourceFormat}").isFile &&
+                    matches(book, identity.catalogID, identity.contentHash, identity.epubIdentifier)) {
+                    return file.inputStream().use { BookCodec.validate(BookCodec.read(it)) }
+                }
+            } catch (_: Exception) { /* Match load(): leave unreadable books untouched. */ }
+        }
+        return null
+    }
     fun directory(id: String): File {
         // Never resolve a path supplied by an imported document without validating it.
         require(Regex("[A-Fa-f0-9-]{36}").matches(id))
@@ -85,7 +110,7 @@ class BookRepository(val root: File) {
         var unreadable = 0
         val books = root.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith('.') }.mapNotNull { folder ->
             try {
-                val stored = BookCodec.json.decodeFromString<Book>(File(folder, "book.json").readText())
+                val stored = File(folder, "book.json").inputStream().use { BookCodec.read(it) }
                 var book = BookCodec.validate(stored)
                 require(book.id == folder.name && sourceFile(book).isFile)
                 if (book.isEpub && book.contentHash == null) book = book.copy(contentHash = EpubImporter.sha256(sourceFile(book)))
@@ -99,15 +124,16 @@ class BookRepository(val root: File) {
     fun save(book: Book) {
         val target = File(directory(book.id), "book.json")
         require(sourceFile(book).isFile) { "The original file is missing. Your existing files have been kept." }
-        atomicWrite(target, BookCodec.encode(book))
+        atomicWrite(target) { BookCodec.write(book, it) }
     }
-    fun insert(source: Book, original: File, deduplicate: Boolean = false): Book {
+    fun insert(source: Book, original: File, deduplicate: Boolean = false, existingBooks: List<Book>? = null): Book {
         var book = BookCodec.validate(source)
-        if (deduplicate) load().books.firstOrNull { existing ->
-            (book.catalogID != null && book.catalogID == existing.catalogID) ||
-            (book.contentHash != null && book.contentHash == existing.contentHash) ||
-            (book.epubIdentifier != null && book.epubIdentifier == existing.epubIdentifier)
-        }?.let { return it }
+        if (deduplicate) {
+            val duplicate = if (existingBooks == null) findDuplicate(book) else existingBooks.firstOrNull {
+                matches(book, it.catalogID, it.contentHash, it.epubIdentifier)
+            }
+            duplicate?.let { return it }
+        }
         if (directory(book.id).exists()) book = book.copy(id = newID(), importedAt = appleTimestamp())
         check(root.isDirectory || root.mkdirs())
         val staging = File(root, ".import-${newID()}")
@@ -115,7 +141,7 @@ class BookRepository(val root: File) {
         try {
             require(validSource(original, book)) { "The original file is invalid." }
             original.copyTo(File(staging, book.sourceFilename))
-            atomicWrite(File(staging, "book.json"), BookCodec.encode(book))
+            atomicWrite(File(staging, "book.json")) { BookCodec.write(book, it) }
             check(staging.renameTo(directory(book.id))) { "The book could not be saved." }
         } finally { staging.deleteRecursively() }
         return book
@@ -129,7 +155,7 @@ class BookRepository(val root: File) {
     fun export(book: Book, output: OutputStream) {
         // Stream the original source as base64 without another full-size byte copy.
         output.write("{\"format\":\"still-book\",\"version\":${if (book.isEpub) 2 else 1},\"book\":".toByteArray())
-        output.write(BookCodec.encode(book).toByteArray())
+        BookCodec.write(book, output)
         output.write(",\"${if (book.isEpub) "sourceData" else "pdfData"}\":\"".toByteArray())
         val nonClosing = object : FilterOutputStream(output) { override fun close() { flush() } }
         Base64.getEncoder().wrap(nonClosing).use { encoded -> sourceFile(book).inputStream().use { it.copyTo(encoded) } }
@@ -148,10 +174,10 @@ class BookRepository(val root: File) {
             }
         } catch (_: Exception) { false }
 
-        fun atomicWrite(target: File, text: String) {
+        fun atomicWrite(target: File, write: (OutputStream) -> Unit) {
             val temp = File(target.parentFile, ".${target.name}-${newID()}")
             try {
-                temp.outputStream().use { stream -> stream.write(text.toByteArray()); stream.fd.sync() }
+                temp.outputStream().use { stream -> write(stream); stream.fd.sync() }
                 Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } finally { temp.delete() }
         }

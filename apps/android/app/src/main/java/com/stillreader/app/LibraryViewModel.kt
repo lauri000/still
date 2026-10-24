@@ -166,12 +166,13 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     fun download(entry: CatalogBook, provider: CatalogProvider) {
         state.value.books.firstOrNull { it.catalogID == entry.id }?.let { readBook(it.id); return }
         beginImport { progress ->
-            val data = provider.download(entry) { fraction ->
-                progress(ImportProgress(fraction?.let { "Downloading EPUB… ${(it * 100).toInt()}%" } ?: "Downloading EPUB…", fraction ?: -1f))
-            }
-            progress(ImportProgress("Preparing book…", 0f))
-            val result = importer.importEpub(data, progress)
+            val file = File.createTempFile("still-download-", ".epub", getApplication<Application>().cacheDir)
             try {
+                provider.download(entry, file) { fraction ->
+                    progress(ImportProgress(fraction?.let { "Downloading EPUB… ${(it * 100).toInt()}%" } ?: "Downloading EPUB…", fraction ?: -1f))
+                }
+                progress(ImportProgress("Preparing book…", 0f))
+                val result = importer.importEpub(file, progress)
                 val cover = if (result.book.coverData == null && entry.coverURL != null) {
                     try { Base64.getEncoder().encodeToString(provider.client.get(entry.coverURL, 2 * 1024 * 1024)) }
                     catch (cancelled: CancellationException) { throw cancelled }
@@ -182,11 +183,14 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                     languageCodes = entry.languages.takeIf { it.isNotEmpty() } ?: result.book.languageCodes,
                     synopsis = entry.summary, sourceURL = entry.webURL ?: entry.epubURL, coverData = cover)
                 result.copy(book = withContext(Dispatchers.Default) { ReaderPipeline.update(result.book, metadata) })
-            } catch (error: Throwable) { result.source.delete(); throw error }
+            } catch (error: Throwable) { file.delete(); throw error }
         }
     }
 
     private fun beginImport(load: suspend ((ImportProgress) -> Unit) -> ImportedBook) = prepareBook("Opening book…") {
+        closeReader()
+        // Old reader projections are disposable; persisted text, indexes and progress remain intact.
+        state.value.books.forEach { it.readerCache.clear() }
         var imported: ImportedBook? = null
         try {
             imported = load { progress -> mutable.update { it.copy(importing = progress) } }
@@ -194,7 +198,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
             // Once the commit begins, complete it and publish the saved book even if Cancel was tapped.
             withContext(NonCancellable) {
                 val source = imported
-                val book = repositoryOperation { repository.insert(source.book, source.source, source.deduplicate) }
+                val book = repositoryOperation { repository.insert(source.book, source.source, source.deduplicate, state.value.books) }
                 saved["selectedID"] = book.id
                 mutable.update { it.copy(books = listOf(book) + it.books.filterNot { existing -> existing.id == book.id }, selectedID = book.id) }
                 openReader()
@@ -275,7 +279,7 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
     fun closeReader() {
         openRequest++
         openJob?.cancel(); openJob = null
-        state.value.reader?.pause()
+        state.value.reader?.let { reader -> reader.pause(); reader.book.readerCache.clear() }
         mutable.update { it.copy(reader = null, opening = false) }
         saved["readerOpen"] = false
     }

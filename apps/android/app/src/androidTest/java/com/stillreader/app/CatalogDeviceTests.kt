@@ -32,6 +32,10 @@ class CatalogDeviceTests {
                 return if (url.endsWith(".epub")) fixture("sample.epub").also { progress(.5f); progress(1f) }
                 else if (url.endsWith(".jpg")) byteArrayOf() else fixture("catalog-gutendex.json")
             }
+            override suspend fun getToFile(url: String, destination: File, limit: Int, progress: (Float?) -> Unit) {
+                requests += url
+                destination.writeBytes(fixture("sample.epub")); progress(.5f); progress(1f)
+            }
         }
         lateinit var library: LibraryViewModel
         lateinit var catalog: CatalogViewModel

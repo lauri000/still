@@ -8,16 +8,85 @@ import org.junit.Test
 import java.net.HttpURLConnection
 import java.net.URL
 
-private class Response(url: String, val status: Int = 200, val bytes: ByteArray = "ok".toByteArray(), val headers: Map<String, String> = emptyMap()) : HttpURLConnection(URL(url)) {
+private class Response(url: String, val status: Int = 200, val bytes: ByteArray = "ok".toByteArray(), val headers: Map<String, String> = emptyMap(), val declaredLength: Long = bytes.size.toLong()) : HttpURLConnection(URL(url)) {
     override fun connect() { }
     override fun disconnect() { }
     override fun usingProxy() = false
     override fun getResponseCode() = status
-    override fun getContentLengthLong() = bytes.size.toLong()
+    override fun getContentLengthLong() = declaredLength
     override fun getInputStream() = bytes.inputStream()
     override fun getHeaderField(name: String) = headers[name]
 }
 class CatalogNetworkTests {
+    @Test fun streamedDownloadFollowsRedirectsReportsProgressAndDoesNotCacheTheBook() = runTest {
+        val calls = mutableListOf<String>()
+        val bytes = byteArrayOf(0x50, 0x4b, 3, 4) + ByteArray(160_000) { (it % 251).toByte() }
+        val client = CatalogClient { url ->
+            calls += url
+            if (url.endsWith("/book")) Response(url, 302, headers = mapOf("Location" to "https://cdn.example/book.epub"))
+            else Response(url, bytes = bytes)
+        }
+        val file = java.io.File.createTempFile("streamed-epub", ".epub")
+        val progress = mutableListOf<Float?>()
+        try {
+            repeat(2) { GutendexProvider(client).download(CatalogBook("test", "Test", epubURL = "https://catalog.example/book"), file) { progress += it } }
+            assertArrayEquals(bytes, file.readBytes())
+            assertEquals(4, calls.size)
+            assertTrue(progress.any { it != null && it > 0f && it < 1f })
+            assertEquals(1f, progress.last())
+        } finally { file.delete() }
+    }
+    @Test fun streamedOversizeOrBrokenTransfersRemovePartialFiles() = runTest {
+        val file = java.io.File.createTempFile("partial-epub", ".epub")
+        try {
+            for (declared in listOf(-1L, 200L)) {
+                val client = CatalogClient { url -> Response(url, bytes = ByteArray(200), declaredLength = declared) }
+                assertTrue(runCatching { client.getToFile("https://catalog.example/book", file, 100) }.isFailure)
+                assertFalse(file.exists())
+            }
+            val broken = CatalogClient { url -> object : HttpURLConnection(URL(url)) {
+                override fun connect() { }
+                override fun disconnect() { }
+                override fun usingProxy() = false
+                override fun getResponseCode() = 200
+                override fun getInputStream() = object : java.io.InputStream() {
+                    var first = true
+                    override fun read(): Int = error("unused")
+                    override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                        if (!first) throw java.io.IOException("broken transfer")
+                        first = false; bytes[offset] = 0x50; return 1
+                    }
+                }
+            } }
+            assertTrue(runCatching { broken.getToFile("https://catalog.example/book", file, 100) }.isFailure)
+            assertFalse(file.exists())
+        } finally { file.delete() }
+    }
+    @Test fun cancellingStreamedDownloadRemovesThePartialFile() = runTest {
+        val reading = CompletableDeferred<Unit>()
+        val released = java.util.concurrent.CountDownLatch(1)
+        val file = java.io.File.createTempFile("cancelled-epub", ".epub")
+        val client = CatalogClient { url -> object : HttpURLConnection(URL(url)) {
+            override fun connect() { }
+            override fun disconnect() { released.countDown() }
+            override fun usingProxy() = false
+            override fun getResponseCode() = 200
+            override fun getInputStream() = object : java.io.InputStream() {
+                override fun read(): Int {
+                    reading.complete(Unit)
+                    released.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    throw java.io.IOException("Connection closed")
+                }
+            }
+        } }
+        val transfer = launch { client.getToFile("https://catalog.example/book", file, 100) }
+        try {
+            reading.await(); transfer.cancelAndJoin()
+            assertEquals(0L, released.count)
+            assertFalse(file.exists())
+        } finally { released.countDown(); file.delete() }
+    }
+
     @Test fun redirectsFollowHTTPSAndRejectDowngrades() = runTest {
         val calls = mutableListOf<Response>()
         val client = CatalogClient { url ->
@@ -48,7 +117,11 @@ class CatalogNetworkTests {
         val large = CatalogClient { url -> Response(url, bytes = ByteArray(100)) }
         assertTrue(runCatching { large.get("https://catalog.example/book", limit = 10) }.isFailure)
         val html = GutendexProvider(CatalogClient { url -> Response(url, bytes = "<html>Login</html>".toByteArray()) })
-        assertTrue(runCatching { html.download(CatalogBook("test", "Test", epubURL = "https://catalog.example/book.epub")) { } }.isFailure)
+        val file = java.io.File.createTempFile("invalid-epub", ".epub")
+        try {
+            assertTrue(runCatching { html.download(CatalogBook("test", "Test", epubURL = "https://catalog.example/book.epub"), file) { } }.isFailure)
+            assertFalse(file.exists())
+        } finally { file.delete() }
     }
     @Test fun cancellationClosesAnActiveTransfer() = runTest {
         val reading = CompletableDeferred<Unit>()

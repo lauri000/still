@@ -68,10 +68,8 @@ class BookImporter(private val context: Context) {
         } catch (error: Throwable) { file.delete(); throw error }
     }
 
-    suspend fun importEpub(data: ByteArray, progress: (ImportProgress) -> Unit): ImportedBook = withContext(Dispatchers.IO) {
-        val file = File.createTempFile("still-download-", ".epub", context.cacheDir)
+    suspend fun importEpub(file: File, progress: (ImportProgress) -> Unit): ImportedBook = withContext(Dispatchers.IO) {
         try {
-            file.writeBytes(data)
             val job = currentCoroutineContext()
             ImportedBook(EpubImporter.extract(file, "download.epub", entities, { job.ensureActive() }, progress), file, deduplicate = true)
         } catch (error: Throwable) { file.delete(); throw error }

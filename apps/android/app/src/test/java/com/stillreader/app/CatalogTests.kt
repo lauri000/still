@@ -75,6 +75,11 @@ class CatalogTests {
             val first = repo.insert(source, epub, deduplicate = true)
             val second = repo.insert(source.copy(id = com.stillreader.app.core.newID()), epub, deduplicate = true)
             assertEquals(first.id, second.id); assertEquals(1, repo.load().books.size)
+            // In-memory progress wins over the saved copy; deduplication must not reload the library.
+            val advanced = first.copy(position = com.stillreader.app.core.ReadingPosition(first.pages.first().id, 20))
+            assertSame(advanced, repo.insert(source, epub, deduplicate = true, existingBooks = listOf(advanced)))
+            // A fresh repository can also find duplicates using only streamed identities.
+            assertEquals(first.id, BookRepository(repo.root).insert(source, epub, deduplicate = true).id)
             assertArrayEquals(epub.readBytes(), java.io.File(repo.directory(first.id), "original.epub").readBytes())
             val out = ByteArrayOutputStream(); repo.export(first, out)
             val backup = BookCodec.json.decodeFromString<BookBackup>(out.toString("UTF-8"))

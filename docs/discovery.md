@@ -36,3 +36,13 @@ On GrapheneOS, discovery checks Still’s Network permission before connecting, 
 The public Gutendex service intermittently returned 503/timeouts during live verification. The app presents these failures with a retry action and respects any provider cooldown.
 
 On 24 October 2026, the reported `anarchy` query returned 10 titles. A cached request completed in 0.24s, but a fresh equivalent `Anarchy` request took 29.97s and `anarchy&languages=en` took 39.91s. Both returned HTTP 200. The former 20s UI deadline (and Android 30s read timeout) prematurely rejected these valid responses. The fix retains a bounded wait and does not restart a slow request or add automatic retries.
+
+## Android import memory (24 October 2026)
+
+Android streams EPUB downloads through the existing catalog transport directly into a temporary file, then passes that file to the existing EPUB importer. Catalog JSON and small covers retain their bounded memory cache; downloaded EPUBs do not enter it. The 80 MiB download limit, HTTPS/redirect policy, progress, cooldowns and cancellation remain in force. Failed or canceled transfers remove temporary files.
+
+Book storage and backup export stream JSON through the existing serializer and atomic-write path. Prepared books omit extraction/repair copies without first constructing a JSON object tree for every word index. Library loading also decodes from a stream. The portable schema and original EPUB bytes are unchanged.
+
+Import duplicate checks reuse the loaded library, including its current reading positions. Standalone repository lookups stream only identifying fields and load a complete book only on a match. Reader projections are built when opening a book and cleared when closing it or starting another import. Persisted text, indexes, edits and positions remain available.
+
+See [the memory regression](import-memory.md) for the reproduced 0.1.24 failure, before/after measurements and fixture setup.

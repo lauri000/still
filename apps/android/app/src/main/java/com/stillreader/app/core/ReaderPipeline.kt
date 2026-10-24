@@ -67,9 +67,8 @@ object ReaderPipeline {
         val matches = if (book.isEpub) pages.flatMapIndexed { index, page -> page.headings.orEmpty().map { h ->
             HeadingMatch(ReadingStructure.normalize(page.text.substring(h.start, h.end)), index, h.level, h.start, h.end)
         } } else ReadingStructure(full, Tokenizer.tokens(full)).matches.distinct()
-        return book.copy(schemaVersion = if (book.isEpub) 3 else 2, pages = pages, pipelineVersion = version(book), headingMatches = matches, readerCache = ReaderCache()).also {
-            it.readerCache.get(it)
-        }
+        // Reader projections are materialized only when opening a book, not during import/save/migration.
+        return book.copy(schemaVersion = if (book.isEpub) 3 else 2, pages = pages, pipelineVersion = version(book), headingMatches = matches, readerCache = ReaderCache())
     }
 
     /** User edits update only changed page indexes. Old pipeline output requires explicit reprocessing. */
