@@ -135,25 +135,49 @@ class CoreTests {
         assertEquals("three", session.current?.word?.text)
         assertFalse(session.state.value.scrubbing)
     }
-    @Test fun uncheckedAndBlankPagesReadImmediatelyByDefault() = runTest {
-        val source = book("First", "", "Last").let { it.copy(pages = it.pages.map { p -> p.copy(isReviewed = false) }) }
+    @Test fun uncheckedAndBlankPagesReadWithoutChangingApproval() = runTest {
+        val source = book("", "First", "", "Last", "").let { it.copy(pages = it.pages.map { p -> p.copy(isReviewed = false) }) }
         val session = ReadingSession(source, backgroundScope) {}
         session.wordsPerMinute = 900.0; session.naturalPauses = false; session.play()
         advanceTimeBy(200); runCurrent()
         assertTrue(session.state.value.finished)
-        assertNull(session.state.value.blockedPage)
         assertTrue(session.book.pages.none { it.isReviewed })
     }
-    @Test fun strictReviewKeepsBlankPageBlockedAfterReopen() = runTest {
-        val source = book("before", "", "after")
+    @Test fun savedBlankPageResumesAtReadableText() = runTest {
+        val source = book("before", "", "after", "")
+        for (page in listOf(1, 3)) {
+            val session = ReadingSession(source.copy(position = ReadingPosition(source.pages[page].id, 0)), backgroundScope) {}
+            assertEquals("after", session.current?.word?.text)
+            session.play(); assertTrue(session.state.value.playing); session.pause()
+        }
+    }
+    @Test fun seekingBlankPagesSelectsReadableTextAndSavesIt() = runTest {
+        val source = book("before", "", "after", "")
         var saved: ReadingPosition? = null
         val session = ReadingSession(source, backgroundScope) { saved = it }
-        session.allowUnreviewed = false; session.wordsPerMinute = 900.0; session.play()
-        advanceTimeBy(150); runCurrent()
-        assertEquals(1, session.state.value.blockedPage)
-        val restored = ReadingSession(source.copy(position = saved), backgroundScope) {}
-        restored.allowUnreviewed = false; restored.play()
-        assertEquals(1, restored.state.value.blockedPage); assertFalse(restored.state.value.playing)
+        for (page in listOf(1, 3)) {
+            session.seek(0); session.seekPage(page)
+            assertEquals("after", session.current?.word?.text)
+            assertEquals(source.pages[2].id, saved?.pageID)
+            assertEquals("after", ReadingSession(source.copy(position = saved), backgroundScope) {}.current?.word?.text)
+        }
+    }
+    @Test fun bookWithoutTextCannotPlayOrSaveAPosition() = runTest {
+        for (source in listOf(book(), book("", "  "))) {
+            var saved: ReadingPosition? = null
+            val session = ReadingSession(source, backgroundScope) { saved = it }
+            session.seekPage(0); session.play(); session.pause()
+            assertFalse(session.state.value.playing); assertFalse(session.state.value.finished)
+            assertNull(session.current); assertNull(saved)
+        }
+    }
+    @Test fun scrubbingToUncheckedTextResumesPlayback() = runTest {
+        val source = book("Reviewed", "Needs review").let { it.copy(pages = it.pages.map { p -> p.copy(isReviewed = false) }) }
+        val session = ReadingSession(source, backgroundScope) {}
+        session.beginScrubbing(); session.scrub(1); session.endScrubbing(); session.play()
+        assertTrue(session.state.value.playing)
+        assertEquals("Needs", session.current?.word?.text)
+        session.pause()
     }
     @Test fun replayAndSeekingRespectTrimAndExcludedPages() = runTest {
         val source = book("Cover", "Heading Start here", "Excluded").let {

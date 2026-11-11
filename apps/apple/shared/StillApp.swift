@@ -10,7 +10,6 @@ struct StillApp: App {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("StillUITests")
             if arguments.contains("--reset-library") {
                 try? FileManager.default.removeItem(at: root)
-                UserDefaults.standard.set(arguments.contains("--require-review"), forKey: "pauseAtUncheckedPages")
                 UserDefaults.standard.set(false, forKey: "focusLetter")
                 UserDefaults.standard.set(100, forKey: "activeWordSizePercent")
                 UserDefaults.standard.set(22, forKey: "passageTextSize")

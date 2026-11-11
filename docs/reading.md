@@ -21,7 +21,7 @@ The text icon switches between single-line reading and a manually scrollable pas
 
 **Focus letter** in reading options highlights one letter of the current word in red. Single-line view holds that letter at the center as words advance. Passage view has no focus-letter treatment. It is off by default and remembered on this device across books and app launches. In single-line view, turn it off to center the whole word again. The cue uses a simple word-length rule, ignores punctuation when choosing a letter, and preserves accents and complete characters. Words without letters or numbers stay centered without a highlight. This is an optional visual aid, not a promise of faster reading or better comprehension.
 
-Optional tools live in the **…** menu beside the book in the library: **Edit text**, **Chapters**, **Choose starting word…**, book metadata, backups, and deletion. Choose starting word supports a start midway through a page and **Restore beginning**. The PDF and full page text are always retained. Review and approval are optional; **Pause at unchecked pages** in single-line options enables the stricter workflow for that mode. Passage view reads unchecked text and skips empty pages regardless of that preference. By default, unchecked text plays immediately and pages with no selectable text are skipped.
+Optional tools live in the **…** menu beside the book in the library: **Edit text**, **Chapters**, **Choose starting word…**, book metadata, backups, and deletion. Choose starting word supports a start midway through a page and **Restore beginning**. The PDF and full page text are always retained. Review and approval are optional. Both reading modes read unchecked text and skip pages with no selectable text.
 
 ## Book typography and contents
 

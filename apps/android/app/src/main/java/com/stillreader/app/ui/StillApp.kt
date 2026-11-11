@@ -87,8 +87,7 @@ fun StillApp(model: LibraryViewModel) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             state.reader != null -> ReaderScreen(state.reader!!, model,
-                onClose = { model.select(null) },
-                onReview = { page -> model.closeReader(); toolPage = page; tool = "Edit text" })
+                onClose = { model.select(null) })
             book != null && tool != null -> BookTools(book, tool!!, toolPage, model, onClose = { tool = null; if (model.state.value.reader == null && !model.state.value.opening) model.select(null) })
             discovering -> CatalogScreen(model, back = { discovering = false })
             else -> LibraryScreen(state.books, model::readBook, discover = { discovering = true },

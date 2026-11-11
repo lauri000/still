@@ -266,11 +266,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
                 }
                 session.wordsPerMinute = preferences.getInt("wpm", 250).toDouble()
                 session.naturalPauses = preferences.getBoolean("naturalPauses", true)
-                session.allowUnreviewed = !preferences.getBoolean("strictReview", false)
                 seekPage?.let { if (seekOffset != null) session.seekPosition(ReadingPosition(sessionBook.pages[it].id, seekOffset)) else session.seekPage(it) }
                 mutable.update { it.copy(reader = session, opening = false) }
                 saved["readerOpen"] = true
-                if (session.tokens.isEmpty()) session.play()
             } catch (_: CancellationException) { }
             catch (error: Exception) { report(error) }
             finally { if (request == openRequest) mutable.update { it.copy(opening = false) } }
@@ -295,9 +293,9 @@ class LibraryViewModel @JvmOverloads constructor(application: Application, priva
         state.value.reader?.wordsPerMinute = value
         preferences.edit().putInt("wpm", value.toInt()).apply()
     }
-    fun options(natural: Boolean, strict: Boolean) {
-        state.value.reader?.let { it.naturalPauses = natural; it.allowUnreviewed = !strict }
-        preferences.edit().putBoolean("naturalPauses", natural).putBoolean("strictReview", strict).apply()
+    fun setNaturalPauses(enabled: Boolean) {
+        state.value.reader?.naturalPauses = enabled
+        preferences.edit().putBoolean("naturalPauses", enabled).apply()
     }
     fun export(uri: Uri, bookID: String) {
         flushEdits()

@@ -746,9 +746,9 @@ final class StillUITests: XCTestCase {
     }
 
     @MainActor
-    func testOptInReviewAndEditsSurviveRelaunch() throws {
+    func testOptionalReviewAndEditsSurviveRelaunch() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reset-library", "--require-review"]
+        app.launchArguments = ["--ui-testing", "--reset-library"]
         app.launch()
         XCTAssertTrue(app.buttons["book-The art of attention"].waitForExistence(timeout: 15))
         app.buttons["book-The art of attention"].tap()
@@ -759,8 +759,8 @@ final class StillUITests: XCTestCase {
         editor.typeText("A corrected introduction. ")
         readBook(in: app)
         corner(in: app).press(forDuration: 0.3)
-        XCTAssertTrue(app.buttons["Review this page"].waitForExistence(timeout: 5))
-        app.buttons["Review this page"].tap()
+        app.buttons["Close reader"].tap()
+        openTextEditor(in: app)
         app.buttons["approvePage"].tap()
         app.buttons["Previous page"].tap()
         app.terminate()
@@ -790,7 +790,6 @@ final class StillUITests: XCTestCase {
         let play = corner(in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         play.press(forDuration: 0.5)
-        XCTAssertFalse(app.buttons["Review this page"].exists)
         XCTAssertTrue((play.value as? String ?? "").contains("paused"))
         app.buttons["Close reader"].tap()
 

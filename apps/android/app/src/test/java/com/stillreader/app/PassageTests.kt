@@ -61,15 +61,15 @@ class PassageTests {
         s.play(); advanceTimeBy(101); runCurrent(); assertEquals(1, s.state.value.index)
         advanceTimeBy(90); runCurrent(); assertEquals(2, s.state.value.index)
     }
-    @Test fun scrollingBypassesReviewWithoutChangingSingleLinePreferences() = runTest {
+    @Test fun uncheckedTextReadsInBothModesWithoutChangingSingleLinePreferences() = runTest {
         val s = ReadingSession(book("one.", "two").let { it.copy(pages = it.pages.map { page -> page.copy(isReviewed = false) }) }, backgroundScope) { }
-        s.allowUnreviewed = false; s.naturalPauses = true; s.wordsPerMinute = 321.0
-        s.play(); assertEquals(0, s.state.value.blockedPage)
+        s.naturalPauses = true; s.wordsPerMinute = 321.0
+        s.play(); assertTrue(s.state.value.playing)
         s.passageMode = true; s.browse(1)
-        assertNull(s.state.value.blockedPage); assertEquals(1, s.state.value.index)
+        assertEquals(1, s.state.value.index)
         s.play(); advanceTimeBy(1000); runCurrent(); assertFalse(s.state.value.playing)
-        assertTrue(s.naturalPauses); assertFalse(s.allowUnreviewed); assertEquals(321.0, s.wordsPerMinute, .001)
-        s.passageMode = false; s.play(); assertEquals(1, s.state.value.blockedPage)
+        assertTrue(s.naturalPauses); assertEquals(321.0, s.wordsPerMinute, .001)
+        s.passageMode = false; s.play(); assertTrue(s.state.value.playing); s.pause()
     }
     @Test fun largeBookAndTrimKeepStableSourcePositions() {
         val b = book(*Array(300) { (1..200).joinToString(" ") { "word$it" } })

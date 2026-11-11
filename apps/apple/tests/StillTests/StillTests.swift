@@ -52,17 +52,6 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(Tokenizer.index(for: position, in: Tokenizer.tokens(for: book)), 1)
     }
 
-    func testReviewGateDoesNotSilentlySkipBlankIncludedPages() {
-        let book = makeBook(["Before", "", "After"])
-        XCTAssertEqual(Tokenizer.blockingPage(in: book, from: 0, through: 2), 1)
-    }
-
-    func testExcludedUnreviewedPagesDoNotBlock() {
-        var book = makeBook(["Before", "", "After"])
-        book.pages[1].isIncluded = false
-        XCTAssertNil(Tokenizer.blockingPage(in: book, from: 0, through: 2))
-    }
-
     func testNaturalPausesAndClampedSpeed() {
         let plain = TextWord(text: "word", offset: 0, length: 4, endsParagraph: false)
         let sentence = TextWord(text: "word.”", offset: 0, length: 6, endsParagraph: false)
@@ -175,19 +164,6 @@ final class PlaybackTests: XCTestCase {
         XCTAssertNotNil(saved)
     }
 
-    func testPlaybackBlocksAtUnreviewedPage() async throws {
-        var book = makeBook(["one", "two"])
-        book.pages[1].isReviewed = false
-        let engine = ReaderEngine(book: book)
-        engine.wordsPerMinute = 900
-        engine.allowUnreviewed = false
-        engine.play()
-        try await Task.sleep(for: .milliseconds(160))
-        XCTAssertFalse(engine.isPlaying)
-        XCTAssertEqual(engine.blockedPage, 1)
-        XCTAssertEqual(engine.index, 0)
-    }
-
     func testPlaybackFinishesAfterShowingLastWord() async throws {
         let engine = ReaderEngine(book: makeBook(["one"]))
         engine.wordsPerMinute = 900
@@ -197,47 +173,6 @@ final class PlaybackTests: XCTestCase {
         XCTAssertTrue(engine.isFinished)
         XCTAssertFalse(engine.isPlaying)
         XCTAssertEqual(engine.progress, 1)
-    }
-
-    func testBlockedBlankPageIsStillBlockedAfterReopening() async throws {
-        var book = makeBook(["before", "", "after"])
-        let engine = ReaderEngine(book: book)
-        engine.wordsPerMinute = 900
-        engine.onCheckpoint = { book.position = $0 }
-        engine.allowUnreviewed = false
-        engine.play()
-        try await Task.sleep(for: .milliseconds(160))
-        XCTAssertEqual(engine.blockedPage, 1)
-        XCTAssertEqual(book.position?.pageID, book.pages[1].id)
-        let reopened = ReaderEngine(book: book)
-        reopened.allowUnreviewed = false
-        reopened.play()
-        XCTAssertFalse(reopened.isPlaying)
-        XCTAssertEqual(reopened.blockedPage, 1)
-    }
-
-    func testTrailingBlankPageIsStillBlockedAfterReopening() async throws {
-        var book = makeBook(["before", ""])
-        let engine = ReaderEngine(book: book)
-        engine.wordsPerMinute = 900
-        engine.onCheckpoint = { book.position = $0 }
-        engine.allowUnreviewed = false
-        engine.play()
-        try await Task.sleep(for: .milliseconds(160))
-        XCTAssertEqual(engine.blockedPage, 1)
-        let reopened = ReaderEngine(book: book)
-        reopened.allowUnreviewed = false
-        reopened.play()
-        XCTAssertFalse(reopened.isPlaying)
-        XCTAssertEqual(reopened.blockedPage, 1)
-    }
-
-    func testEmptyLeadingPageRequiresReview() {
-        let engine = ReaderEngine(book: makeBook(["", "one"]))
-        engine.allowUnreviewed = false
-        engine.play()
-        XCTAssertEqual(engine.blockedPage, 0)
-        XCTAssertFalse(engine.isPlaying)
     }
 
     func testEditingInvalidatesApprovalWithoutChangingExtractedText() async {
@@ -403,17 +338,17 @@ final class ScrubbingTests: XCTestCase {
         engine.pause()
     }
 
-    func testScrubbingStillHonorsReviewPreferenceOnResume() {
+    func testScrubbingToUncheckedTextResumesPlayback() {
         var book = makeBook(["Reviewed", "Needs review"])
         book.pages[1].isReviewed = false
         let engine = ReaderEngine(book: book)
-        engine.allowUnreviewed = false
         engine.beginScrubbing()
         engine.scrub(by: 1)
         engine.endScrubbing()
         engine.play()
-        XCTAssertFalse(engine.isPlaying)
-        XCTAssertEqual(engine.blockedPage, 1)
+        XCTAssertTrue(engine.isPlaying)
+        XCTAssertEqual(engine.current?.word.text, "Needs")
+        engine.pause()
     }
 
     func testEmptyBookCannotStartScrubbing() {
@@ -429,8 +364,8 @@ final class ScrubbingTests: XCTestCase {
 
 @MainActor
 final class ImmediateReadingTests: XCTestCase {
-    func testUncheckedPagesReadByDefaultWithoutFalselyApprovingThem() async throws {
-        var book = makeBook(["First", "", "Last"])
+    func testUncheckedPagesAndBlankPagesReadWithoutChangingApproval() async throws {
+        var book = makeBook(["", "First", "", "Last", ""])
         for index in book.pages.indices { book.pages[index].isReviewed = false }
         let engine = ReaderEngine(book: book)
         engine.wordsPerMinute = 900
@@ -439,8 +374,47 @@ final class ImmediateReadingTests: XCTestCase {
         XCTAssertTrue(engine.isPlaying)
         try await Task.sleep(for: .milliseconds(250))
         XCTAssertTrue(engine.isFinished)
-        XCTAssertNil(engine.blockedPage)
         XCTAssertTrue(engine.book.pages.allSatisfy { !$0.isReviewed })
+    }
+
+    func testSavedBlankPageResumesAtReadableText() {
+        var book = makeBook(["before", "", "after", ""])
+        for pageIndex in [1, 3] {
+            book.position = ReadingPosition(pageID: book.pages[pageIndex].id, utf16Offset: 0)
+            let engine = ReaderEngine(book: book)
+            XCTAssertEqual(engine.current?.word.text, "after")
+            engine.play()
+            XCTAssertTrue(engine.isPlaying)
+            engine.pause()
+        }
+    }
+
+    func testSeekingBlankPagesSelectsReadableTextAndSavesIt() {
+        var book = makeBook(["before", "", "after", ""])
+        let engine = ReaderEngine(book: book)
+        engine.onCheckpoint = { book.position = $0 }
+        for pageIndex in [1, 3] {
+            engine.seek(0)
+            engine.seekPage(pageIndex)
+            XCTAssertEqual(engine.current?.word.text, "after")
+            XCTAssertEqual(book.position?.pageID, book.pages[2].id)
+            XCTAssertEqual(ReaderEngine(book: book).current?.word.text, "after")
+        }
+    }
+
+    func testBookWithoutTextCannotPlayOrSaveAPosition() {
+        for texts in [[], ["", "  \n"]] {
+            let engine = ReaderEngine(book: makeBook(texts))
+            var saved: ReadingPosition?
+            engine.onCheckpoint = { saved = $0 }
+            engine.seekPage(0)
+            engine.play()
+            engine.pause()
+            XCTAssertFalse(engine.isPlaying)
+            XCTAssertFalse(engine.isFinished)
+            XCTAssertNil(engine.current)
+            XCTAssertNil(saved)
+        }
     }
 
     func testReplayAndSeekingCannotReintroduceTrimmedBeginning() async throws {
@@ -448,7 +422,6 @@ final class ImmediateReadingTests: XCTestCase {
         book.pages[0].isReviewed = false
         book.setReadingStart(ReadingPosition(pageID: book.pages[1].id, utf16Offset: 8))
         let engine = ReaderEngine(book: book)
-        engine.allowUnreviewed = false
         engine.wordsPerMinute = 900
         engine.naturalPauses = false
         engine.seekPage(0)
@@ -459,7 +432,6 @@ final class ImmediateReadingTests: XCTestCase {
         XCTAssertTrue(engine.isFinished)
         engine.play()
         XCTAssertEqual(engine.current?.word.text, "Start")
-        XCTAssertNil(engine.blockedPage)
         engine.pause()
     }
 }

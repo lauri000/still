@@ -72,17 +72,17 @@ final class PassageLayoutTests: XCTestCase {
         engine.play(); try await Task.sleep(for: .milliseconds(100)); engine.pause()
         XCTAssertEqual(engine.index, 1)
     }
-    func testReviewAndSpeedPreferencesOnlyAffectSingleLinePlayback() async throws {
+    func testUncheckedTextReadsInBothModesAndPreservesSpeedPreferences() async throws {
         var book = makeBook(["one.", "two"])
         for index in book.pages.indices { book.pages[index].isReviewed = false }
         let engine = ReaderEngine(book: book)
-        engine.allowUnreviewed = false; engine.naturalPauses = true; engine.wordsPerMinute = 321
-        engine.play(); XCTAssertEqual(engine.blockedPage, 0)
+        engine.naturalPauses = true; engine.wordsPerMinute = 321
+        engine.play(); XCTAssertTrue(engine.isPlaying)
         engine.passageMode = true; engine.browse(1)
-        XCTAssertNil(engine.blockedPage); XCTAssertEqual(engine.index, 1)
+        XCTAssertEqual(engine.index, 1)
         engine.play(); try await Task.sleep(for: .milliseconds(100))
         XCTAssertFalse(engine.isPlaying); XCTAssertTrue(engine.naturalPauses)
-        XCTAssertFalse(engine.allowUnreviewed); XCTAssertEqual(engine.wordsPerMinute, 321)
-        engine.passageMode = false; engine.play(); XCTAssertEqual(engine.blockedPage, 1)
+        XCTAssertEqual(engine.wordsPerMinute, 321)
+        engine.passageMode = false; engine.play(); XCTAssertTrue(engine.isPlaying); engine.pause()
     }
 }

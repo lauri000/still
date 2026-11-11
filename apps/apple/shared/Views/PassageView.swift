@@ -40,7 +40,7 @@ struct PassageView: View {
                             PassageBlock(engine: engine, block: block, width: width, size: size, rowHeight: rowHeight)
                                 .id(PassageAnchor.block(block.id))
                         }
-                        if engine.tokens.isEmpty { Text("Ready?").font(.custom("Georgia", size: size)) }
+                        if engine.tokens.isEmpty { Text("No text").font(.custom("Georgia", size: size)) }
                     }
                     .background(PassageScrollInput { userScrolling = true })
                     .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, geometry.size.height)

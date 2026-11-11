@@ -194,13 +194,6 @@ object Tokenizer {
         val length = if (graphemePattern.findAll(word.text).count() > 12) 1.25 else 1.0
         return base * maxOf(punctuation, length, if (word.endsParagraph) 2.1 else 1.0)
     }
-
-    fun blockingPage(book: Book, from: Int, through: Int): Int? {
-        if (book.pages.isEmpty() || from > through || through < 0 || from >= book.pages.size) return null
-        return (from.coerceAtLeast(0)..through.coerceAtMost(book.pages.lastIndex)).firstOrNull {
-            book.includesPage(it) && (!book.pages[it].isReviewed || book.pages[it].hasNoText)
-        }
-    }
 }
 
 /** Scan an edit once before relocating the section's headings and chapter destinations. */

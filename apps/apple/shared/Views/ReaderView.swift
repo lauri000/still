@@ -9,7 +9,6 @@ struct ReaderView: View {
     @StateObject private var engine: ReaderEngine
     @AppStorage("readingWPM") private var savedWPM = 250.0
     @AppStorage("naturalPauses") private var savedNaturalPauses = true
-    @AppStorage("pauseAtUncheckedPages") private var pauseAtUncheckedPages = false
     @AppStorage("focusLetter") private var focusLetter = false
     @AppStorage("activeWordSizePercent") private var savedActiveWordSizePercent = 100
     private var activeWordSizePercent: Int { min(300, max(100, savedActiveWordSizePercent)) }
@@ -24,14 +23,12 @@ struct ReaderView: View {
     @GestureState private var dragInProgress = false
     @State private var speedFeedbackID = 0
     @State private var showSpeed = false
-    var onReviewPage: (Int) -> Void
     var onCheckpoint: (ReadingPosition) -> Void
 
-    init(book: Book, pdfURL: URL? = nil, onReviewPage: @escaping (Int) -> Void, onCheckpoint: @escaping (ReadingPosition) -> Void) {
+    init(book: Book, pdfURL: URL? = nil, onCheckpoint: @escaping (ReadingPosition) -> Void) {
         _engine = StateObject(wrappedValue: ReaderEngine(book: book))
         self.pdfURL = pdfURL
         bookProgress = BookProgress(book)
-        self.onReviewPage = onReviewPage
         self.onCheckpoint = onCheckpoint
     }
 
@@ -49,9 +46,7 @@ struct ReaderView: View {
         .onAppear {
             engine.wordsPerMinute = savedWPM
             engine.naturalPauses = savedNaturalPauses
-            engine.allowUnreviewed = !pauseAtUncheckedPages
             engine.onCheckpoint = onCheckpoint
-            if engine.tokens.isEmpty { engine.play() }
         }
         .task(id: speedFeedbackID) {
             guard speedFeedbackID > 0 else { return }
@@ -160,7 +155,6 @@ struct ReaderView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if let blocked = engine.blockedPage { reviewNotice(blocked).padding(16) }
             }
         }
         .accessibilityElement(children: .contain)
@@ -221,14 +215,6 @@ struct ReaderView: View {
             }
     }
     #endif
-    private func reviewNotice(_ index: Int) -> some View {
-        VStack(spacing: 10) {
-            Text(engine.book.isEpub ? "This text needs a check." : "Page \(engine.book.pages[index].label) needs a check.").font(.system(size: 14, weight: .medium))
-            Text("Compare its text with the PDF, then mark it reviewed. Blank or scanned pages can be entered manually or excluded.")
-                .font(.system(size: 12)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
-            Button("Review this page") { engine.pause(); onReviewPage(index); dismiss() }.buttonStyle(SecondaryButton())
-        }.padding(18).frame(maxWidth: 500).background(Palette.surface, in: RoundedRectangle(cornerRadius: 12))
-    }
     private var optionsSheet: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -257,14 +243,8 @@ struct ReaderView: View {
                 Divider()
                 Toggle("Natural pauses", isOn: Binding(get: { engine.naturalPauses }, set: { engine.naturalPauses = $0; savedNaturalPauses = $0 }))
                 Text("Slow down slightly at punctuation and paragraph breaks.").font(.system(size: 12)).foregroundStyle(Palette.muted)
-                Divider()
-                Toggle(engine.book.isEpub ? "Pause at unchecked text" : "Pause at unchecked pages", isOn: Binding(get: { pauseAtUncheckedPages }, set: {
-                    pauseAtUncheckedPages = $0
-                    engine.allowUnreviewed = !$0
-                })).accessibilityIdentifier("pauseAtUncheckedPages")
-                Text("Require page approval before playback.").font(.system(size: 12)).foregroundStyle(Palette.muted)
                 if engine.book.emptyReadingPageCount > 0 {
-                    Text("\(engine.book.emptyReadingPageCount) included page(s) have no selectable text and are skipped when this option is off. You can inspect them in Edit text.").font(.system(size: 12)).foregroundStyle(Palette.amber)
+                    Text("\(engine.book.emptyReadingPageCount) included page(s) have no selectable text and are skipped. You can inspect them in Edit text.").font(.system(size: 12)).foregroundStyle(Palette.amber)
                 }
                 Button("Done") { showingSettings = false }.buttonStyle(PrimaryButton())
             }.padding(30)

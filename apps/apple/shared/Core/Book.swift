@@ -256,14 +256,6 @@ enum Tokenizer {
         let length: Double = word.text.count > 12 ? 1.25 : 1
         return base * max(punctuation, length, word.endsParagraph ? 2.1 : 1)
     }
-
-    static func blockingPage(in book: Book, from startPage: Int, through endPage: Int) -> Int? {
-        guard !book.pages.isEmpty, startPage <= endPage, endPage >= 0, startPage < book.pages.count else { return nil }
-        return (max(0, startPage)...min(endPage, book.pages.count - 1)).first {
-            let page = book.pages[$0]
-            return book.includesPage(at: $0) && (!page.isReviewed || page.hasNoText)
-        }
-    }
 }
 
 /// Scan a text edit once, then relocate any number of UTF-16 anchors in constant time.

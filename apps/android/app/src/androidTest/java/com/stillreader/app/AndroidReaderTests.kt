@@ -46,7 +46,6 @@ class AndroidReaderTests {
     private var previousFocusLetter = false
     private var previousWPM = 250
     private var previousNaturalPauses = true
-    private var previousStrictReview = false
     private var previousActiveWordSize: Int? = null
     private var previousPassageTextSize: Int? = null
     private val store = ViewModelStore()
@@ -61,10 +60,9 @@ class AndroidReaderTests {
         previousFocusLetter = preferences.getBoolean("focusLetter", false)
         previousWPM = preferences.getInt("wpm", 250)
         previousNaturalPauses = preferences.getBoolean("naturalPauses", true)
-        previousStrictReview = preferences.getBoolean("strictReview", false)
         previousPassageTextSize = if (preferences.contains("passageTextSize")) preferences.getInt("passageTextSize", 22) else null
         previousActiveWordSize = if (preferences.contains("activeWordSizePercent")) preferences.getInt("activeWordSizePercent", 100) else null
-        preferences.edit().putInt("passageTextSize", 22).putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).putBoolean("strictReview", false).commit()
+        preferences.edit().putInt("passageTextSize", 22).putBoolean("animatedScrolling", false).putBoolean("focusLetter", false).putInt("wpm", 250).putInt("activeWordSizePercent", 100).putBoolean("naturalPauses", true).commit()
     }
     private fun launch(seed: Boolean = true, legacy: Boolean = false, book: Book? = null) {
         if (seed) {
@@ -92,7 +90,7 @@ class AndroidReaderTests {
         root.deleteRecursively()
         application.getSharedPreferences("reading", 0).edit().apply {
             putBoolean("animatedScrolling", previousAnimatedScrolling).putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM)
-            putBoolean("naturalPauses", previousNaturalPauses).putBoolean("strictReview", previousStrictReview)
+            putBoolean("naturalPauses", previousNaturalPauses)
             previousPassageTextSize?.let { putInt("passageTextSize", it) } ?: remove("passageTextSize")
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
@@ -1022,30 +1020,6 @@ class AndroidReaderTests {
         compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.scrubbing) }
         corner.performTouchInput { cancel() }
         compose.runOnIdle { assertFalse(model.state.value.reader!!.state.value.playing) }
-    }
-
-    @Test fun reviewPromptStillAllowsScrubbingAndOpeningCorrections() {
-        launch(seed = false)
-        val file = File(root, "sample.pdf")
-        fixture("sample.pdf").use { input -> file.outputStream().use { input.copyTo(it) } }
-        compose.runOnUiThread { model.importFile(Uri.fromFile(file)) }
-        compose.waitUntil(20_000) { model.state.value.importing == null && model.state.value.selectedID != null }
-        readBook()
-        compose.waitUntil(10_000) { model.state.value.reader != null }
-        compose.runOnIdle { model.options(true, true) }
-        val corner = compose.onNodeWithTag("holdToRead")
-        corner.performTouchInput { down(center); up() }
-        compose.onNodeWithText("Review this page").assertIsDisplayed()
-        compose.onNodeWithTag("readingSurface").performTouchInput {
-            swipe(Offset(width * .8f, height * .3f), Offset(width * .2f, height * .3f))
-        }
-        compose.runOnIdle {
-            assertNull(model.state.value.reader!!.state.value.blockedPage)
-            assertTrue(model.state.value.reader!!.state.value.index > 0)
-        }
-        corner.performTouchInput { down(center); up() }
-        compose.onNodeWithText("Review this page").performClick()
-        compose.onNodeWithTag("pageText").assertExists()
     }
 
     @Test fun duplicateBackupImportsRemainSeparate() {

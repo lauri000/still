@@ -44,7 +44,7 @@ struct SingleLineView: View {
                                   scrolling: scrolling, time: time,
                                   duration: WordMotion.duration(wordsPerMinute: engine.wordsPerMinute)) {
             if engine.tokens.isEmpty {
-                Text("Ready?").font(.custom("Georgia", size: fontSize)).accessibilityIdentifier("currentWord")
+                Text("No text").font(.custom("Georgia", size: fontSize)).accessibilityIdentifier("currentWord")
             } else {
                 ForEach(engine.tokens[start..<end]) { token in
                     if token.id == engine.index {

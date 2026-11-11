@@ -64,7 +64,7 @@ import kotlin.math.sign
 import kotlin.math.roundToInt
 
 @Composable
-fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -> Unit, onReview: (Int) -> Unit) {
+fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
     val bookProgress = remember(session.book) { BookProgress(session.book) }
     var passage by rememberSaveable(session.book.id) { mutableStateOf(false) }
@@ -163,14 +163,6 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                     .background(Paper.copy(alpha = .94f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
                     color = Forest, fontSize = 14.sp)
             }
-            state.blockedPage?.let { page ->
-                Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).padding(16.dp).widthIn(max = 500.dp)
-                    .clip(RoundedCornerShape(12.dp)).background(Surface).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (session.book.isEpub) "This text needs a check." else "Page ${session.book.pages[page].label} needs a check.", textAlign = TextAlign.Center)
-                    Text("Compare its text with the PDF. Blank or scanned pages can be entered manually or excluded.", color = Muted, fontSize = 12.sp, textAlign = TextAlign.Center)
-                    TextButton(onClick = { onReview(page) }) { Text("Review this page") }
-                }
-            }
         }
     }
     if (passageOptions) PassageTextOptions(passageTextSize, change = {
@@ -179,7 +171,6 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
     }, dismiss = { passageOptions = false })
     if (options) {
         var natural by remember { mutableStateOf(session.naturalPauses) }
-        var strict by remember { mutableStateOf(!session.allowUnreviewed) }
         AlertDialog(onDismissRequest = { options = false }, title = { Text("Single-line options") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -202,11 +193,8 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 OptionToggle("Animated scrolling", animatedScrolling) { animatedScrolling = it; model.animatedScrolling = it }
                 Text("Animate word transitions. Respects the system animation setting.", fontSize = 12.sp, color = Muted)
                 HorizontalDivider(color = Line)
-                OptionToggle("Natural pauses", natural) { natural = it; model.options(natural, strict) }
+                OptionToggle("Natural pauses", natural) { natural = it; model.setNaturalPauses(natural) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)
-                HorizontalDivider(color = Line)
-                OptionToggle(if (session.book.isEpub) "Pause at unchecked text" else "Pause at unchecked pages", strict) { strict = it; model.options(natural, strict) }
-                Text("Require page approval before playback. Otherwise, unchecked text plays immediately and pages without text are skipped.", fontSize = 12.sp, color = Muted)
             }
         }, confirmButton = { TextButton(onClick = { options = false }) { Text("Done") } })
     }
@@ -360,7 +348,7 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
         while (start > maxOf(0, index - radius) && session.structure.headingAt(start - 1) == null) start--
         while (end < minOf(session.tokens.size, index + radius + 1) && session.structure.headingAt(end) == null) end++
         val tokens = session.tokens.subList(start, end)
-        val current = session.current?.word?.text ?: "Ready?"
+        val current = session.current?.word?.text ?: "No text"
         val measurer = rememberTextMeasurer()
         val focusRange = remember(current, focusLetter) { if (focusLetter) ReadingFocus.range(current) else null }
         val styled = remember(current, focusRange) {

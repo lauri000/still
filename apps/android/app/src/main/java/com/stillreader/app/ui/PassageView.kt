@@ -75,7 +75,7 @@ fun PassageView(session: ReadingSession, state: ReadingState, textSize: Int = 22
                     wasScrolling = scrolling
                 }
         }
-        if (document.blocks.isEmpty()) Text("Ready?", Modifier.align(Alignment.Center), style = style)
+        if (document.blocks.isEmpty()) Text("No text", Modifier.align(Alignment.Center), style = style)
         LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("passageScroll"),
             contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = maxHeight)) {
             itemsIndexed(document.blocks, key = { _, block -> block.id }) { _, block ->

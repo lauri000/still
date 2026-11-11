@@ -81,9 +81,7 @@ struct LibraryView: View {
             }
         }
         .readerPresentation(item: $readingBook) { snapshot in
-            ReaderView(book: snapshot, pdfURL: library.repository.sourceURL(for: snapshot), onReviewPage: { page in
-                tool = "Edit text"; toolPage = page; selectedID = snapshot.id
-            }) { position in
+            ReaderView(book: snapshot, pdfURL: library.repository.sourceURL(for: snapshot)) { position in
                 library.update(snapshot.id, saveImmediately: true) { $0.position = position }
             }
         }

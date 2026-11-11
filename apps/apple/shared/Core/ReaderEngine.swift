@@ -11,16 +11,13 @@ final class ReaderEngine: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var isFinished = false
     var isScrubbing: Bool { scrubOrigin != nil }
-    @Published var blockedPage: Int?
     // Speed changes take effect on the next word, so dragging never restarts its timer.
     @Published var wordsPerMinute: Double = 250
     @Published var naturalPauses = true
-    @Published var allowUnreviewed = true
     @Published var passageMode = false {
         didSet {
             guard passageMode != oldValue else { return }
             pause()
-            if passageMode { blockedPage = nil }
         }
     }
     @Published private(set) var wordStartedAt: TimeInterval?
@@ -31,7 +28,6 @@ final class ReaderEngine: ObservableObject {
         return min(1, heldWordProgress + (ProcessInfo.processInfo.systemUptime - wordStartedAt) / wordDuration)
     }
     private var playback: Task<Void, Never>?
-    private var startPage: Int
     @Published private var scrubOrigin: Int?
     var onCheckpoint: ((ReadingPosition) -> Void)?
 
@@ -42,8 +38,8 @@ final class ReaderEngine: ObservableObject {
         structure = document.structure
         passage = document.passage
         index = document.index(book.position)
-        startPage = max(book.readingStartPageIndex, book.position.flatMap { position in book.pages.firstIndex { $0.id == position.pageID } } ?? book.readingStartPageIndex)
         if let position = book.position, !document.hasPage(position.pageID) {
+            let startPage = max(book.readingStartPageIndex, book.pages.firstIndex { $0.id == position.pageID } ?? book.readingStartPageIndex)
             index = tokens.first(where: { $0.pageIndex >= startPage })?.id ?? max(0, tokens.count - 1)
         }
         isFinished = book.position?.finished ?? false
@@ -56,23 +52,10 @@ final class ReaderEngine: ObservableObject {
     func play() {
         guard !passageMode else { return }
         endScrubbing()
-        guard !tokens.isEmpty else {
-            blockedPage = book.pages.indices.first { book.includesPage(at: $0) }
-            return
-        }
-        if isFinished { heldWordProgress = 0; index = 0; startPage = book.readingStartPageIndex; isFinished = false }
-        guard checkPages(from: min(startPage, current!.pageIndex), through: max(startPage, current!.pageIndex)) else { return }
-        blockedPage = nil
+        guard !tokens.isEmpty else { return }
+        if isFinished { heldWordProgress = 0; index = 0; isFinished = false }
         isPlaying = true
         schedulePlayback()
-    }
-    private func checkPages(from: Int, through: Int) -> Bool {
-        if !allowUnreviewed, let page = Tokenizer.blockingPage(in: book, from: from, through: through) {
-            blockedPage = page
-            pause()
-            return false
-        }
-        return true
     }
     private func schedulePlayback() {
         let progress = keepsProgress ? wordProgress : 0
@@ -88,17 +71,13 @@ final class ReaderEngine: ObservableObject {
                 do { try await Task.sleep(for: .seconds(duration * (1 - self.heldWordProgress))) } catch { return }
                 guard !Task.isCancelled, self.isPlaying else { return }
                 if self.index + 1 >= self.tokens.count {
-                    guard self.checkPages(from: token.pageIndex, through: self.book.pages.count - 1) else { return }
                     self.isFinished = true
                     self.pause()
                     return
                 }
-                let next = self.tokens[self.index + 1]
-                guard self.checkPages(from: token.pageIndex, through: next.pageIndex) else { return }
                 self.heldWordProgress = 0
                 self.wordStartedAt = nil
                 self.index += 1
-                self.startPage = next.pageIndex
                 if self.index % 20 == 0 { self.checkpoint() }
             }
         }
@@ -144,23 +123,15 @@ final class ReaderEngine: ObservableObject {
         guard !tokens.isEmpty else { return }
         heldWordProgress = 0
         index = min(max(0, newIndex), tokens.count - 1)
-        startPage = tokens[index].pageIndex
         isFinished = false
-        blockedPage = nil
     }
     func seekPage(_ pageIndex: Int) {
         pause()
+        guard !tokens.isEmpty else { return }
         let pageIndex = max(book.readingStartPageIndex, min(pageIndex, book.pages.count - 1))
-        if let token = tokens.first(where: { $0.pageIndex >= pageIndex }) {
-            seek(token.id)
-            startPage = pageIndex
-        } else { blockedPage = pageIndex }
+        seek(tokens.first(where: { $0.pageIndex >= pageIndex })?.id ?? tokens.count - 1)
     }
     func checkpoint() {
-        if let blockedPage {
-            onCheckpoint?(ReadingPosition(pageID: book.pages[blockedPage].id, utf16Offset: 0))
-            return
-        }
         guard var position = current?.position else { return }
         position.finished = isFinished
         onCheckpoint?(position)

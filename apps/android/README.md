@@ -32,7 +32,7 @@ Start a horizontal swipe anywhere outside that corner to move forward/backward t
 
 Passage view is a native, manually scrollable column of plain, left-aligned text. Tap or click any word to open single-line mode paused at that exact word. Switching back brings the same word into view; scrolling updates the saved place from the top visible row. Paragraph blocks are laid out lazily, without measuring the whole book. There is no hold zone, speed gesture, word highlight, or playback timer in passage view. Matched headings keep their larger typography.
 
-The reading-options button appears only in single-line mode. **Active word size** (100%–300%), **Focus letter**, **Animated scrolling**, **Natural pauses**, and **Pause at unchecked pages** apply only to that mode. Passage view uses its own regular text size and reads unchecked text, skipping empty pages. Switching modes preserves the position, WPM, and saved single-line preferences. Backgrounding or leaving either view pauses and saves progress.
+The reading-options button appears only in single-line mode. **Active word size** (100%–300%), **Focus letter**, **Animated scrolling**, and **Natural pauses** apply only to that mode. Passage view uses its own regular text size. Both modes read unchecked text and skip empty pages. Switching modes preserves the position, WPM, and saved single-line preferences. Backgrounding or leaving either view pauses and saves progress.
 
 The book's ellipsis menu contains corrections, page inclusion/review, chapters, a starting-word selector with **Restore beginning**, title/author editing, portable backup export, and deletion. Original PDFs and extracted text remain intact.
 
@@ -67,7 +67,7 @@ Python 3 generates the small EPUB fixtures before tests. Optional real books are
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-JVM tests cover shared Swift tokenizer fixtures, Apple backup decoding, Kotlin export/Swift import, trims and exclusions, Unicode offsets, edits, timing, strict review, scrub interruption/checkpoints, malformed data, atomic persistence, and duplicate imports. Device tests exercise real PDF extraction/preview, Android Unicode behavior, the import-to-reading flow, swiping, gesture-zone ownership, corrections, and saved progress. They use isolated test libraries.
+JVM tests cover shared Swift tokenizer fixtures, Apple backup decoding, Kotlin export/Swift import, trims and exclusions, Unicode offsets, edits, timing, unchecked text and blank-page playback, scrub interruption/checkpoints, malformed data, atomic persistence, and duplicate imports. Device tests exercise real PDF extraction/preview, Android Unicode behavior, the import-to-reading flow, swiping, gesture-zone ownership, corrections, and saved progress. They use isolated test libraries.
 
 Verified on 16 October 2026:
 
