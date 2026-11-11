@@ -3,13 +3,23 @@ pubkey: npub1dmhju6xrn8y09malwrvrrs4krrt6sj7l6gtnf2q7d47nmqtldpgqgctgtm
 # Build locally with scripts/android-release.py. zsp uploads this signed APK.
 release_source: ./dist/still-0.1.25-android-universal.apk
 name: Still
-summary: An offline PDF and EPUB speed reader.
+summary: Offline PDF and EPUB reading with hold-to-read speed control.
 description: |
-  Import a PDF or EPUB, or discover public-domain books in the app.
-  Download individual books from Project Gutenberg.
-  Read saved books offline at your own pace.
-  Read a single line at your chosen speed, or scroll through the text.
-  Tap any word in the passage to continue in single-line view.
+  Import a PDF or EPUB, or discover and download public-domain books from
+  Project Gutenberg. Read downloaded books offline with no account required.
+
+  Hold the lower-right part of the screen to speed read. Slide right to read
+  faster or left to slow down, from 60 to 900 words per minute. Release to
+  pause. Enlarge the active word, enable Focus letter, and choose natural
+  pauses or animated word transitions.
+
+  Switch to passage view to scroll through the text, then tap a word to
+  continue in single-line view. Navigate by chapter or book progress, and
+  read in portrait or landscape. Your place is saved when you pause or leave.
+
+  Edit extracted text, choose a starting point, and export or restore portable
+  book backups. Books, original files, and reading progress stay on your device.
+  Discovery and downloads need an internet connection.
 license: MIT
 website: https://github.com/lauri000/still
 tags:
@@ -18,9 +28,11 @@ tags:
   - productivity
 icon: ./docs/store/icon.png
 images:
-  - ./docs/screenshots/direct-reading/android-library.png
-  - ./docs/screenshots/full-screen-reader/android-single-line.png
-  - ./docs/screenshots/scroll-reading/android-reading.png
-  - ./docs/screenshots/chapter-progress/android-contents.png
-  - ./docs/screenshots/scroll-reading/android-text-size.png
+  - ./docs/store/0.1.25/01-focus-reading.png
+  - ./docs/store/0.1.25/02-passage-reading.png
+  - ./docs/store/0.1.25/03-landscape-reading.png
+  - ./docs/store/0.1.25/04-discover.png
+  - ./docs/store/0.1.25/05-library.png
+  - ./docs/store/0.1.25/06-contents.png
+  - ./docs/store/0.1.25/07-reading-options.png
 release_notes: ./docs/releases/0.1.25.md
