@@ -70,8 +70,6 @@ class ReaderPipelineTests {
         assertEquals("begin.", document.tokens[document.index(book.position)].word.text)
         assertEquals(listOf("Chapter One", "Chapter Two"), document.structure.headings.map { it.title })
         book.pages.forEach { assertEquals(Tokenizer.words(it.text), it.words) }
-        val output = java.io.File("build/contract-output/android-prepared.json")
-        output.parentFile?.mkdirs(); output.writeText(BookCodec.encode(book))
     }
 
     private fun source() = book("Chapter One\nCafé 🌿 one two.\n\nNext paragraph.", "Chapter Two\nlast page").copy(chapters = listOf(

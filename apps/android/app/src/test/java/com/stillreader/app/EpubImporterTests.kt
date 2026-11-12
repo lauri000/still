@@ -34,8 +34,6 @@ class EpubImporterTests {
         assertEquals(second, reader.tokens[reader.structure.headings[2].words.first].word.offset)
         val trimmed = restored.withReadingStart(ReadingPosition(restored.pages[0].id, second))
         assertEquals(2, trimmed.readerCache.get(trimmed).structure.sections.size)
-        val output = File("build/contract-output/android-epub.json")
-        output.parentFile.mkdirs(); output.writeText(BookCodec.encode(book))
     }
 
     @Test fun epub2NcxBomAndStandardXhtmlEntities() {
@@ -43,17 +41,6 @@ class EpubImporterTests {
         assertEquals("Legacy heading\n\nSome words — ©.", book.pages[0].text)
         assertEquals("Legacy chapter", book.chapters.single().title)
         assertEquals(0, book.chapters.single().utf16Offset)
-    }
-
-    @Test fun swiftBackupRetainsOriginalAndPreparedText() {
-        val file = File("build/contract-output/swift-epub-backup.json")
-        assumeTrue("Run scripts/epub-contracts.swift first", file.exists())
-        val backup = BookCodec.json.decodeFromString<BookBackup>(file.readText())
-        val book = BookCodec.validate(backup.book)
-        assertEquals(2, backup.version)
-        assertFalse(book.needsReprocessing)
-        assertEquals(imported().pages.map { it.text }, book.pages.map { it.text })
-        assertArrayEquals(file("structured.epub").readBytes(), java.util.Base64.getDecoder().decode(backup.sourceData))
     }
 
     @Test fun realCorpusImportsAndKeepsSectionOrigins() {
@@ -67,8 +54,6 @@ class EpubImporterTests {
             assertTrue(name, book.pages.all { it.sourceHref != null })
             assertEquals(book.pages.map { it.text }, BookCodec.decode(BookCodec.encode(book)).pages.map { it.text })
             if (name == "moby-dick.epub") assertTrue(book.chapters.size >= 130)
-            val output = File("build/contract-output/epub/$name.json")
-            output.parentFile.mkdirs(); output.writeText(BookCodec.encode(book))
         }
     }
 
@@ -103,8 +88,6 @@ class EpubImporterTests {
             assertArrayEquals(file("structured.epub").readBytes(), repository.sourceFile(book).readBytes())
             assertFalse(repository.pdfFile(book.id).exists())
             assertEquals(BookCodec.encode(book), BookCodec.encode(repository.load().books.single()))
-            val output = File("build/contract-output/android-epub-backup.json")
-            output.parentFile.mkdirs(); output.writeBytes(out.toByteArray())
         } finally { root.deleteRecursively() }
     }
 

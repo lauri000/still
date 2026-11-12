@@ -1,9 +1,4 @@
 .DS_Store
-.build/
-DerivedData/
-*.xcuserstate
-xcuserdata/
-*.xcresult/
 apps/android/.gradle/
 apps/android/.kotlin/
 apps/android/**/build/

@@ -1,6 +1,6 @@
 # EPUB import
 
-Still imports DRM-free, reflowable EPUB 2 and EPUB 3 on Android, iOS/iPadOS, and macOS. Choose **Import book** and select an `.epub`. The contents picker follows the EPUB's navigation and opens exact chapter anchors, including several chapters within one section. Both reader modes, starting-word trims, corrections, backup export/import, and saved positions work with the prepared text.
+Still imports DRM-free, reflowable EPUB 2 and EPUB 3 on Android. Choose **Import book** and select an `.epub`. The contents picker follows the EPUB's navigation and opens exact chapter anchors, including several chapters within one section. Both reader modes, starting-word trims, corrections, backup export/import, and saved positions work with the prepared text.
 
 The importer follows the declared linear spine, extracts XHTML paragraphs and headings, preserves verse line breaks and inline word boundaries, and resolves relative paths and Unicode fragments. EPUB 3 navigation is preferred, with EPUB 2 NCX as fallback; without either, headings provide a contents list. EPUB source files remain internal text units; one may contain several chapters. The reader and library show chapter names and word-based progress through the retained book text. Contents entries show their percentage into the book, and **Go to progress** replaces navigation by internal file number. Text tools describe the chapter range in each editable unit. Books without chapter metadata still support progress navigation.
 
@@ -10,17 +10,17 @@ This is a text reader: original CSS layout, images, tables as visual grids, inte
 
 Archives are read without extracting files to disk or executing HTML. External XML DTDs are not fetched, custom entities are rejected, and standard XHTML named entities use the bundled `shared/resources/xhtml-entities.json` table (HTML 4 entity names/code points from Python's standard `html.entities.name2codepoint`). Paths stay within the archive. Import limits are 250 MB compressed, 512 MB declared expanded size, 10,000 entries, 16 MB per XML document, and 10 million UTF-16 text units. Cancellation or failure leaves the library unchanged.
 
-Android uses the platform ZIP/XML readers. Apple uses Foundation XMLParser and pinned ZIPFoundation 0.9.20; its MIT license is included in the Apple resources. Both implementations produce the same portable data.
+Android uses the platform ZIP/XML readers and stores the prepared text in the portable book format.
 
 ## Fixtures without committed books
 
-**No EPUB binaries are stored in Git**, including synthetic fixtures. Generate the small, project-owned test archives locally:
+The EPUB import fixtures are generated locally; downloaded books are not stored in Git. The separate catalog fixture, `shared/fixtures/sample.epub`, is a checked-in archive containing original test prose. Generate the small, project-owned import archives locally:
 
 ```sh
 python3 scripts/epub-fixtures.py
 ```
 
-Android test tasks and the Xcode unit-test target run this generator automatically. It covers out-of-order ZIP entries, linear spine order, EPUB 2 NCX, EPUB 3 navigation, Unicode paths/anchors, repeated headings, inline text, standard entities, hidden content, and malformed/encrypted/fixed/image-only inputs. No network is needed for these tests.
+Android test tasks run this generator automatically. It covers out-of-order ZIP entries, linear spine order, EPUB 2 NCX, EPUB 3 navigation, Unicode paths/anchors, repeated headings, inline text, standard entities, hidden content, and malformed/encrypted/fixed/image-only inputs. No network is needed for these tests.
 
 The optional real-book corpus is described in [`manifest.json`](../shared/fixtures/epub/manifest.json): original download and source URLs, SHA-256 hashes, sizes, rights notices, and observed features. To download it:
 
@@ -40,24 +40,18 @@ The script verifies existing downloads, checks new downloads against the manifes
 | W3C Israel Sailing | Hebrew logical text order and RTL source |
 | W3C Haruko | Clear fixed-layout rejection |
 
-## Cross-platform check
+## Verification
 
-Run the native unit tests, then build the macOS target and link the contract checker against its ZIP dependency. From the repository root:
+Run the Android EPUB unit tests from the repository root:
 
 ```sh
-(cd apps/android && ./gradlew :app:testDebugUnitTest)
-xcodebuild -project apps/apple/Still.xcodeproj -scheme StillMac \
-  -derivedDataPath /tmp/still-epub-mac CODE_SIGNING_ALLOWED=NO build
-xcrun swiftc -I /tmp/still-epub-mac/Build/Products/Debug \
-  /tmp/still-epub-mac/Build/Products/Debug/ZIPFoundation.o \
-  apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift \
-  apps/apple/shared/Services/{ImportedBook,EPUBImporter}.swift \
-  scripts/epub-contracts.swift -o /tmp/still-epub-contracts
-/tmp/still-epub-contracts
-(cd apps/android && ./gradlew :app:testDebugUnitTest --tests '*EpubImporterTests' --rerun-tasks)
+cd apps/android
+./gradlew :app:testDebugUnitTest --tests '*EpubImporterTests'
 ```
 
-The checker compares native imports' text, section order, metadata, word indexes, semantic heading spans, and chapter offsets. It decodes the Android EPUB backup in Swift and emits a Swift backup for the final Android test to decode. Generated outputs stay under the ignored Android build directory.
+The tests cover text, section order, metadata, word indexes, semantic heading spans, chapter offsets, prepared persistence, and backup round trips that retain the original bytes. The optional real-book corpus tests skip when downloads are absent. See the [Android guide](../apps/android/README.md#verification) for the full suite and device tests.
+
+The dated results below describe historical releases, including the retired Apple apps and their former cross-platform checks.
 
 ## Verification (20 October 2026)
 

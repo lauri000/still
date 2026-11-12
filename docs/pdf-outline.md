@@ -1,13 +1,13 @@
 # PDF contents navigation
 
-The starting-page chooser shows the PDF's embedded outline on Android, iPhone,
-iPad, and Mac. Existing imports already save valid bookmark destinations as
-chapters, but discard destinationless groups and sort them by page. The new
+The starting-page chooser shows the PDF's embedded outline on Android. Existing
+imports already save valid bookmark destinations as chapters, but discard
+destinationless groups and sort them by page. The new
 chooser reads the retained original PDF so old books and backups also recover
 the original outline order and hierarchy. No headings are inferred from text.
 
 - A Contents control opens a collapsible left panel at widths of at least 760
-  points/dp; smaller windows use a sheet. Wide layouts initially show a nonempty
+  dp; smaller windows use a sheet. Wide layouts initially show a nonempty
   outline. The PDF preview and page-number controls remain available.
 - Outline groups can expand/collapse independently of their own destination.
   Labels wrap; blank labels become “Untitled section”. Page labels match the
@@ -26,17 +26,19 @@ the original outline order and hierarchy. No headings are inferred from text.
   of precise heading-to-word alignment. The original PDF, portable schema,
   editable chapters, reader layouts, gestures, and reading cues stay unchanged.
 
-Verification covers the same real PDF fixture on both engines (nested groups,
+Verification covers a real PDF fixture (nested groups,
 named and action destinations, invalid/remote entries, duplicate pages, source
 order), current-row/visibility logic, empty outlines, chooser navigation and
-resume/trim behavior, and existing reader regressions. Apple and Android builds
-use isolated outputs and dedicated simulator/emulator devices.
+resume/trim behavior, and existing reader regressions. Android checks use
+isolated outputs and dedicated emulator devices.
 
 Android uses PDFBox for outline parsing because PDFiumAndroidKt 2.0.3 reports
 remote GoTo destinations as local pages and does not expose their action type.
 PDFium still handles extraction and rendering. The outline parser uses temporary
 file storage, rejects external actions, guards cycles, and caps traversal at
 10,000 entries / 64 levels. The shared fixture exercises this remote-link case.
+
+The dated notes below describe historical releases, including the retired Apple apps.
 
 ## Verification — 17 October 2026
 

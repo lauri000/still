@@ -1,6 +1,6 @@
 # Still portable book format
 
-Swift and Kotlin implement the reader independently. They share this contract and the fixtures in `fixtures/`; there is no Rust or other shared executable core.
+The Android reader uses this contract and the fixtures in `fixtures/`. Existing backups from the retired iOS and macOS apps remain supported; their timestamp epoch, UTF-16 offsets, and prepared data stay compatible.
 
 A library book has a UUID directory containing `book.json` and an immutable original: `original.pdf` or `original.epub`. PDF backups use the existing JSON envelope: `{"format":"still-book","version":1,"book":{...},"pdfData":"<base64>"}`. Transfer the whole backup, rather than extracting the PDF again on the receiving device.
 
@@ -19,7 +19,7 @@ The book object preserves these keys:
 | `readingStart` | Optional position marking a reversible beginning trim |
 | `isSample` | Boolean; export even when false |
 
-Both formats now use `pipelineVersion: 3`. PDF books retain schema 2 and backup envelope 1; EPUB books retain schema 3 and backup envelope 2, including explicit line breaks and stable chapter source anchors. Valid PDF pipeline 1 and EPUB pipeline 2 indexes automatically upgrade from stored text during library loading or backup import. This one-time upgrade rebuilds word indexes and heading matches, preserves text, corrections, IDs, review/inclusion choices, chapters and UTF-16 positions, and atomically saves the result. It never re-extracts or replaces the original file. Other legacy, future or invalid output still requires explicit **Reprocess book**. Both platforms continue accepting legacy schema 1.
+Both formats now use `pipelineVersion: 3`. PDF books retain schema 2 and backup envelope 1; EPUB books retain schema 3 and backup envelope 2, including explicit line breaks and stable chapter source anchors. Valid PDF pipeline 1 and EPUB pipeline 2 indexes automatically upgrade from stored text during library loading or backup import. This one-time upgrade rebuilds word indexes and heading matches, preserves text, corrections, IDs, review/inclusion choices, chapters and UTF-16 positions, and atomically saves the result. It never re-extracts or replaces the original file. Other legacy, future or invalid output still requires explicit **Reprocess book**. Legacy schema 1 is still accepted.
 
 A prepared page stores its stable `id`, one-based `number`, display `label`, final editable `text`, `isReviewed`, `isIncluded`, `edited`, and `wordIndex`. The compact index is a flat array of UTF-16 `(offset, length, break)` triples: 0 means no forced break, 1 ends a paragraph, and 2 ends a line within an EPUB paragraph. PDF output only uses 0/1; extracted PDF line wraps still reflow. Conversion, a text edit, or the versioned index upgrade analyzes word boundaries. Loading materializes runtime words from these saved ranges. The book stores `headingMatches` as `{title, pageIndex, level, start, end}` records; titles are normalized lookup keys and spans are UTF-16, end-exclusive. An empty list is a valid prepared result.
 
@@ -41,7 +41,7 @@ Unknown JSON keys can be ignored. Missing optional positions decode as null. Fut
 
 ## Catalog metadata
 
-Optional book fields `catalogID`, `contentHash` (SHA-256 of the original EPUB), `epubIdentifier`, `languageCodes`, `synopsis`, `sourceURL`, and `coverData` (base64 image, at most 2 MiB) preserve discovery metadata. They do not change the book schema or backup envelope. Missing fields decode on existing libraries. Both platforms deduplicate ordinary EPUB imports by identity/hash while explicit backup imports retain the ability to restore another copy.
+Optional book fields `catalogID`, `contentHash` (SHA-256 of the original EPUB), `epubIdentifier`, `languageCodes`, `synopsis`, `sourceURL`, and `coverData` (base64 image, at most 2 MiB) preserve discovery metadata. They do not change the book schema or backup envelope. Missing fields decode on existing libraries. The app deduplicates ordinary EPUB imports by identity/hash while explicit backup imports retain the ability to restore another copy.
 
 ## EPUB sections and backups
 
@@ -51,39 +51,24 @@ Imported chapters also retain an optional `sourceAnchor`: the resolved content p
 
 EPUB backups use `{"format":"still-book","version":2,"book":{...},"sourceData":"<base64 original EPUB>"}`. Version 2 requires an EPUB book; PDF backups retain version 1 and `pdfData`. Normal reopening uses prepared data. Backup import validates the original archive but does not extract or analyze its XHTML again. Book IDs, source paths, exact positions, trims, corrections and headings travel with prepared data. The original is retained for explicit reprocessing. Reprocessing currently requires the same ordered section paths; if a future converter changes section boundaries, it fails without replacing the saved book and offers a separate import.
 
-[Supported EPUB content, fixtures, and native compatibility checks](../docs/epub.md).
+[Supported EPUB content, fixtures, and verification](../docs/epub.md).
 
-## Verify both implementations
+## Verification
 
-From the repository root:
+From the repository root, run the Android unit tests:
 
 ```sh
-xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift apps/apple/shared/Services/SampleBook.swift \
-  scripts/contract-fixtures.swift -o /tmp/still-contract-fixtures
-/tmp/still-contract-fixtures
-
-xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout,PDFTextRepair}.swift scripts/pdf-repair-contracts.swift -o /tmp/still-pdf-repair-contracts
-/tmp/still-pdf-repair-contracts
-
 cd apps/android
 ./gradlew :app:testDebugUnitTest
-cd ../..
-/tmp/still-contract-fixtures \
-  --backup="$PWD/apps/android/app/build/contract-output/android-backup.json"
 ```
 
-The Swift checker uses the production model and tokenizer. Android's tests decode a Swift-generated backup and export it again for the Swift checker. Device tests also run the tokenizer fixtures against Android's regex implementation, which differs from a desktop JVM's implementation.
+The tests cover the checked-in tokenizer, PDF repair, legacy Apple backup, and prepared-book fixtures. They verify decoding, exact UTF-16 positions, headings, and Android backup round trips. The fixtures generated by the former Swift implementation remain as compatibility inputs; rebuilding the retired Apple apps is not required.
 
-Only run the checker with `--write` when intentionally regenerating the fixtures. The sample PDF contains original sample prose and embedded bookmarks; it contains no user-uploaded book.
+Device tests also run the tokenizer fixtures against Android's regex implementation, which differs from a desktop JVM's implementation. See the [Android verification guide](../apps/android/README.md#verification) for device-test commands.
 
-Prepared-output compatibility is checked separately:
+The sample PDF contains original sample prose and embedded bookmarks; it contains no user-uploaded book.
 
-```sh
-xcrun swiftc apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift scripts/reader-contracts.swift -o /tmp/still-reader-contracts
-/tmp/still-reader-contracts
-# After Android unit tests:
-/tmp/still-reader-contracts --book=apps/android/app/build/contract-output/android-prepared.json
-```
+The dated results below describe historical verification before the Apple apps were retired.
 
 ## Prepared-reader verification (19 October 2026)
 

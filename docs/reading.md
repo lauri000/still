@@ -3,15 +3,15 @@
 
 1. Tap a book in the library to read immediately at your saved position. New imports and Gutenberg downloads also open directly in the reader; there is no preview or setup screen.
 2. Tap the chapter/progress area in the reader header for **Contents**. EPUBs show chapter names and percentage read, with **Go to progress** for jumping through the book; PDFs retain **Go to page**. Navigation preserves your chosen beginning. To exclude front matter, use **… → Choose starting word** beside the book in the library.
-3. In single-line view on iPhone, iPad, and Android, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM. On Mac, use the header’s **Play**, previous/next, and slower/faster buttons.
+3. In single-line view, **hold the bottom-right corner** to read and lift your finger to pause. While holding, move right to increase the current speed or left to decrease it. Each hold starts at your saved speed, wherever you touch the corner; vertical movement does not change it. The range is 60–900 WPM.
 
 Closing the reader returns directly to the library. The **…** menu beside each book contains text editing, chapters, beginning trim, title/author, reprocessing, export, and deletion. Original PDF previews remain available in **Edit text** for comparison.
 
-In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. On mobile, the invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over. On Mac, drag anywhere in the text to scrub and use the header buttons to change speed in 10 WPM steps.
+In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. The invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over.
 
-In single-line view, WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again on mobile, or press Play on Mac, to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
+In single-line view, WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
 
-Open a book again to resume at the exact saved word. New books begin at the first readable text, respecting any saved beginning trim. On Mac, Space plays/pauses and the arrow keys step one word in single-line mode; Escape closes either view.
+Open a book again to resume at the exact saved word. New books begin at the first readable text, respecting any saved beginning trim.
 
 The text icon switches between single-line reading and a manually scrollable passage. Passage view shows plain, left-aligned rows with natural word spacing and no highlighted word or letter. Scroll normally with a finger, mouse, or trackpad. Tap or click any word to open single-line mode paused at that exact word, ready to continue reading. The mode toggle also preserves the current word; after browsing, it uses the first word of the top visible row. Returning to passage view brings the selected word into view. Paragraph and page boundaries start new rows. Body text uses 22-point serif type by default, compact line spacing within each paragraph, and distinct space between paragraphs. Matched headings use larger, heavier text with space around them. Paragraph blocks are laid out as they appear, without measuring the whole book. Tap **Aa** in the scrolling reader to change text size from 16 to 32 points with **A−** and **A+**, or choose **Reset** for the default. Text size is saved on this device and follows system font scaling. Reflow and rotation keep the selected word in view. Hold-to-read, WPM controls, horizontal scrubbing, and single-line options belong to single-line mode. Passage view runs no playback timer.
 
@@ -69,13 +69,13 @@ stale cues. No book/backup schema or stored single-line preferences change.
 
 ## Storage and moving between devices
 
-Each book is stored as `original.pdf` and `book.json` in its own UUID directory. Apple uses the app's Application Support directory (inside the container on a sandboxed Mac); Android uses app-private `files/Still/`. The source PDF is never edited.
+Each book is stored as `original.pdf` or `original.epub` alongside `book.json` in its own UUID directory under app-private `files/Still/`. The original source is never edited.
 
 The JSON retains the original filename, title/author, import date, page labels and boundaries, the final reading text, prepared word ranges and heading matches, inclusion/review flags, bookmark hierarchy, manual chapter boundaries, a reading position, and an optional reading-start boundary. Old libraries and backups without that boundary continue to open. A position contains a page ID and UTF-16 text offset, so changing an earlier page does not shift the saved location on a later page. Within an edited page, a position resolves to the nearest preceding token and is clamped to available text. Paragraph separators remain in page text. Trimming stores a separate page ID and text offset; it never deletes page text or chapters. The start marker moves with edits before its chosen word, and replay/seek stay within the retained text.
 
 Edits are debounced by 500 ms and flushed when navigating, starting the reader, or backgrounding the app. Writes are atomic. Playback checkpoints every 20 words and on pause, close, or backgrounding. Swipe selection previews words without writing each intermediate position; the final source position is saved on release or interruption. Swiping respects beginning trims and excluded pages. Save failures are shown and are not reported as successful.
 
-Choose **Export book backup…** in the book menu to save a portable JSON backup containing the original PDF, corrections, chapters, and reading progress. Import that JSON file on the other device to continue. Importing a duplicate creates a separate library copy. **Automatic iCloud sync is not included.**
+Choose **Export book backup…** in the book menu to save a portable JSON backup containing the original PDF or EPUB, corrections, chapters, and reading progress. Import that JSON file on the other device to continue. Importing a duplicate creates a separate library copy. Backups from the retired iOS and macOS apps remain supported. Automatic sync is not included.
 
 ## Extraction limits
 
@@ -87,7 +87,7 @@ For a previously imported book, choose **… → Reprocess book**. Your manual c
 - Cleanup preserves paragraph separators and retains the native engine's reading order. Repeated page numbers/running headings are removed only when recognized at a physical margin. Multi-column layouts, footnotes, tables, unusual fonts, and ambiguous hyphens can still need corrections. The source PDF remains visible for comparison. See [the repair evaluation](pdf-repair.md).
 - Chapters come from embedded bookmarks or manual entry. Headings are not guessed automatically. Bookmark destinations are mapped to page boundaries, not exact words.
 - Tokenization separates whitespace-delimited words and preserves attached punctuation and Unicode source ranges. Languages without word-separating spaces need a future language-aware tokenizer.
-- Password-protected PDFs report an explanatory error. Apple also checks copy restrictions; the Android binding does not expose that permission flag. Imports are limited to 250 MB. See [Android's extraction limits](../apps/android/README.md#extraction-limits) for page-label and backup-memory details.
+- Password-protected PDFs report an explanatory error. The Android binding does not expose PDF copy-permission flags. Imports are limited to 250 MB. See [Android's extraction limits](../apps/android/README.md#extraction-limits) for page-label and backup-memory details.
 - There are no claims that faster playback improves comprehension. The pace is user controlled.
 
 ## Prepared books and reprocessing
@@ -95,6 +95,8 @@ For a previously imported book, choose **… → Reprocess book**. Your manual c
 PDF import prepares the word index and heading matches once. Opening the book uses that saved output and restores your position. The original PDF remains available for preview and reprocessing.
 
 Updating to 0.1.23 automatically refreshes valid saved PDF/EPUB word indexes from local text, fixing words joined by em dashes in already-imported books without a reimport. Your text, corrections, chapters, and saved position are retained. Books with older or incompatible extraction output still ask to **Reprocess and read**, then open the prepared text automatically. Cancelling returns to the library. The same action is always available under Book options, so a future pipeline update can regenerate its output without a data migration. It preserves your corrections and page choices, and offers **Undo reprocessing** after completion. Changing font size or reading mode does not reprocess the book.
+
+The dated verification notes and screenshots below describe historical releases, including the retired Apple apps.
 
 ## Scrolling reader verification (23 October 2026)
 

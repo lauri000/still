@@ -204,9 +204,6 @@ class CoreTests {
             exported.outputStream().use { repository.export(inserted, it) }
             val decoded = BookCodec.json.decodeFromString<BookBackup>(exported.readText())
             assertEquals(backup, decoded)
-            // A persistent output for the Swift compatibility checker, under ignored build outputs.
-            File("build/contract-output").mkdirs()
-            exported.copyTo(File("build/contract-output/android-backup.json"), overwrite = true)
             repository.delete(inserted.id)
             assertEquals(duplicate.id, repository.load().books.single().id)
         } finally { root.deleteRecursively() }

@@ -6,7 +6,7 @@ Tap a library book to open the reader immediately. Imports and downloads do the 
 
 The scrolling reader uses serif text with distinct paragraph and heading spacing. Tap **Aa** to adjust its saved text size (16–32 points) independently of single-line reading. Resizing and rotating preserve the selected word.
 
-Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview through PdfiumAndroidKt. The Apple app remains SwiftUI/PDFKit. Saved books and reading work offline; discovery uses the network.
+Native Kotlin and Jetpack Compose, with on-device PDFium extraction and preview through PdfiumAndroidKt. Saved books and reading work offline; discovery uses the network.
 
 ## Build and run
 
@@ -46,14 +46,14 @@ The book's ellipsis menu contains corrections, page inclusion/review, chapters, 
 
 Books live in app-private `files/Still/<UUID>/`. Writes use a serial queue and atomic file replacement. Text/metadata edits are debounced for 500 ms and flushed on navigation/backgrounding. Reader positions checkpoint every 20 words and on pause, closing, or ending a swipe. Imports commit only after extraction succeeds; duplicate backup imports become separate library copies.
 
-The existing Apple JSON backup format is preserved, including Foundation date encoding, base64 PDF data, UTF-16 positions, page IDs, corrections, and beginning trims. See [the shared format contract](../../shared/FORMAT.md). Export and import the backup to move a book between Android, iPad, and macOS. There is no automatic sync. Android cloud backup is disabled; use explicit book exports.
+The legacy Apple JSON backup format is preserved, including Foundation date encoding, base64 PDF data, UTF-16 positions, page IDs, corrections, and beginning trims. See [the shared format contract](../../shared/FORMAT.md). Export and import the backup to move a book between Android devices. Backups from the retired iOS and macOS apps remain supported. There is no automatic sync. Android cloud backup is disabled; use explicit book exports.
 
 ## Extraction limits
 
 - Selectable-text PDFs only; no OCR. Import-time repair uses glyph geometry and an offline vocabulary to fix ligatures, wrapped words, and supported spacing errors. Recognized recurring margin page numbers/headings are removed.
 - Source extraction order is preserved. Complex columns, footnotes, unusual fonts, and ambiguous compounds can still require corrections. Existing books have an explicit **Reprocess book** command with session undo. See [the repair evaluation](../../docs/pdf-repair.md).
-- Embedded bookmarks are imported with their hierarchy and page destinations. New Android imports use sequential page labels because the PDF binding does not expose custom page labels. Custom labels in Apple backups are retained.
-- Password-protected PDFs need to be unlocked before import. The Android binding does not expose PDF copy-permission flags; it does not reproduce PDFKit's separate copy-restriction check.
+- Embedded bookmarks are imported with their hierarchy and page destinations. New Android imports use sequential page labels because the PDF binding does not expose custom page labels. Custom labels in legacy Apple backups are retained.
+- Password-protected PDFs need to be unlocked before import. The Android binding does not expose PDF copy-permission flags.
 - PDFs are limited to 250 MB. Reading a large JSON backup also needs memory for its base64 string; memory failures report an error and preserve existing books.
 - Different PDF engines can produce different text. Moving a stored book via backup retains its exact text and positions; independently importing the PDF again creates a new book.
 - Word segmentation is based on whitespace. Languages without word-separating spaces need a future language-aware tokenizer.
@@ -67,7 +67,9 @@ Python 3 generates the small EPUB fixtures before tests. Optional real books are
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-JVM tests cover shared Swift tokenizer fixtures, Apple backup decoding, Kotlin export/Swift import, trims and exclusions, Unicode offsets, edits, timing, unchecked text and blank-page playback, scrub interruption/checkpoints, malformed data, atomic persistence, and duplicate imports. Device tests exercise real PDF extraction/preview, Android Unicode behavior, the import-to-reading flow, swiping, gesture-zone ownership, corrections, and saved progress. They use isolated test libraries.
+JVM tests cover tokenizer fixtures, legacy Apple backup decoding, backup round trips, trims and exclusions, Unicode offsets, edits, timing, unchecked text and blank-page playback, scrub interruption/checkpoints, malformed data, atomic persistence, and duplicate imports. Device tests exercise real PDF extraction/preview, Android Unicode behavior, the import-to-reading flow, swiping, gesture-zone ownership, corrections, and saved progress. They use isolated test libraries.
+
+The dated verification notes below describe earlier releases, including checks against the now-retired Apple apps. Current verification uses the Android commands above.
 
 Verified on 16 October 2026:
 
@@ -87,7 +89,7 @@ PDFium, PdfiumAndroidKt, PDFBox-Android, and Bouncy Castle license texts are inc
 
 The scrolling-passage update was checked on 17 October 2026: all 24 unit tests and 17 emulator scenarios passed (the review-prompt scenario needed an isolated rerun). The passage test also verifies continuous vertical movement between words, stable horizontal positions, and freezing on release. Debug build and lint completed with no lint errors; existing warnings remain.
 
-The bundled SCOWL vocabulary and its full license are in `shared/resources/` and packaged as assets on Android and resources on Apple.
+The bundled SCOWL vocabulary and its full license are in `shared/resources/` and packaged as Android assets.
 
 Plain-passage verification on 19 October 2026: all 31 JVM tests and 17 emulator scenarios pass; lint has zero errors and 18 existing warnings. An opt-in test with the local 284-page, 104,789-word 1984 PDF opened multiline in 160–230 ms across the former size/focus/natural-pause combinations, compared with about 5.8 seconds with natural pauses in 0.1.8. The PDF is not bundled or committed. Multiline now lays out nearby text and does not calculate natural-pause durations for the book. Physical GrapheneOS testing remains outstanding.
 

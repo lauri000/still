@@ -1,10 +1,10 @@
 # PDF text repair
 
-Still repairs native PDF text at import time on Android, iPad/iPhone, and macOS. It uses PDFium or PDFKit plus deterministic rules; there is no OCR, model download, network request, or inference during playback.
+Still repairs native PDF text at import time on Android. It uses PDFium plus deterministic rules; there is no OCR, model download, network request, or inference during playback.
 
 ## How it works
 
-1. Read the original text and collect selective glyph geometry in memory. Android checks that PDFium character indices agree with UTF-16 source offsets. Apple uses PDF selections because characterBounds(at:) can disagree with page.string around ligatures and newlines.
+1. Read the original text and collect selective glyph geometry in memory. Android checks that PDFium character indices agree with UTF-16 source offsets.
 2. Expand presentation ligatures, remove soft hyphens, normalize line separators, and interpret PDFium's discretionary-hyphen marker. Geometry distinguishes invented spaces following malformed ligature advances from actual word boundaries.
 3. Learn vocabulary from the document, excluding wrapped fragments. Use a bundled 79,669-word SCOWL vocabulary only when common English words supply evidence that the document is English. Preserve recognized hyphenated compounds; join wrapped continuations, including words spanning pages or several lines.
 4. Repair other missing/extra spaces only when the document supports the resulting words and native geometry supports the boundary. Decorative initials have a separate size/alignment check. Unknown long tokens are not exhaustively segmented.
@@ -18,7 +18,9 @@ This is formatting repair, not spelling correction. It does not replace unfamili
 
 New imports produce versioned reader output containing final text, word ranges, and heading matches. **Reprocess book** reruns the full pipeline from the original PDF when an existing book needs a newer pipeline version; opening a library or backup does not silently convert it. Corrections and page choices survive. **Undo reprocessing** restores the previous saved book during the session. See [the format contract](../shared/FORMAT.md).
 
-## Evaluation
+## Historical evaluation
+
+These measurements include the retired Apple apps. Current reproduction instructions below use Android.
 
 The supplied Hume, Charisma, and Orwell PDFs contain 302, 260, and 284 pages respectively: **846 pages**. They were processed through both production native importers. Private PDFs, extracted text, and glyph dumps are outside the repository; the committed fixtures contain synthetic text.
 
@@ -37,23 +39,6 @@ The Hume fused-word example changes from abstractreasonings to abstract reasonin
 Validation: 21 Android JVM tests, nine Android device tests (the opt-in corpus harness is skipped in the ordinary run), 40 iPad tests, 12 shared repair fixtures plus geometry/cancellation/Unicode contracts, and portable backup compatibility checks passed. Android lint has no errors; existing dependency/SDK warnings remain. The macOS app builds successfully. The supplied-book evaluation was also run separately through the Android instrumentation harness and the macOS production importer.
 
 Remaining limitations include column/footnote reading order, superscript footnote attachment, headers outside the recognized margin patterns, and novel compounds whose intended hyphenation is ambiguous. A reader can still use the PDF preview and page editor for these. Local AI could later propose corrections for uncertain spans, but automatic model rewriting would require its own accuracy, latency, and memory evaluation before replacing this predictable import path.
-
-## Reproduce on Apple
-
-Run from the repository root on a Mac with Xcode. Choose an output directory outside the checkout because JSON contains complete private book text.
-
-~~~sh
-xcrun swiftc -O \
-  apps/apple/shared/Core/{Book,ReaderPipeline,ReadingStructure,PassageLayout}.swift \
-  apps/apple/shared/Core/PDFTextRepair.swift \
-  apps/apple/shared/Services/PDFImporter.swift \
-  apps/apple/shared/Services/PDFTextGeometry.swift \
-  apps/apple/shared/Services/PDFVocabulary.swift \
-  scripts/evaluate-pdfs.swift -o /tmp/evaluate-pdfs
-/tmp/evaluate-pdfs /tmp/pdf-results /path/to/book.pdf
-~~~
-
-The JSON stores elapsed extraction/repair seconds, raw text, and repaired text per physical page. The original PDF is not modified.
 
 ## Reproduce on Android
 
@@ -75,11 +60,4 @@ adb exec-out run-as com.stillreader.app.pdfevaluation \
 
 The harness processes all PDFs in that evaluation directory. It is skipped in ordinary device test runs. Optional -e pdfGeometry true writes large per-character geometry diagnostics, also containing private text.
 
-Compare one pair of native outputs from the repository root:
-
-~~~sh
-python3 scripts/compare-pdf-extraction.py \
-  /tmp/pdf-results/book.pdf.apple-repaired.json /tmp/book.android-repaired.json
-~~~
-
-The --details option prints differing tokens. Counts of fi followed by a space are candidates, not universally errors; hyphen counts alone cannot establish correctness. Run timing measurements separately from builds/tests, repeat them, and distinguish emulator timings from physical-device performance.
+The JSON stores elapsed extraction/repair seconds, raw text, and repaired text per physical page. Choose an output directory outside the checkout because it contains complete private book text. The original PDF is not modified. Run timing measurements separately from builds/tests, repeat them, and distinguish emulator timings from physical-device performance.
