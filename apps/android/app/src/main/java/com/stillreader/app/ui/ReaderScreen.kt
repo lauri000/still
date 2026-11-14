@@ -134,7 +134,7 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 IconButton(onClick = { session.pause(); passage = !passage; session.passageMode = passage }, modifier = Modifier.testTag("toggleContext")) {
                     Icon(Icons.AutoMirrored.Default.Notes, if (passage) "Single-line view" else "Passage view")
                 }
-                if (passage) TextButton(onClick = { passageOptions = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.width(48.dp).testTag("passageTextOptions").semantics { contentDescription = "Text size" }) {
+                if (passage) TextButton(onClick = { passageOptions = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.width(48.dp).testTag("passageTextOptions").semantics { contentDescription = "Passage options" }) {
                     Text("Aa", fontFamily = FontFamily.Serif, fontSize = 20.sp, color = Ink, maxLines = 1)
                 }
                 if (!passage) IconButton(onClick = { session.pause(); options = true }, modifier = Modifier.testTag("readingOptions")) {
@@ -195,6 +195,8 @@ fun ReaderScreen(session: ReadingSession, model: LibraryViewModel, onClose: () -
                 HorizontalDivider(color = Line)
                 OptionToggle("Natural pauses", natural) { natural = it; model.setNaturalPauses(natural) }
                 Text("Slow down at punctuation and paragraph breaks.", fontSize = 12.sp, color = Muted)
+                HorizontalDivider(color = Line)
+                AppearanceOptions()
             }
         }, confirmButton = { TextButton(onClick = { options = false }) { Text("Done") } })
     }
@@ -351,10 +353,11 @@ internal fun WordRibbon(session: ReadingSession, index: Int, focusLetter: Boolea
         val current = session.current?.word?.text ?: "No text"
         val measurer = rememberTextMeasurer()
         val focusRange = remember(current, focusLetter) { if (focusLetter) ReadingFocus.range(current) else null }
-        val styled = remember(current, focusRange) {
+        val focusColor = FocusLetter
+        val styled = remember(current, focusRange, focusColor) {
             buildAnnotatedString {
                 append(current)
-                focusRange?.let { addStyle(SpanStyle(color = FocusLetter), it.first, it.last + 1) }
+                focusRange?.let { addStyle(SpanStyle(color = focusColor), it.first, it.last + 1) }
             }
         }
         val baseStyle = LocalTextStyle.current.merge(TextStyle(fontFamily = FontFamily.Serif, fontSize = fontSize.sp))

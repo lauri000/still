@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun PassageTextOptions(size: Int, change: (Int) -> Unit, dismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, containerColor = Paper, titleContentColor = Ink, textContentColor = Ink, title = { Text("Text size") }, text = {
+    AlertDialog(onDismissRequest = dismiss, containerColor = Paper, titleContentColor = Ink, textContentColor = Ink, title = { Text("Passage options") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("A quiet moment with a good book.", fontFamily = FontFamily.Serif,
                 fontSize = size.sp, lineHeight = (size * 1.6f).sp, letterSpacing = 0.sp, color = Ink,
@@ -31,6 +31,8 @@ fun PassageTextOptions(size: Int, change: (Int) -> Unit, dismiss: () -> Unit) {
                     modifier = Modifier.testTag("largerPassageText").semantics { contentDescription = "Larger text" }) { Text("A+", fontSize = 24.sp) }
             }
             Text("Saved for scrolling view.", color = Muted, fontSize = 13.sp)
+            HorizontalDivider(color = Line)
+            AppearanceOptions()
         }
     }, dismissButton = { TextButton(onClick = { change(22) }, enabled = size != 22) { Text("Reset") } },
         confirmButton = { TextButton(onClick = dismiss) { Text("Done") } })

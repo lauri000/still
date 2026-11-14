@@ -131,15 +131,22 @@ fun StillApp(model: LibraryViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LibraryScreen(books: List<Book>, select: (String) -> Unit, discover: () -> Unit, options: @Composable (Book) -> Unit, import: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).widthIn(max = 900.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Books", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = discover, modifier = Modifier.testTag("discoverBooks")) { Text("Discover") }
-            Button(onClick = import, modifier = Modifier.testTag("importPDF"), shape = RoundedCornerShape(12.dp)) {
-                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import file")
+        FlowRow(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Books", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                AppearanceMenu()
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = discover, modifier = Modifier.testTag("discoverBooks")) { Text("Discover") }
+                Button(onClick = import, modifier = Modifier.testTag("importPDF"), shape = RoundedCornerShape(12.dp)) {
+                    Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Import file")
+                }
             }
         }
         if (books.size > 5) OutlinedTextField(search, { search = it }, label = { Text("Search books") }, singleLine = true, modifier = Modifier.fillMaxWidth())

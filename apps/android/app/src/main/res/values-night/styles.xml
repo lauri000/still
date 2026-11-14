@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.Still" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#171D19</item>
+        <item name="android:colorAccent">#A6C8A7</item>
+    </style>
+</resources>

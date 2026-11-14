@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
@@ -44,6 +47,7 @@ class AndroidReaderTests {
     private lateinit var model: LibraryViewModel
     private var previousAnimatedScrolling = false
     private var previousFocusLetter = false
+    private var previousAppearance: String? = null
     private var previousWPM = 250
     private var previousNaturalPauses = true
     private var previousActiveWordSize: Int? = null
@@ -58,6 +62,8 @@ class AndroidReaderTests {
         val preferences = application.getSharedPreferences("reading", 0)
         previousAnimatedScrolling = preferences.getBoolean("animatedScrolling", false)
         previousFocusLetter = preferences.getBoolean("focusLetter", false)
+        previousAppearance = preferences.getString("appearance", null)
+        preferences.edit().putString("appearance", "light").commit()
         previousWPM = preferences.getInt("wpm", 250)
         previousNaturalPauses = preferences.getBoolean("naturalPauses", true)
         previousPassageTextSize = if (preferences.contains("passageTextSize")) preferences.getInt("passageTextSize", 22) else null
@@ -91,6 +97,7 @@ class AndroidReaderTests {
         application.getSharedPreferences("reading", 0).edit().apply {
             putBoolean("animatedScrolling", previousAnimatedScrolling).putBoolean("focusLetter", previousFocusLetter).putInt("wpm", previousWPM)
             putBoolean("naturalPauses", previousNaturalPauses)
+            previousAppearance?.let { putString("appearance", it) } ?: remove("appearance")
             previousPassageTextSize?.let { putInt("passageTextSize", it) } ?: remove("passageTextSize")
             previousActiveWordSize?.let { putInt("activeWordSizePercent", it) } ?: remove("activeWordSizePercent")
         }.commit()
@@ -107,6 +114,49 @@ class AndroidReaderTests {
         if (model.state.value.reader != null || model.state.value.opening) compose.runOnUiThread { model.select(null) }
         val book = model.state.value.books.first()
         compose.onNodeWithTag("bookOptions-${book.id}").performClick()
+    }
+
+    @Test fun appearanceSwitchesKeepReaderPositionAndRefreshFocusColor() {
+        launch()
+        compose.onNodeWithTag("appearanceMenu").performClick()
+        compose.onNodeWithTag("appearance-dark").performClick()
+        compose.onNodeWithTag("appearanceMenu").assert(SemanticsMatcher.expectValue(
+            androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Dark"))
+        outlineScreenshot("dark-mode-library")
+        compose.runOnIdle { model.focusLetter = true }
+        readBook()
+        compose.runOnIdle { model.state.value.reader!!.seek(2) }
+        val session = model.state.value.reader!!
+        val position = session.current!!.position
+        fun assertTheme(dark: Boolean) {
+            val image = compose.onRoot().captureToImage().toPixelMap()
+            assertEquals(dark, image[image.width - 2, image.height / 2].luminance() < .1f)
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithTag("currentWord").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertEquals(if (dark) Color(0xFFF28B7D) else Color(0xFFB32E24), layouts.single().layoutInput.text.spanStyles.single().item.color)
+            compose.runOnIdle {
+                assertSame(session, model.state.value.reader)
+                assertEquals(position, session.current!!.position)
+            }
+        }
+        assertTheme(true)
+        outlineScreenshot("dark-mode-single-line")
+        compose.onNodeWithTag("readingOptions").performClick()
+        compose.onNodeWithTag("appearance-light").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithText("Done").performClick()
+        assertTheme(false)
+        compose.onNodeWithTag("toggleContext").performClick()
+        compose.onNodeWithTag("passageTextOptions").performClick()
+        compose.onNodeWithTag("appearance-dark").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithText("Done").performClick()
+        compose.runOnIdle { assertEquals(position, session.current!!.position) }
+        outlineScreenshot("dark-mode-passage")
+        compose.onNodeWithTag("toggleContext").performClick()
+        assertTheme(true)
+        assertEquals("dark", application.getSharedPreferences("reading", 0).getString("appearance", null))
+        compose.onNodeWithContentDescription("Back").performClick()
+        readBook()
+        compose.runOnIdle { assertEquals(position, model.state.value.reader!!.current!!.position) }
     }
 
     @Test fun existingEpubDashIndexesUpgradeAndReaderKeepsTypographyAndResume() {

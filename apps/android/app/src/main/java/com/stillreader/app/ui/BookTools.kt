@@ -102,13 +102,15 @@ private fun StartingWord(book: Book, page: Int, changePage: (Int) -> Unit, model
                 val start = chunk.first().offset
                 val end = chunk.last().let { it.offset + it.length }
                 var layout by remember(page, start) { mutableStateOf<TextLayoutResult?>(null) }
-                val annotated = remember(book.pages[page].text, start, offset) {
+                val muted = Muted
+                val forest = Forest
+                val annotated = remember(book.pages[page].text, start, offset, muted, forest) {
                     buildAnnotatedString {
                         append(book.pages[page].text.substring(start, end))
                         val dimEnd = (offset - start).coerceIn(0, length)
-                        if (dimEnd > 0) addStyle(SpanStyle(color = Muted.copy(alpha = .5f)), 0, dimEnd)
+                        if (dimEnd > 0) addStyle(SpanStyle(color = muted.copy(alpha = .5f)), 0, dimEnd)
                         selected?.takeIf { it.offset in start until end }?.let {
-                            addStyle(SpanStyle(background = Forest.copy(alpha = .18f), fontWeight = FontWeight.Bold), it.offset - start, it.offset - start + it.length)
+                            addStyle(SpanStyle(background = forest.copy(alpha = .18f), fontWeight = FontWeight.Bold), it.offset - start, it.offset - start + it.length)
                         }
                     }
                 }

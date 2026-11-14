@@ -7,6 +7,8 @@
 
 Closing the reader returns directly to the library. The **…** menu beside each book contains text editing, chapters, beginning trim, title/author, reprocessing, export, and deletion. Original PDF previews remain available in **Edit text** for comparison.
 
+Use **Appearance** beside **Books** to choose **System**, **Light**, or **Dark**. System follows the device appearance and is the default. The choice is saved on this device and applies to the library, discovery, book tools, and both reading views. You can also change it in single-line reading options or the scrolling view’s **Aa** panel without losing your place. Original PDF previews and book covers retain their source colors.
+
 In single-line view, the current word stays centered with nearby words on either side. Text fills the space below a compact header containing page navigation and progress. The invisible bottom-right quarter of the reading area is the hold/speed zone. Start a swipe anywhere else to select later/earlier words. The starting zone determines the entire gesture, even if your finger crosses its boundary; extra fingers cannot take over.
 
 In single-line view, WPM appears only while changing speed and briefly afterward. Tapping words does not move the reading position. Text navigation pauses and never changes speed. Hold the corner again to resume at the selected word. Speed changes are remembered across books and launches. Screen-reader users retain start/pause, speed adjustment, and word navigation actions.
